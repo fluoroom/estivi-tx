@@ -447,7 +447,7 @@ impl App {
             })
             .collect();
         ui.set_grid_blocks(ModelRc::new(VecModel::from(blocks)));
-        ui.set_day_label(view::day_label(today, tz).into());
+        ui.set_day_label(view::day_label(today, tz, self.project.grid.offset_s).into());
     }
 
     fn refresh_next_preview(&mut self) {

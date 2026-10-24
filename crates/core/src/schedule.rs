@@ -63,12 +63,15 @@ fn grid_with(project: &Project) -> Grid {
 /// Every transmission of the grid in [from, to), sorted.
 pub fn occurrences(grid: &Grid, from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<Occurrence> {
     let mut out = Vec::new();
-    // Start a day early: a block that began yesterday may run past midnight.
+    let offset = Duration::seconds(grid.offset_s as i64);
+    // Start a day early: a block that began yesterday may run past midnight,
+    // and a late offset can push yesterday's last start into today.
     let mut day = day_of(grid.timezone, from) - Duration::days(1);
     let last = day_of(grid.timezone, to);
     while day <= last {
         for slot in &grid.slots {
             for at in slot_times(slot, grid.timezone, day) {
+                let at = at + offset;
                 if at >= from && at < to {
                     out.push(Occurrence { at, slot_id: slot.id, slot_name: slot.name.clone(), program: slot.program, freq_hz: slot.freq_hz });
                 }
@@ -207,7 +210,7 @@ mod tests {
     }
 
     fn grid(slots: Vec<Slot>) -> Grid {
-        Grid { timezone: GridTz::Utc, slots }
+        Grid { timezone: GridTz::Utc, slots, ..Default::default() }
     }
 
     #[test]
@@ -253,5 +256,21 @@ mod tests {
         let seq: Vec<u64> = (0..6).map(|_| r.next(&programs, Rotation::Sequential).unwrap()).collect();
         assert_eq!(seq.len(), 6);
         assert_eq!(seq[1], seq[0] % 5 + 1);
+    }
+
+    #[test]
+    fn project_offset_shifts_every_start() {
+        // Shared frequency: the other channel occupies 14:00–14:03, this one
+        // keeps the 14:00 block and keys 3 minutes later.
+        let mut g = grid(vec![Slot { id: 1, start: "14:00".into(), end: String::new(), ..Default::default() }]);
+        g.offset_s = 3 * 60;
+        assert_eq!(next_occurrence(&g, utc("2026-10-24T00:00:00Z")).unwrap().at, utc("2026-10-24T14:03:00Z"));
+        g.offset_s = 3 * 60 + 15;
+        assert_eq!(next_occurrence(&g, utc("2026-10-24T00:00:00Z")).unwrap().at, utc("2026-10-24T14:03:15Z"));
+        // Yesterday 23:59 + 90 s is today 00:00:30.
+        g.offset_s = 90;
+        g.slots[0].start = "23:59".into();
+        assert_eq!(next_occurrence(&g, utc("2026-10-24T00:00:00Z")).unwrap().at, utc("2026-10-24T00:00:30Z"));
+        assert_eq!(next_occurrence(&g, utc("2026-10-24T00:00:31Z")).unwrap().at, utc("2026-10-25T00:00:30Z"));
     }
 }

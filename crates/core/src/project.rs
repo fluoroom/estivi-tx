@@ -224,7 +224,16 @@ pub enum GridTz {
 #[serde(default)]
 pub struct Grid {
     pub timezone: GridTz,
+    /// Seconds added to every grid start. Blocks stay written at 14:00; this
+    /// channel actually keys at 14:00 + offset, so several stations can share a
+    /// frequency (the other one occupies 14:00–14:03, this one starts at 14:03).
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    pub offset_s: u32,
     pub slots: Vec<Slot>,
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
 }
 
 /// A block of the programming grid.
@@ -487,6 +496,17 @@ start = "21:00"
         assert_eq!(p.grid.slots[1].program, Some(1));
         assert_eq!(p.grid.slots[1].name, "Logo");
         assert_ne!(p.grid.slots[0].id, p.grid.slots[1].id);
+    }
+
+    #[test]
+    fn grid_offset_roundtrips() {
+        let mut p = Project::default();
+        p.grid.offset_s = 195;
+        let s = toml::to_string_pretty(&p).unwrap();
+        assert!(s.contains("offset_s = 195"), "{s}");
+        assert_eq!(toml::from_str::<Project>(&s).unwrap().grid.offset_s, 195);
+        let empty: Project = toml::from_str("name = \"x\"\n").unwrap();
+        assert_eq!(empty.grid.offset_s, 0);
     }
 
     #[test]

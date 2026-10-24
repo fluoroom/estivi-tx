@@ -225,6 +225,8 @@ export struct ProjectForm {
     cw-wpm: int,
     cw-tone: int,
     pause: int,
+    offset-min: int,
+    offset-sec: int,
     listen-cw: bool,
     listen-wpm: int,
     listen-tone: int,
@@ -300,6 +302,19 @@ export component ProjectDialog inherits Window {
                     Field {
                         label: "Pausa mínima entre emisiones (segundos) — protege el equipo";
                         pause-spin := SpinBox { minimum: 0; maximum: 3600; value: root.form.pause; }
+                    }
+                    Field {
+                        label: "Retraso de la grilla — todas las TX salen esta cantidad después de la hora del bloque";
+                        HorizontalLayout {
+                            spacing: 8px;
+                            offset-min-spin := SpinBox { minimum: 0; maximum: 180; value: root.form.offset-min; }
+                            Text { text: "min"; vertical-alignment: center; color: Theme.text-dim; }
+                            offset-sec-spin := SpinBox { minimum: 0; maximum: 59; value: root.form.offset-sec; }
+                            Text { text: "s"; vertical-alignment: center; color: Theme.text-dim; }
+                        }
+                    }
+                    Hint {
+                        text: "Los bloques se escriben en hora redonda (14:00). El retraso sirve para compartir frecuencia: si otro canal ocupa 14:00–14:03, poné 3 min y las tuyas empiezan a las 14:03.";
                     }
                     Field {
                         label: "Escala de color Robot / PD";
@@ -450,6 +465,8 @@ export component ProjectDialog inherits Window {
                     cw-wpm: cw-wpm-spin.value,
                     cw-tone: cw-tone-spin.value,
                     pause: pause-spin.value,
+                    offset-min: offset-min-spin.value,
+                    offset-sec: offset-sec-spin.value,
                     listen-cw: listen-cw-box.checked,
                     listen-wpm: listen-wpm-spin.value,
                     listen-tone: listen-tone-spin.value,

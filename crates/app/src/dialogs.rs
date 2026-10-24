@@ -67,7 +67,12 @@ pub fn open_slot(app: &Shared, index: Option<usize>) {
     let Ok(dlg) = SlotDialog::new() else { return };
     apply_theme_to(&dlg.global::<crate::Theme>(), a.config.ui.light);
     dlg.set_program_names(strings(view::program_names_with_rotation(&a.project)));
-    dlg.set_tz_name(if a.project.grid.timezone == GridTz::Utc { "UTC".into() } else { "hora local".into() });
+    let tz = if a.project.grid.timezone == GridTz::Utc { "UTC" } else { "hora local" };
+    dlg.set_tz_name(if a.project.grid.offset_s == 0 {
+        tz.into()
+    } else {
+        format!("{} · al aire +{}:{:02}", tz, a.project.grid.offset_s / 60, a.project.grid.offset_s % 60).into()
+    });
     let program_index = slot.program.and_then(|id| a.project.programs.iter().position(|p| p.id == id)).map_or(0, |i| i + 1);
     let d = slot.days;
     dlg.set_form(SlotForm {
@@ -232,6 +237,8 @@ pub fn open_project(app: &Shared) {
         cw_wpm: p.tx.cw_wpm.round() as i32,
         cw_tone: p.tx.cw_tone_hz.round() as i32,
         pause: p.tx.min_pause_s as i32,
+        offset_min: (p.grid.offset_s / 60) as i32,
+        offset_sec: (p.grid.offset_s % 60) as i32,
         listen_cw: p.listen.cw,
         listen_wpm: p.listen.cw_wpm.round() as i32,
         listen_tone: p.listen.cw_tone_hz.round() as i32,
@@ -319,6 +326,7 @@ pub fn open_project(app: &Shared) {
                 p.tx.cw_wpm = f.cw_wpm as f32;
                 p.tx.cw_tone_hz = f.cw_tone as f32;
                 p.tx.min_pause_s = f.pause.max(0) as u32;
+                p.grid.offset_s = (f.offset_min.max(0) as u32) * 60 + (f.offset_sec.max(0) as u32).min(59);
                 p.listen.cw = f.listen_cw;
                 p.listen.cw_wpm = f.listen_wpm as f32;
                 p.listen.cw_tone_hz = f.listen_tone as f32;

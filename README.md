@@ -1,92 +1,100 @@
 # Estivi
 
-Programación de un canal SSTV como si fuera un canal de TV: una **grilla** de bloques horarios, **programas** (las imágenes que salen al aire), **gráfica del canal** encima (zócalos, hora, número de emisión, logo, datos de una API) y un **registro de emisiones**. Corre en Windows y Linux, es un solo ejecutable liviano (Rust + Slint, sin navegador) y no necesita internet.
+Schedule an SSTV channel the way you would a TV station: a **grid** of time blocks, **programs** (the pictures that go on air), **channel graphics** on top (lower thirds, clock, serial number, logo, data from an API), and a **transmission log**. It runs on Windows and Linux as a single light executable (Rust + Slint, no browser) and does not need the internet.
 
-- **Transmite** SSTV: Martin M1–M4, Scottie S1/S2/DX, Robot 24/36/72, Robot B/N 8/12/24 y PD 50/90/120/160/180/240/290. Con VIS, preámbulo VOX opcional, FSK ID y CW ID.
-- **Escucha** CW (velocidad fija) y DTMF, para **disparadores** remotos: «si oigo `*1#`, transmití», «si oigo `QRV SSTV` en CW, transmití», pausar o reanudar la grilla.
-- **PTT** por VOX, puerto serie (RTS/DTR, normal o invertido) o CAT con Hamlib (`rigctld`), que además puede fijar la frecuencia de cada bloque.
+- **Transmit** SSTV: Martin M1–M4, Scottie S1/S2/DX, Robot 24/36/72, Robot B/W 8/12/24, and PD 50/90/120/160/180/240/290. With VIS, optional VOX preamble, FSK ID, and CW ID (optional preamble before VIS and ID after the picture).
+- **Listen** for CW (fixed speed) and DTMF, for remote **triggers**: “if I hear `*1#`, transmit”, “if I hear `QRV SSTV` in CW, transmit”, pause or resume the grid.
+- **PTT** by VOX, serial port (RTS/DTR, normal or inverted), or CAT via Hamlib (`rigctld`), which can also set the frequency of each block.
 
-## Dos archivos distintos
+## Two different files
 
-| Archivo | Qué guarda | Dónde |
+| File | What it stores | Where |
 |---|---|---|
-| `estivi.toml` (configuración) | Lo de **esta PC**: placas de audio, puerto serie, PTT, CAT, calibración del reloj | Junto al ejecutable si se puede escribir ahí (instalación portable en un pendrive); si no, en `~/.config/estivi/` o `%APPDATA%\estivi\` |
-| `*.estivi` (proyecto) | Lo del **canal**: modo SSTV, estación, programas, grilla, gráfica, identificación, escucha y disparadores | Donde lo guardes. Las imágenes dentro de la carpeta del proyecto se guardan con ruta relativa, así la carpeta viaja entera |
-| `*-registro.csv` | Una línea por emisión (inicio, fin, número, modo, programa, frecuencia, origen, resultado) | Junto al proyecto |
+| `estivi.toml` (config) | Things that belong to **this PC**: audio devices, serial port, PTT, CAT, clock calibration | Next to the executable if that folder is writable (portable install on a USB stick); otherwise `~/.config/estivi/` or `%APPDATA%\estivi\` |
+| `*.estivi` (project) | Things that belong to the **channel**: SSTV mode, station, programs, grid, graphics, identification, listen, and triggers | Wherever you save it. Images inside the project folder are stored with a relative path, so the whole folder travels together |
+| `*-registro.csv` | One line per transmission (start, end, serial, mode, program, frequency, origin, result) | Next to the project |
 
-Las fuentes `.ttf`/`.otf` que pongas en una carpeta `fuentes/` junto al proyecto o al ejecutable aparecen en el editor de gráfica (además de las Noto incluidas).
+`.ttf`/`.otf` fonts you drop in a `fuentes/` folder next to the project or the executable show up in the graphics editor (in addition to the bundled Noto fonts).
 
-## La ventana principal
+## Main window
 
-- **Barra al aire**: estado (EN ESPERA / AL AIRE / PAUSADA), próxima emisión con cuenta regresiva, modo del proyecto, interruptor «Grilla al aire», *Transmitir ahora* y *Cortar*.
-- **Programas**: las imágenes del canal, con rotación en orden o aleatoria sin repetir. Doble clic para renombrar; ▶ lo transmite ya.
-- **Grilla**: bloques con días, horario (una vez, o cada N minutos entre dos horas, aunque crucen la medianoche), programa fijo o rotación y frecuencia opcional. Arriba, la línea de tiempo del día.
-- **Monitores**: lo que está al aire (con la línea de barrido avanzando) y una vista previa exacta de lo que sale después.
-- **Registro** y **Escucha** (nivel de entrada, texto CW y secuencias DTMF recibidas).
+- **On-air bar**: status (STANDBY / ON AIR / PAUSED), next transmission with countdown, project mode, “Grid on air” switch, *Transmit now* and *Cut*.
+- **Programs**: groups of pictures with sequential or random-without-repeat rotation. Each program can override CW and activations; the grid owns the schedule. Double-click to rename; ▶ transmits it now.
+- **Grid**: blocks with days, time (once, or every N minutes between two hours, including across midnight), a fixed program or rotation, and an optional frequency. The day timeline sits above. A project-wide **offset** (seconds) delays every start so several channels can share a frequency: keep the 14:00 block, set +3:00, and this station keys at 14:03 while the other occupies 14:00–14:03.
+- **Monitors**: what is on air (with the scan line advancing) and an exact preview of what goes next.
+- **Log** and **Listen** (input level, received CW text and DTMF sequences).
 
-La **pausa mínima** entre emisiones (Proyecto → Transmisión) protege el equipo: si un bloque cae antes, sale cuando termina la pausa. Las emisiones que se atrasan más de 90 s (por ejemplo, si la PC estuvo suspendida) se saltean en vez de salir tarde.
+The **minimum pause** between transmissions (Project → Transmission) protects the radio: if a block would start earlier, it waits until the pause ends. Transmissions that slip more than 90 s (for example after the PC was suspended) are skipped instead of going out late.
 
-## Gráfica del canal
+Light and dark themes live in the window header. **Utils** opens a cheat sheet of every SSTV mode (size, color space, duration, VIS).
 
-Ventana aparte (**Gráfica**). Abajo de todo va la imagen base (el programa), que se adapta al tamaño de cada modo: recortar para llenar, entera con bandas o estirar. Encima, capas de **texto** e **imagen** (PNG con transparencia) que se arrastran, se redimensionan desde las esquinas (con imán al centro y a los bordes) y se ajustan desde el inspector. Las posiciones se guardan en proporción, así la misma gráfica sirve de 160×120 (Robot 24) a 800×616 (PD 290).
+## SSTV mode
 
-Los textos aceptan datos entre llaves:
+The project mode is the default. A program can set its own default for its pictures, and a single picture can override that. Inheritance is **picture → program → project**.
 
-| Dato | Muestra |
+Files can be dropped from the file manager onto the in-app drop zones, or chosen with the native file picker.
+
+## Channel graphics
+
+A separate window (**Graphics**). The program picture is the base layer and is fitted to each mode’s size: crop to fill, fit with bars, or stretch. On top, **text** and **image** layers (PNG with transparency) can be dragged, resized from the corners (with snap to center and edges), and tuned in the inspector. Positions are stored as ratios, so the same graphics work from 160×120 (Robot 24) to 800×616 (PD 290).
+
+Text layers accept fields in braces:
+
+| Field | Shows |
 |---|---|
-| `{call}` `{op}` `{qth}` `{loc}` | Datos de la estación |
-| `{utc}` `{date}` `{local}` | Hora UTC, fecha UTC, hora local. Con formato: `{utc:%d/%m %H:%M}` |
-| `{serial}` `{serial:4}` | Número de emisión (con ceros: `0042`) |
-| `{mode}` `{program}` `{freq}` | Modo, nombre del programa, frecuencia del bloque |
-| `{cw}` `{cwcall}` `{dtmf}` | Último texto CW, último indicativo oído en CW, última secuencia DTMF |
-| `{api}` | Respuesta de una URL (con campo JSON opcional, p. ej. `current.temperature_2m`), refrescada cada N segundos en segundo plano |
+| `{call}` `{op}` `{qth}` `{loc}` | Station data |
+| `{utc}` `{date}` `{local}` | UTC time, UTC date, local time. With a format: `{utc:%d/%m %H:%M}` |
+| `{serial}` `{serial:4}` | Transmission number (zero-padded: `0042`) |
+| `{mode}` `{program}` `{freq}` | Mode, program name, block frequency |
+| `{cw}` `{cwcall}` `{dtmf}` | Last CW text, last callsign heard in CW, last DTMF sequence |
+| `{api}` | Response from a URL (optional JSON field, e.g. `current.temperature_2m`), refreshed every N seconds in the background |
 
-Para que se lea con ruido, cada texto puede llevar contorno, sombra y caja de fondo, y achicarse solo si no entra.
+For readability in noise, each text can have an outline, shadow, and background box, and it shrinks on its own if it does not fit.
 
-## Compilar
+## Build
 
-Requiere Rust estable (1.85 o más nuevo).
+Needs stable Rust (1.85 or newer).
 
 ```sh
 cargo build --release
-# el ejecutable queda en target/release/estivi (estivi.exe en Windows)
+# the binary is target/release/estivi (estivi.exe on Windows)
 ```
 
-- **Linux**: hacen falta los paquetes de desarrollo de ALSA y fontconfig (`alsa-lib` y `fontconfig` en Arch; `libasound2-dev libfontconfig1-dev` en Debian/Ubuntu).
-- **Windows**: compilar en Windows con la toolchain MSVC. En las versiones *release* no se abre consola.
-- La interfaz se dibuja por software (≈50 MB de RAM y ~3 % de CPU en reposo, sin depender de drivers de video). Equipo → General permite usar la GPU (OpenGL) si se prefiere.
+- **Linux**: ALSA and fontconfig development packages (`alsa-lib` and `fontconfig` on Arch; `libasound2-dev libfontconfig1-dev` on Debian/Ubuntu).
+- **Windows**: build on Windows with the MSVC toolchain. Release builds do not open a console.
+- The UI draws in software (about 50 MB of RAM and ~3 % CPU at idle, no GPU driver required). Equipment → General can switch to the GPU (OpenGL) if you prefer.
 
-Herramientas de línea de comandos (útiles para probar sin radio):
+Command-line tools (useful for testing without a radio):
 
 ```sh
-# cuadro final de un programa a PNG y la emisión completa a WAV (para decodificar con QSSTV/MMSSTV)
-cargo run -p estivi-core --example render -- ejemplo/canal-demo.estivi cuadro.png audio.wav 0 PD120
-# dispositivos de audio (el id es lo que va en estivi.toml) y puertos serie
+# final frame of a program to PNG and the full transmission to WAV (decode with QSSTV/MMSSTV)
+cargo run -p estivi-core --example render -- ejemplo/canal-demo.estivi frame.png audio.wav 0 PD120
+# audio devices (the id goes in estivi.toml) and serial ports
 cargo run -p estivi-core --example dispositivos
 ```
 
-`ejemplo/canal-demo.estivi` es un canal de prueba (indicativo ficticio `N0CALL`) con tres programas, tres bloques, zócalo, hora/número, logo y una capa de clima por API (oculta).
+`ejemplo/canal-demo.estivi` is a sample channel (fictitious callsign `N0CALL`) with three programs, three blocks, a lower third, clock/serial, logo, and a weather API layer (hidden).
 
-## Estado de verificación
+## Verification status
 
-Pruebas automáticas (`cargo test --workspace`): tiempos de línea de todos los modos contra los valores publicados, VIS y paridad, bordes de píxel sin deriva acumulada, ida y vuelta de frecuencias en Martin M1, decodificadores CW y DTMF con ruido, grilla (incluido el cruce de medianoche), pausa mínima y emisiones atrasadas, rotación y formatos de archivo.
+Automated tests (`cargo test --workspace`): line timings of every mode against published values, VIS and parity, pixel edges with no accumulated drift, Martin M1 frequency round-trip, CW and DTMF decoders with noise, the grid (including midnight wrap), minimum pause and late transmissions, rotation, and file formats.
 
-Decodificado con **QSSTV 9** por audio real (ALSA loopback), imagen y resolución correctas:
+Decoded with **QSSTV 9** over real audio (ALSA loopback), correct image and resolution:
 
-| Modo | Resultado |
+| Mode | Result |
 |---|---|
-| Martin M1 | OK, transmitido en vivo desde la app (motor → audio → QSSTV) |
+| Martin M1 | OK, transmitted live from the app (engine → audio → QSSTV) |
 | Martin M2 · Scottie S1, S2, DX | OK |
-| Robot 24, 36, 72 · Robot B/N 8, 12 | OK |
+| Robot 24, 36, 72 · Robot B/W 8, 12 | OK |
 | PD 50, 120, 290 | OK |
-| PD 90, 160, 180, 240 | Mismo código que los PD probados; no se decodificaron por separado |
-| Martin M3, M4 · Robot B/N 24 | QSSTV no los soporta: siguen la tabla de slowrx, falta probarlos |
+| PD 90, 160, 180, 240 | Same code as the tested PD modes; not decoded separately |
+| Martin M3, M4 · Robot B/W 24 | QSSTV does not support them: they follow the slowrx table, still untested |
 
-- Escala de color de Robot/PD: QSSTV decodifica luminancia en **escala completa** (medido con franjas: 0→2 y 255→255; con escala de estudio llegaba 18 y 237, imagen lavada). Por eso es el valor por defecto; la escala de estudio queda como opción en Proyecto → Transmisión.
-- FSK ID sigue el formato de MMSSTV (como pySSTV); falta confirmarlo con MMSSTV.
-- PTT serie y CAT (rigctld) están implementados pero no se probaron con un equipo real.
-- En Linux, el PCM `front` de algunas placas pasa por un volumen por software del mezclador ALSA: si el nivel sale muy bajo, elegí la variante `plughw` del dispositivo o subí ese control.
+- Robot/PD color scale: QSSTV decodes luminance as **full range** (measured with bars: 0→2 and 255→255; studio range came out 18 and 237, a washed-out picture). That is why it is the default; studio range remains an option under Project → Transmission.
+- FSK ID follows the MMSSTV format (same as pySSTV); still needs confirmation with MMSSTV.
+- Serial PTT and CAT (rigctld) are implemented but not tested on real hardware.
+- On Linux, the `front` PCM of some cards goes through an ALSA software mixer volume: if the level is very low, pick the device’s `plughw` variant or raise that control.
 
-## Licencias
+## Licenses
 
-Las fuentes Noto incluidas (`crates/core/assets/fonts`) son SIL Open Font License 1.1 (`OFL.txt`). Slint se puede usar bajo GPLv3 o bajo su licencia libre de regalías para escritorio, que pide mostrar la atribución «Made with Slint»: hay que elegir una antes de distribuir.
+The bundled Noto fonts (`crates/core/assets/fonts`) are SIL Open Font License 1.1 (`OFL.txt`). Slint can be used under GPLv3 or under its royalty-free desktop license, which requires showing the “Made with Slint” attribution: pick one before distributing.

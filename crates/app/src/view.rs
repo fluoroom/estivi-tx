@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike, TimeZone, Utc};
 use image::RgbaImage;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
 
@@ -87,11 +87,22 @@ pub fn countdown(secs: i64) -> String {
     if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60) } else { format!("{:02}:{:02}", s / 60, s % 60) }
 }
 
-/// Time of day in the grid's timezone.
+/// Time of day in the grid's timezone. Seconds appear when the start is not on a minute.
 pub fn grid_time(t: DateTime<Utc>, tz: GridTz) -> String {
     match tz {
-        GridTz::Utc => t.format("%H:%M UTC").to_string(),
-        GridTz::Local => t.with_timezone(&Local).format("%H:%M").to_string(),
+        GridTz::Utc => t.format(if t.second() != 0 { "%H:%M:%S UTC" } else { "%H:%M UTC" }).to_string(),
+        GridTz::Local => {
+            let local = t.with_timezone(&Local);
+            local.format(if local.second() != 0 { "%H:%M:%S" } else { "%H:%M" }).to_string()
+        }
+    }
+}
+
+pub fn offset_label(offset_s: u32) -> String {
+    if offset_s == 0 {
+        String::new()
+    } else {
+        format!(" · retraso +{}:{:02}", offset_s / 60, offset_s % 60)
     }
 }
 
@@ -111,13 +122,14 @@ pub fn grid_midnight(day: NaiveDate, tz: GridTz) -> DateTime<Utc> {
     }
 }
 
-pub fn day_label(day: NaiveDate, tz: GridTz) -> String {
+pub fn day_label(day: NaiveDate, tz: GridTz, offset_s: u32) -> String {
     format!(
-        "Hoy, {} {:02}/{:02} · {}",
+        "Hoy, {} {:02}/{:02} · {}{}",
         WEEKDAYS[day.weekday().num_days_from_monday() as usize],
         day.day(),
         day.month(),
-        if tz == GridTz::Utc { "horario UTC" } else { "horario local" }
+        if tz == GridTz::Utc { "horario UTC" } else { "horario local" },
+        offset_label(offset_s)
     )
 }
 
