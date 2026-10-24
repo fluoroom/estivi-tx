@@ -1,0 +1,241 @@
+// Flat utility chrome. `light` is set from Equipo → General and follows every window.
+
+import { Palette } from "std-widgets.slint";
+import "../../core/assets/fonts/NotoSansMono-Bold.ttf";
+
+export global Theme {
+    in-out property <bool> light: false;
+    out property <color> bg: light ? #eef0f2 : #111315;
+    out property <color> panel: light ? #ffffff : #181b1e;
+    out property <color> panel-raised: light ? #f4f5f6 : #1e2226;
+    out property <color> field: light ? #ffffff : #111315;
+    out property <color> border: light ? #d5d8dc : #2a2f35;
+    out property <color> border-strong: light ? #b8bdc3 : #3a4149;
+    out property <color> text: light ? #1a1d21 : #e6e8eb;
+    out property <color> text-dim: light ? #5c636b : #8b929a;
+    out property <color> text-faint: light ? #8b929a : #5c636b;
+    out property <color> accent: Palette.accent-background;
+    out property <color> on-air: #dc2626;
+    out property <color> ready: #16a34a;
+    out property <color> paused: #d97706;
+    out property <color> danger: #dc2626;
+    out property <length> radius: 3px;
+    out property <length> gap: 8px;
+    out property <string> mono: "Noto Sans Mono";
+}
+
+export component PanelTitle inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    color: Theme.text-faint;
+    vertical-alignment: center;
+}
+
+export component Panel inherits Rectangle {
+    in property <string> title;
+    background: Theme.panel;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    clip: true;
+}
+
+export component Icon inherits Path {
+    in property <string> name;
+    width: 16px;
+    height: 16px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    fill: Theme.text;
+    stroke-width: 0px;
+    commands: name == "play" ? "M 4 2 L 14 8 L 4 14 Z"
+        : name == "stop" ? "M 3 3 L 13 3 L 13 13 L 3 13 Z"
+        : name == "pause" ? "M 3 2 L 7 2 L 7 14 L 3 14 Z M 9 2 L 13 2 L 13 14 L 9 14 Z"
+        : name == "plus" ? "M 7 2 L 9 2 L 9 7 L 14 7 L 14 9 L 9 9 L 9 14 L 7 14 L 7 9 L 2 9 L 2 7 L 7 7 Z"
+        : name == "minus" ? "M 2 7 L 14 7 L 14 9 L 2 9 Z"
+        : name == "up" ? "M 8 3 L 14 11 L 2 11 Z"
+        : name == "down" ? "M 2 5 L 14 5 L 8 13 Z"
+        : name == "text" ? "M 2 2 L 14 2 L 14 5 L 12.5 5 L 12.5 3.5 L 9 3.5 L 9 12.5 L 10.5 12.5 L 10.5 14 L 5.5 14 L 5.5 12.5 L 7 12.5 L 7 3.5 L 3.5 3.5 L 3.5 5 L 2 5 Z"
+        : name == "image" ? "M 1 2 L 15 2 L 15 14 L 1 14 Z M 2.5 12.5 L 13.5 12.5 L 13.5 10 L 10.5 6.5 L 7 10.5 L 5.5 9 L 2.5 12 Z M 4.5 4 A 1.5 1.5 0 1 0 4.5 7 A 1.5 1.5 0 1 0 4.5 4 Z"
+        : name == "eye" ? "M 8 3 C 4 3 1.5 6 0.5 8 C 1.5 10 4 13 8 13 C 12 13 14.5 10 15.5 8 C 14.5 6 12 3 8 3 Z M 8 5.5 A 2.5 2.5 0 1 1 8 10.5 A 2.5 2.5 0 1 1 8 5.5 Z"
+        : name == "eye-off" ? "M 2 1 L 15 14 L 14 15 L 1 2 Z M 8 3 C 6.8 3 5.8 3.3 4.9 3.8 L 6.3 5.2 C 6.8 4.9 7.4 4.8 8 4.8 C 9.8 4.8 11.2 6.2 11.2 8 C 11.2 8.6 11.1 9.2 10.8 9.7 L 12.6 11.5 C 14 10.4 15 9 15.5 8 C 14.5 6 12 3 8 3 Z M 3.4 4.5 C 2 5.6 1 7 0.5 8 C 1.5 10 4 13 8 13 C 9.2 13 10.2 12.7 11.1 12.2 L 9.7 10.8 C 9.2 11.1 8.6 11.2 8 11.2 C 6.2 11.2 4.8 9.8 4.8 8 C 4.8 7.4 4.9 6.8 5.2 6.3 Z"
+        : name == "trash" ? "M 5 1 L 11 1 L 11 3 L 14 3 L 14 4.5 L 2 4.5 L 2 3 L 5 3 Z M 3 5.5 L 13 5.5 L 12 15 L 4 15 Z"
+        : name == "copy" ? "M 5 1 L 15 1 L 15 11 L 11 11 L 11 9.5 L 13.5 9.5 L 13.5 2.5 L 6.5 2.5 L 6.5 5 L 5 5 Z M 1 5 L 11 5 L 11 15 L 1 15 Z"
+        : name == "edit" ? "M 11 1 L 15 5 L 6 14 L 1 15 L 2 10 Z"
+        : name == "gear" ? "M 7 0.5 L 9 0.5 L 9.4 2.6 L 11 3.3 L 12.8 2.1 L 14.2 3.5 L 13 5.3 L 13.6 6.8 L 15.5 7 L 15.5 9 L 13.6 9.3 L 13 10.8 L 14.1 12.6 L 12.7 14 L 11 12.8 L 9.4 13.5 L 9 15.5 L 7 15.5 L 6.6 13.5 L 5 12.8 L 3.3 14 L 1.9 12.6 L 3 10.8 L 2.4 9.3 L 0.5 9 L 0.5 7 L 2.4 6.7 L 3 5.2 L 1.8 3.5 L 3.2 2.1 L 5 3.3 L 6.6 2.6 Z M 8 5.3 A 2.7 2.7 0 1 0 8 10.7 A 2.7 2.7 0 1 0 8 5.3 Z"
+        : name == "folder" ? "M 1 3 L 6 3 L 7.5 4.5 L 15 4.5 L 15 14 L 1 14 Z"
+        : name == "save" ? "M 1 1 L 12 1 L 15 4 L 15 15 L 1 15 Z M 4 2.5 L 4 6 L 11 6 L 11 2.5 Z M 4 9 L 4 13.5 L 12 13.5 L 12 9 Z"
+        : name == "file" ? "M 2 1 L 10 1 L 14 5 L 14 15 L 2 15 Z M 9.5 2 L 9.5 5.5 L 13 5.5 Z"
+        : name == "layers" ? "M 8 1 L 15 5 L 8 9 L 1 5 Z M 2.6 8 L 8 11 L 13.4 8 L 15 9 L 8 13 L 1 9 Z"
+        : name == "wave" ? "M 0 7.2 L 2 7.2 L 3.5 3 L 6 13 L 8.5 3 L 11 13 L 12.5 7.2 L 16 7.2 L 16 8.8 L 13.6 8.8 L 11 16 L 8.5 6 L 6 16 L 3.5 6 L 3 8.8 L 0 8.8 Z"
+        : "";
+}
+
+export component ToolButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> active: false;
+    in property <string> tooltip;
+    callback clicked();
+    height: 28px;
+    border-radius: Theme.radius;
+    background: !root.enabled ? Theme.panel-raised
+        : root.primary ? (ta.pressed ? Theme.accent.darker(0.2) : ta.has-hover ? Theme.accent.brighter(0.1) : Theme.accent)
+        : root.danger ? (ta.pressed ? Theme.on-air.darker(0.2) : ta.has-hover ? Theme.on-air.brighter(0.1) : Theme.on-air)
+        : root.active ? Theme.accent.transparentize(0.8)
+        : ta.pressed ? Theme.border-strong : ta.has-hover ? Theme.border : Theme.panel-raised;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : (root.primary || root.danger) ? transparent : Theme.border;
+    HorizontalLayout {
+        padding-left: root.text == "" ? 6px : 8px;
+        padding-right: root.text == "" ? 6px : 10px;
+        spacing: 6px;
+        alignment: center;
+        if root.icon != "" : VerticalLayout {
+            alignment: center;
+            Icon {
+                name: root.icon;
+                fill: root.enabled ? Theme.text : Theme.text-faint;
+            }
+        }
+        if root.text != "" : Text {
+            text: root.text;
+            color: root.enabled ? Theme.text : Theme.text-faint;
+            font-size: 12px;
+            font-weight: (root.primary || root.danger) ? 600 : 400;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Field inherits VerticalLayout {
+    in property <string> label;
+    spacing: 3px;
+    Text {
+        text: root.label;
+        font-size: 12px;
+        color: Theme.text-dim;
+    }
+    @children
+}
+
+export component ColorField inherits HorizontalLayout {
+    in property <color> value;
+    in property <string> hex;
+    callback changed(string);
+    spacing: 6px;
+    height: 28px;
+    swatch := Rectangle {
+        width: 28px;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.border-strong;
+        Rectangle {
+            x: 0; y: 0; width: 50%; height: 50%;
+            background: #88888830;
+        }
+        Rectangle {
+            x: parent.width / 2; y: parent.height / 2; width: 50%; height: 50%;
+            background: #88888830;
+        }
+        Rectangle {
+            border-radius: Theme.radius;
+            background: root.value;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { palette.show(); }
+        }
+    }
+    hex-edit := Rectangle {
+        background: Theme.field;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.border;
+        input := TextInput {
+            x: 8px;
+            width: parent.width - 16px;
+            text: root.hex;
+            color: Theme.text;
+            font-family: Theme.mono;
+            font-size: 12px;
+            vertical-alignment: center;
+            single-line: true;
+            accepted => { root.changed(self.text); }
+            edited => {
+                if (self.text.character-count == 7 || self.text.character-count == 9) {
+                    root.changed(self.text);
+                }
+            }
+        }
+    }
+    palette := PopupWindow {
+        x: 0;
+        y: 32px;
+        width: 8 * 26px + 12px;
+        height: 3 * 26px + 12px;
+        Rectangle {
+            background: Theme.panel;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border-strong;
+        }
+        VerticalLayout {
+            padding: 6px;
+            spacing: 2px;
+            for row in [
+                [{ c: #ffffff, h: "#FFFFFF" }, { c: #d0d5dd, h: "#D0D5DD" }, { c: #8a93a3, h: "#8A93A3" }, { c: #3d4450, h: "#3D4450" },
+                 { c: #000000, h: "#000000" }, { c: #00000080, h: "#00000080" }, { c: #ffffff80, h: "#FFFFFF80" }, { c: #00000000, h: "#00000000" }],
+                [{ c: #ef4444, h: "#EF4444" }, { c: #f97316, h: "#F97316" }, { c: #f59e0b, h: "#F59E0B" }, { c: #facc15, h: "#FACC15" },
+                 { c: #84cc16, h: "#84CC16" }, { c: #22c55e, h: "#22C55E" }, { c: #14b8a6, h: "#14B8A6" }, { c: #06b6d4, h: "#06B6D4" }],
+                [{ c: #0ea5e9, h: "#0EA5E9" }, { c: #3b82f6, h: "#3B82F6" }, { c: #6366f1, h: "#6366F1" }, { c: #8b5cf6, h: "#8B5CF6" },
+                 { c: #a855f7, h: "#A855F7" }, { c: #d946ef, h: "#D946EF" }, { c: #ec4899, h: "#EC4899" }, { c: #7f1d1d, h: "#7F1D1D" }],
+            ] : HorizontalLayout {
+                spacing: 2px;
+                for sw in row : Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 2px;
+                    border-width: 1px;
+                    border-color: Theme.border-strong;
+                    background: sw.c;
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.changed(sw.h); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component Pill inherits Rectangle {
+    in property <string> text;
+    in property <color> tone: Theme.ready;
+    in property <bool> filled: false;
+    height: 22px;
+    border-radius: Theme.radius;
+    background: root.filled ? root.tone : transparent;
+    border-width: 1px;
+    border-color: root.tone;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        alignment: center;
+        Text {
+            text: root.text;
+            font-size: 11px;
+            font-weight: 600;
+            color: root.filled ? #ffffff : root.tone;
+            vertical-alignment: center;
+        }
+    }
+}

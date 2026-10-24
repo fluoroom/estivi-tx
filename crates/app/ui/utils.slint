@@ -1,0 +1,84 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { Theme, ToolButton, PanelTitle } from "theme.slint";
+import { ModeCheat } from "types.slint";
+
+export component UtilsDialog inherits Window {
+    title: "Utils — machete SSTV";
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 640px;
+    preferred-height: 720px;
+    background: Theme.bg;
+    in property <[ModeCheat]> modes;
+    callback dismiss();
+    init => { Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark; }
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text {
+            text: "Machete de modos SSTV";
+            font-size: 16px;
+            font-weight: 600;
+            color: Theme.text;
+        }
+        Text {
+            text: "El modo del proyecto es el default. Un programa puede fijar otro para sus imágenes, y cada imagen puede fijar el suyo. La gráfica del canal se escala al lienzo del modo que sale al aire.";
+            font-size: 12px;
+            color: Theme.text-dim;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Robot 72  320×240 YCrCb 4:2:2   ·   Robot 36  320×240 YCrCb 4:2:0   ·   M1  320×256 RGB   ·   M2  160(320)×256 RGB";
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            padding-top: 4px;
+            padding-bottom: 4px;
+            spacing: 8px;
+            Text { text: "Modo"; width: 120px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: "Lienzo"; width: 110px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: "Color"; horizontal-stretch: 1; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: "Imagen"; width: 70px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: "VIS"; width: 48px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 0px;
+                alignment: start;
+                for m[i] in root.modes : Rectangle {
+                    height: 32px;
+                    background: mod(i, 2) == 0 ? Theme.panel : transparent;
+                    HorizontalLayout {
+                        padding-left: 4px;
+                        padding-right: 4px;
+                        spacing: 8px;
+                        Text { text: m.name; width: 120px; font-size: 12px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                        Text { text: m.size; width: 110px; font-size: 12px; font-family: Theme.mono; color: Theme.text; vertical-alignment: center; }
+                        Text { text: m.color; horizontal-stretch: 1; font-size: 12px; color: Theme.text; vertical-alignment: center; }
+                        Text { text: m.time; width: 70px; font-size: 12px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+                        Text { text: m.vis; width: 48px; font-size: 12px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+                    }
+                }
+            }
+        }
+        Text {
+            text: "M2, M4 y S2 barren en la mitad de tiempo que M1/S1: el lienzo sigue en 320 px, pero se escriben 160(320). Robot 36 alterna R-Y/B-Y (4:2:0); Robot 72 manda ambos croma en cada línea (4:2:2). Martin y Scottie envían G, B, R en secuencia.";
+            font-size: 11px;
+            color: Theme.text-faint;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            ToolButton {
+                text: "Cerrar";
+                primary: true;
+                clicked => { root.dismiss(); }
+            }
+        }
+    }
+}

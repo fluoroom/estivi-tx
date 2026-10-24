@@ -1,0 +1,195 @@
+format = 1
+name = "Canal de prueba"
+rotation = "sequential"
+
+[station]
+call = "N0CALL"
+operator = "Operador"
+qth = "Córdoba"
+locator = "FF78"
+
+[tx]
+mode = "M1"
+color_range = "full"
+vox_preamble = false
+fsk_id = false
+cw_preamble = true
+cw_id = true
+cw_text = "DE {call}"
+cw_wpm = 20.0
+cw_tone_hz = 800.0
+min_pause_s = 60
+
+[[programs]]
+id = 1
+name = "Ajuste y paisaje"
+enabled = true
+rotation = "sequential"
+
+[[programs.images]]
+path = "programas/carta-de-ajuste.png"
+enabled = true
+
+[[programs.images]]
+path = "programas/atardecer.png"
+enabled = true
+
+[[programs]]
+id = 2
+name = "Cierre"
+enabled = true
+rotation = "sequential"
+
+[[programs.images]]
+path = "programas/73.png"
+enabled = true
+
+[[programs.activations]]
+enabled = true
+source = "dtmf"
+code = "*3#"
+action = "transmit"
+
+[grid]
+timezone = "utc"
+
+[[grid.slots]]
+id = 1
+enabled = true
+name = "Mañana en 20 m"
+days = [true, true, true, true, true, false, false]
+start = "12:00"
+end = "15:00"
+every_min = 10
+program = 1
+freq_hz = 14230000
+
+[[grid.slots]]
+id = 2
+enabled = true
+name = "Cierre del sábado"
+days = [false, false, false, false, false, true, false]
+start = "23:45"
+end = ""
+every_min = 0
+program = 2
+freq_hz = 0
+
+[[grid.slots]]
+id = 3
+enabled = true
+name = "Noche en 80 m"
+days = [true, true, true, true, true, true, true]
+start = "21:00"
+end = "23:30"
+every_min = 5
+freq_hz = 3730000
+
+[graphics]
+background = "#000000"
+fit = "cover"
+
+[[graphics.layers]]
+id = 1
+name = "Zócalo"
+visible = true
+x = 0.0
+y = 0.82
+w = 1.0
+h = 0.18
+opacity = 1.0
+tipo = "text"
+text = "{call} · {qth}"
+font = "Noto Sans"
+bold = true
+size = 0.11
+color = "#FFFFFF"
+align = "start"
+valign = "center"
+shrink_to_fit = true
+outline = 0.0
+outline_color = "#000000"
+shadow = false
+box_color = "#0B1F3AD0"
+
+[[graphics.layers]]
+id = 2
+name = "Hora y número"
+visible = true
+x = 0.03
+y = 0.03
+w = 0.5
+h = 0.1
+opacity = 1.0
+tipo = "text"
+text = "{utc}Z  #{serial:3}"
+font = "Noto Sans Mono"
+bold = true
+size = 0.075
+color = "#FFE066"
+align = "start"
+valign = "center"
+shrink_to_fit = true
+outline = 0.14
+outline_color = "#000000"
+shadow = true
+box_color = "#00000000"
+
+[[graphics.layers]]
+id = 3
+name = "Logo"
+visible = true
+x = 0.79
+y = 0.03
+w = 0.18
+h = 0.225
+opacity = 1.0
+tipo = "image"
+path = "logo.png"
+keep_aspect = true
+
+[[graphics.layers]]
+id = 4
+name = "Clima (API, ejemplo)"
+visible = false
+x = 0.55
+y = 0.68
+w = 0.42
+h = 0.12
+opacity = 1.0
+tipo = "text"
+text = "{qth} {api} °C"
+font = "Noto Sans"
+bold = true
+size = 0.07
+color = "#FFFFFF"
+align = "end"
+valign = "center"
+shrink_to_fit = true
+outline = 0.12
+outline_color = "#000000"
+shadow = false
+box_color = "#00000000"
+
+[graphics.layers.api]
+url = "https://api.open-meteo.com/v1/forecast?latitude=-31.42&longitude=-64.18&current=temperature_2m"
+json_path = "current.temperature_2m"
+refresh_s = 600
+
+[listen]
+cw = false
+cw_wpm = 20.0
+cw_tone_hz = 700.0
+dtmf = true
+
+[[listen.triggers]]
+enabled = true
+source = "dtmf"
+code = "*1#"
+action = "transmit"
+
+[[listen.triggers]]
+enabled = true
+source = "dtmf"
+code = "*0#"
+action = "pause"

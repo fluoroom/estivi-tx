@@ -1,0 +1,152 @@
+import { LineEdit, Palette } from "std-widgets.slint";
+import { Theme, ToolButton, Field } from "theme.slint";
+
+// Opaque in Slint: the host reads file paths from the OS drop.
+export global Files {
+    // Set from Rust when the OS reports a file hovering the window (winit XDND).
+    in-out property <bool> hovering;
+    callback has-files(data: data-transfer) -> bool;
+    callback paths-of(data: data-transfer) -> [string];
+}
+
+export component FileDrop inherits Rectangle {
+    in property <string> title: "Soltá el archivo aquí";
+    in property <string> hint: "Arrastrá desde el explorador o elegí con el botón.";
+    in-out property <string> path;
+    in property <bool> many: false;
+    in property <bool> compact: false;
+    callback dropped([string]);
+    callback browse();
+    function take(paths: [string]) {
+        if paths.length > 0 {
+            root.path = paths[0];
+            root.dropped(paths);
+        }
+    }
+    min-height: root.compact ? 56px : 88px;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    property <bool> armed: drop.has-drag || Files.hovering;
+    border-color: root.armed ? Theme.accent : Theme.border-strong;
+    background: root.armed ? Theme.accent.transparentize(0.88) : Theme.field;
+    VerticalLayout {
+        padding: root.compact ? 8px : 12px;
+        spacing: 4px;
+        alignment: center;
+        Text {
+            text: root.armed ? "Soltá…" : root.title;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.text;
+            horizontal-alignment: center;
+        }
+        if !root.compact : Text {
+            text: root.hint;
+            font-size: 11px;
+            color: Theme.text-faint;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+        if root.path != "" : Text {
+            text: root.path;
+            font-size: 11px;
+            font-family: Theme.mono;
+            color: Theme.text-dim;
+            overflow: elide;
+            horizontal-alignment: center;
+        }
+    }
+    // After the text so it sits on top and actually receives the OS drag.
+    drop := DropArea {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        // Linux file managers often only allow move. Returning copy gets clamped
+        // to none and the cursor becomes "not allowed".
+        can-drop(ev) => ev.proposed-action;
+        dropped(ev) => {
+            root.take(Files.paths-of(ev.data));
+            return ev.proposed-action;
+        }
+    }
+    // After DropArea so the click reaches the button, not the OS drop target.
+    ToolButton {
+        x: parent.width - self.width - 8px;
+        y: (parent.height - self.height) / 2;
+        icon: "folder";
+        text: "Elegir…";
+        clicked => { root.browse(); }
+    }
+}
+
+export component PathDialog inherits Window {
+    title: root.heading;
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 520px;
+    background: Theme.bg;
+    in property <string> heading: "Archivo";
+    in property <string> hint;
+    in property <string> accept: "Aceptar";
+    in-out property <string> path;
+    in property <string> error;
+    callback save(string);
+    callback cancel();
+    callback browse();
+    init => { Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark; }
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text {
+            text: root.heading;
+            font-size: 15px;
+            font-weight: 600;
+            color: Theme.text;
+        }
+        Text {
+            text: root.hint;
+            font-size: 12px;
+            color: Theme.text-dim;
+            wrap: word-wrap;
+        }
+        FileDrop {
+            title: "Soltá el archivo o la carpeta aquí";
+            path: root.path;
+            dropped(paths) => {
+                if paths.length > 0 {
+                    root.path = paths[0];
+                }
+            }
+            browse => { root.browse(); }
+        }
+        Field {
+            label: "O escribí la ruta";
+            path-edit := LineEdit {
+                text <=> root.path;
+                placeholder-text: "/ruta/al/archivo";
+                accepted(t) => { root.save(t); }
+            }
+        }
+        Text {
+            text: root.error;
+            color: Theme.danger;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            ToolButton {
+                text: "Cancelar";
+                clicked => { root.cancel(); }
+            }
+            ToolButton {
+                text: root.accept;
+                primary: true;
+                enabled: root.path != "";
+                clicked => { root.save(root.path); }
+            }
+        }
+    }
+}

@@ -1,0 +1,1067 @@
+import { ComboBox, CheckBox, ListView, Switch, Palette } from "std-widgets.slint";
+import { Theme, Panel, PanelTitle, ToolButton, Pill, Icon } from "theme.slint";
+import { FileDrop, Files } from "files.slint";
+import { ProgramItem, SlotItem, GridBlock, LogItem } from "types.slint";
+
+component Monitor inherits Rectangle {
+    in property <image> source;
+    in property <bool> has-image;
+    // Picture height / width of the mode.
+    in property <float> aspect: 0.8;
+    // Fraction of the picture already transmitted.
+    in property <float> progress: 1.0;
+    in property <bool> scanning;
+    in property <string> placeholder;
+    background: #000000;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+    clip: true;
+    preferred-height: self.width * root.aspect;
+    min-height: 120px;
+    property <length> pw: min(self.width - 2px, (self.height - 2px) / root.aspect);
+    property <length> ph: self.pw * root.aspect;
+    pic := Image {
+        x: (parent.width - root.pw) / 2;
+        y: (parent.height - root.ph) / 2;
+        width: root.pw;
+        height: root.ph;
+        source: root.source;
+        image-fit: fill;
+        visible: root.has-image;
+    }
+    if root.scanning && root.has-image : Rectangle {
+        x: pic.x;
+        y: pic.y + root.ph * root.progress;
+        width: root.pw;
+        height: root.ph * (1 - root.progress);
+        background: #000000c8;
+    }
+    if root.scanning && root.has-image : Rectangle {
+        x: pic.x;
+        y: pic.y + root.ph * root.progress - 1px;
+        width: root.pw;
+        height: 2px;
+        background: Theme.on-air;
+    }
+    if !root.has-image : Text {
+        text: root.placeholder;
+        color: Theme.text-faint;
+        font-size: 13px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component SectionHeader inherits HorizontalLayout {
+    in property <string> title;
+    height: 22px;
+    spacing: 8px;
+    PanelTitle {
+        text: root.title;
+    }
+    @children
+}
+
+component ListRow inherits Rectangle {
+    in property <bool> selected;
+    callback clicked();
+    callback double-clicked();
+    border-radius: 5px;
+    background: root.selected ? Theme.accent.transparentize(0.78) : ta.has-hover ? Theme.panel-raised : transparent;
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.accent.transparentize(0.4);
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        double-clicked => { root.double-clicked(); }
+    }
+    @children
+}
+
+export component MainWindow inherits Window {
+    title: "Estivi — " + root.project-name + (root.dirty ? " •" : "");
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 1360px;
+    preferred-height: 860px;
+    min-width: 1100px;
+    min-height: 700px;
+    background: Theme.bg;
+
+    // Project / header
+    in property <string> project-name: "Canal SSTV";
+    in property <string> project-file;
+    in property <bool> dirty;
+    in property <string> callsign;
+    in property <[string]> modes;
+    in property <int> mode-index;
+    in property <string> mode-detail;
+
+    // Clocks
+    in property <string> utc-time: "--:--:--";
+    in property <string> utc-date;
+    in property <string> local-time;
+
+    // On-air bar. phase: 0 idle, 1 keying, 2 on air, 3 tail
+    in property <int> phase;
+    in property <bool> agenda;
+    in property <string> next-time: "--:--";
+    in property <string> next-title: "Sin emisiones en la grilla";
+    in property <string> next-slot;
+    in property <string> countdown;
+    in property <string> pending-text;
+    in property <string> error-text;
+
+    // Programs
+    in property <[ProgramItem]> programs;
+    in-out property <int> selected-program: -1;
+    in property <int> rotation-index;
+
+    // Grid
+    in property <[SlotItem]> slots;
+    in-out property <int> selected-slot: -1;
+    in property <int> tz-index;
+    in property <[GridBlock]> grid-blocks;
+    in property <float> now-pos;
+    in property <string> day-label;
+
+    // Monitors
+    in property <image> on-air-image;
+    in property <bool> on-air-has-image;
+    in property <float> on-air-aspect: 0.8;
+    in property <float> on-air-progress: 1.0;
+    in property <bool> on-air-done: true;
+    in property <string> on-air-title: "Nada transmitido todavía";
+    in property <string> on-air-info;
+    in property <string> on-air-time;
+    in property <image> next-image;
+    in property <bool> next-has-image;
+    in property <float> next-aspect: 0.8;
+    in property <string> next-info;
+
+    // Log and listening
+    in property <[LogItem]> log;
+    in property <bool> listen-on;
+    in property <string> listen-state: "Desactivada";
+    in property <float> listen-level;
+    in property <string> listen-cw;
+    in property <string> listen-dtmf;
+    in property <string> listen-error;
+
+    callback new-project();
+    callback open-project();
+    callback save-project();
+    callback save-project-as();
+    callback project-settings();
+    callback open-editor();
+    callback open-config();
+    callback mode-selected(int);
+    callback transmit-now();
+    callback stop();
+    callback set-agenda(bool);
+    callback add-programs();
+    callback remove-program(int);
+    callback move-program(int, int);
+    callback toggle-program(int, bool);
+    callback program-selected(int);
+    callback transmit-program(int);
+    callback rename-program(int);
+    callback edit-program(int);
+    callback drop-programs([string]);
+    callback drop-project(string);
+    callback pick-files();
+    callback set-light(bool);
+    callback open-utils();
+    callback rotation-selected(int);
+    callback add-slot();
+    callback edit-slot(int);
+    callback duplicate-slot(int);
+    callback remove-slot(int);
+    callback toggle-slot(int, bool);
+    callback tz-selected(int);
+    // Result of a file dialog run off the UI thread (empty list = cancelled).
+    callback files-picked(string, [string]);
+
+    init => {
+        Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark;
+    }
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: Theme.gap;
+
+        // ───────────── Header ─────────────
+        HorizontalLayout {
+            height: 46px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Text {
+                    text: "Estivi";
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+            }
+            Rectangle {
+                width: 1px;
+                background: Theme.border;
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.project-name;
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: Theme.text;
+                        overflow: elide;
+                        horizontal-stretch: 0;
+                    }
+                    if root.callsign != "" : VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Rectangle {
+                            height: 20px;
+                            border-radius: 4px;
+                            background: Theme.panel-raised;
+                            border-width: 1px;
+                            border-color: Theme.border-strong;
+                            HorizontalLayout {
+                                padding-left: 7px;
+                                padding-right: 7px;
+                                Text {
+                                    text: root.callsign;
+                                    font-family: Theme.mono;
+                                    font-size: 12px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    if root.dirty : Text {
+                        text: "sin guardar";
+                        font-size: 12px;
+                        color: Theme.paused;
+                        vertical-alignment: center;
+                        horizontal-stretch: 0;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+                Text {
+                    text: root.project-file == "" ? "Proyecto nuevo (todavía sin archivo)" : root.project-file;
+                    font-size: 11px;
+                    color: Theme.text-faint;
+                    overflow: elide;
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 4px;
+                        ToolButton {
+                            icon: "file";
+                            text: "Nuevo";
+                            clicked => { root.new-project(); }
+                        }
+                        ToolButton {
+                            icon: "folder";
+                            text: "Abrir";
+                            clicked => { root.open-project(); }
+                        }
+                        ToolButton {
+                            icon: "save";
+                            text: "Guardar";
+                            active: root.dirty;
+                            clicked => { root.save-project(); }
+                        }
+                        ToolButton {
+                            text: "Guardar como…";
+                            clicked => { root.save-project-as(); }
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 1px;
+                    background: Theme.border;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 4px;
+                        ToolButton {
+                            icon: "edit";
+                            text: "Proyecto";
+                            clicked => { root.project-settings(); }
+                        }
+                        ToolButton {
+                            icon: "layers";
+                            text: "Gráfica";
+                            clicked => { root.open-editor(); }
+                        }
+                        ToolButton {
+                            icon: "gear";
+                            text: "Equipo";
+                            clicked => { root.open-config(); }
+                        }
+                        ToolButton {
+                            text: "Utils";
+                            clicked => { root.open-utils(); }
+                        }
+                        ToolButton {
+                            text: Theme.light ? "Oscuro" : "Claro";
+                            clicked => {
+                                root.set-light(!Theme.light);
+                                Palette.color-scheme = !Theme.light ? ColorScheme.light : ColorScheme.dark;
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                width: 1px;
+                background: Theme.border;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 0px;
+                min-width: 150px;
+                Text {
+                    text: root.utc-time;
+                    font-family: Theme.mono;
+                    font-size: 24px;
+                    color: Theme.text;
+                    horizontal-alignment: right;
+                }
+                Text {
+                    text: "UTC · " + root.utc-date + " · local " + root.local-time;
+                    font-size: 11px;
+                    color: Theme.text-faint;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+
+        // ───────────── On-air bar ─────────────
+        Rectangle {
+            height: 78px;
+            border-radius: Theme.radius;
+            background: root.phase == 2 ? #2a1215 : Theme.panel;
+            border-width: 1px;
+            border-color: root.phase == 2 ? Theme.on-air : Theme.border;
+            animate background, border-color { duration: 250ms; }
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 14px;
+                spacing: 18px;
+                VerticalLayout {
+                    alignment: center;
+                    width: 150px;
+                    Pill {
+                        text: root.phase == 2 ? "AL AIRE" : root.phase == 1 ? "PTT…" : root.phase == 3 ? "COLA" : root.agenda ? "EN ESPERA" : "PAUSADA";
+                        tone: root.phase != 0 ? Theme.on-air : root.agenda ? Theme.ready : Theme.paused;
+                        filled: root.phase != 0;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    PanelTitle {
+                        text: root.pending-text != "" ? "DISPARADOR EN ESPERA" : "PRÓXIMA EMISIÓN";
+                    }
+                    Text {
+                        text: root.pending-text != "" ? root.pending-text : root.next-time + "  ·  " + root.next-title;
+                        font-size: 17px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: root.error-text != "" ? "Error: " + root.error-text : root.next-slot;
+                        font-size: 12px;
+                        color: root.error-text != "" ? Theme.danger : Theme.text-dim;
+                        overflow: elide;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 0px;
+                    PanelTitle {
+                        text: root.agenda ? "FALTAN" : "GRILLA PAUSADA";
+                        horizontal-alignment: right;
+                    }
+                    Text {
+                        text: root.agenda ? root.countdown : "—";
+                        font-family: Theme.mono;
+                        font-size: 30px;
+                        color: root.agenda ? Theme.text : Theme.text-faint;
+                        horizontal-alignment: right;
+                    }
+                }
+                Rectangle {
+                    width: 1px;
+                    background: Theme.border;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    width: 190px;
+                    Text {
+                        text: "Modo del proyecto";
+                        font-size: 11px;
+                        color: Theme.text-faint;
+                    }
+                    ComboBox {
+                        model: root.modes;
+                        current-index: root.mode-index;
+                        enabled: root.phase == 0;
+                        selected => { root.mode-selected(self.current-index); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    Text {
+                        text: "Grilla al aire";
+                        font-size: 11px;
+                        color: Theme.text-faint;
+                    }
+                    Switch {
+                        checked: root.agenda;
+                        toggled => { root.set-agenda(self.checked); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ToolButton {
+                            icon: "play";
+                            text: "Transmitir ahora";
+                            primary: true;
+                            enabled: root.phase == 0;
+                            height: 38px;
+                            clicked => { root.transmit-now(); }
+                        }
+                        ToolButton {
+                            icon: "stop";
+                            text: "Cortar";
+                            danger: root.phase != 0;
+                            enabled: root.phase != 0 || root.pending-text != "";
+                            height: 38px;
+                            clicked => { root.stop(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ───────────── Body ─────────────
+        HorizontalLayout {
+            spacing: Theme.gap;
+            vertical-stretch: 1;
+
+            // Programs
+            Panel {
+                width: 290px;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    SectionHeader {
+                        title: "PROGRAMAS";
+                        Text {
+                            text: root.programs.length + (root.programs.length == 1 ? " programa" : " programas");
+                            font-size: 11px;
+                            color: Theme.text-faint;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for p[i] in root.programs : ListRow {
+                            height: 60px;
+                            selected: i == root.selected-program;
+                            clicked => {
+                                root.selected-program = i;
+                                root.program-selected(i);
+                            }
+                            double-clicked => { root.edit-program(i); }
+                            HorizontalLayout {
+                                padding: 6px;
+                                spacing: 10px;
+                                Rectangle {
+                                    width: 64px;
+                                    background: #000000;
+                                    border-radius: 3px;
+                                    clip: true;
+                                    Image {
+                                        source: p.thumb;
+                                        image-fit: contain;
+                                        opacity: p.enabled ? 1.0 : 0.35;
+                                    }
+                                    if p.missing : Rectangle {
+                                        background: #7f1d1dd0;
+                                        Text {
+                                            text: "FALTA";
+                                            font-size: 10px;
+                                            font-weight: 800;
+                                            color: #ffffff;
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: p.name;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        color: p.enabled ? Theme.text : Theme.text-faint;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: (p.count == 1 ? "1 imagen" : p.count + " imágenes") + (p.mode == "" ? "" : " · " + p.mode);
+                                        font-size: 11px;
+                                        color: Theme.text-faint;
+                                        overflow: elide;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    CheckBox {
+                                        checked: p.enabled;
+                                        toggled => { root.toggle-program(i, self.checked); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    FileDrop {
+                        compact: true;
+                        title: "Soltá imágenes o un .estivi";
+                        many: true;
+                        dropped(paths) => {
+                            if paths.length == 1 && paths[0] != "" {
+                                root.drop-project(paths[0]);
+                            }
+                            root.drop-programs(paths);
+                        }
+                        browse => { root.pick-files(); }
+                    }
+                    if root.programs.length == 0 : Text {
+                        text: "Un programa es un grupo de imágenes, con orden, CW y activaciones.";
+                        font-size: 12px;
+                        color: Theme.text-faint;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                    }
+                    ComboBox {
+                        model: ["Rotación en orden", "Rotación aleatoria (sin repetir)"];
+                        current-index: root.rotation-index;
+                        selected => { root.rotation-selected(self.current-index); }
+                    }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        ToolButton {
+                            icon: "plus";
+                            text: "Nuevo";
+                            horizontal-stretch: 1;
+                            clicked => { root.add-programs(); }
+                        }
+                        ToolButton {
+                            icon: "up";
+                            enabled: root.selected-program > 0;
+                            clicked => { root.move-program(root.selected-program, -1); }
+                        }
+                        ToolButton {
+                            icon: "down";
+                            enabled: root.selected-program >= 0 && root.selected-program < root.programs.length - 1;
+                            clicked => { root.move-program(root.selected-program, 1); }
+                        }
+                        ToolButton {
+                            icon: "trash";
+                            enabled: root.selected-program >= 0;
+                            clicked => { root.remove-program(root.selected-program); }
+                        }
+                        ToolButton {
+                            icon: "play";
+                            enabled: root.selected-program >= 0 && root.phase == 0;
+                            clicked => { root.transmit-program(root.selected-program); }
+                        }
+                    }
+                }
+            }
+
+            // Grid
+            Panel {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    SectionHeader {
+                        title: "GRILLA";
+                        Text {
+                            text: root.day-label;
+                            font-size: 12px;
+                            color: Theme.text-dim;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        ComboBox {
+                            width: 150px;
+                            model: ["Horario UTC", "Horario local"];
+                            current-index: root.tz-index;
+                            selected => { root.tz-selected(self.current-index); }
+                        }
+                    }
+                    // Day timeline
+                    timeline := Rectangle {
+                        height: 74px;
+                        background: Theme.field;
+                        border-radius: 5px;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        clip: true;
+                        property <length> inner: self.width - 16px;
+                        for h in 25 : Rectangle {
+                            x: 8px + timeline.inner * h / 24 - 0.5px;
+                            y: 0px;
+                            width: 1px;
+                            height: Math.mod(h, 6) == 0 ? parent.height : 16px;
+                            background: Math.mod(h, 6) == 0 ? Theme.border-strong : Theme.border;
+                        }
+                        for h in 9 : Text {
+                            x: 8px + timeline.inner * h * 3 / 24 + 3px;
+                            y: 2px;
+                            text: (h * 3 < 10 ? "0" : "") + (h * 3) + ":00";
+                            font-size: 10px;
+                            font-family: Theme.mono;
+                            color: Theme.text-faint;
+                            visible: h < 8;
+                        }
+                        for b in root.grid-blocks : Rectangle {
+                            x: 8px + timeline.inner * b.start;
+                            y: 22px;
+                            width: max(3px, timeline.inner * b.len);
+                            height: 30px;
+                            border-radius: 2px;
+                            background: b.state == 3 ? Theme.on-air : b.state == 1 ? Theme.ready.transparentize(0.35) : b.state == 2 ? Theme.danger.transparentize(0.2) : Theme.accent.transparentize(0.3);
+                        }
+                        Rectangle {
+                            x: 8px + timeline.inner * root.now-pos - 1px;
+                            y: 0px;
+                            width: 2px;
+                            height: parent.height;
+                            background: Theme.on-air;
+                        }
+                        HorizontalLayout {
+                            x: 8px;
+                            y: parent.height - 18px;
+                            height: 14px;
+                            spacing: 12px;
+                            alignment: start;
+                            for item in [
+                                { c: Theme.accent.transparentize(0.3), t: "por emitir" },
+                                { c: Theme.ready.transparentize(0.35), t: "emitida" },
+                                { c: Theme.danger.transparentize(0.2), t: "con error" },
+                                { c: Theme.on-air, t: "al aire" },
+                            ] : HorizontalLayout {
+                                spacing: 4px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 8px;
+                                        height: 8px;
+                                        border-radius: 2px;
+                                        background: item.c;
+                                    }
+                                }
+                                Text {
+                                    text: item.t;
+                                    font-size: 10px;
+                                    color: Theme.text-faint;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    // Slot table
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        height: 20px;
+                        spacing: 10px;
+                        Rectangle {
+                            width: 24px;
+                        }
+                        PanelTitle {
+                            text: "BLOQUE";
+                            horizontal-stretch: 3;
+                        }
+                        PanelTitle {
+                            text: "DÍAS";
+                            width: 110px;
+                        }
+                        PanelTitle {
+                            text: "HORARIO";
+                            width: 150px;
+                        }
+                        PanelTitle {
+                            text: "PROGRAMA";
+                            horizontal-stretch: 2;
+                        }
+                        PanelTitle {
+                            text: "FRECUENCIA";
+                            width: 84px;
+                        }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for s[i] in root.slots : ListRow {
+                            height: 40px;
+                            selected: i == root.selected-slot;
+                            clicked => { root.selected-slot = i; }
+                            double-clicked => { root.edit-slot(i); }
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    width: 24px;
+                                    CheckBox {
+                                        checked: s.enabled;
+                                        toggled => { root.toggle-slot(i, self.checked); }
+                                    }
+                                }
+                                Text {
+                                    text: s.name;
+                                    horizontal-stretch: 3;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: s.enabled ? Theme.text : Theme.text-faint;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: s.days;
+                                    width: 110px;
+                                    font-size: 12px;
+                                    color: Theme.text-dim;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: s.hours;
+                                    width: 150px;
+                                    font-size: 12px;
+                                    color: Theme.text-dim;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: s.content;
+                                    horizontal-stretch: 2;
+                                    font-size: 12px;
+                                    color: Theme.text-dim;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: s.freq;
+                                    width: 84px;
+                                    font-family: Theme.mono;
+                                    font-size: 12px;
+                                    color: Theme.text-dim;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    if root.slots.length == 0 : Text {
+                        text: "La grilla está vacía. Agregá un bloque: por ejemplo, de 21:00 a 23:00 cada 5 minutos.";
+                        font-size: 12px;
+                        color: Theme.text-faint;
+                        horizontal-alignment: center;
+                    }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        alignment: start;
+                        ToolButton {
+                            icon: "plus";
+                            text: "Bloque";
+                            clicked => { root.add-slot(); }
+                        }
+                        ToolButton {
+                            icon: "edit";
+                            text: "Editar";
+                            enabled: root.selected-slot >= 0;
+                            clicked => { root.edit-slot(root.selected-slot); }
+                        }
+                        ToolButton {
+                            icon: "copy";
+                            text: "Duplicar";
+                            enabled: root.selected-slot >= 0;
+                            clicked => { root.duplicate-slot(root.selected-slot); }
+                        }
+                        ToolButton {
+                            icon: "trash";
+                            text: "Borrar";
+                            enabled: root.selected-slot >= 0;
+                            clicked => { root.remove-slot(root.selected-slot); }
+                        }
+                    }
+                }
+            }
+
+            // Monitors
+            VerticalLayout {
+                width: 380px;
+                spacing: Theme.gap;
+                Panel {
+                    border-color: root.phase == 2 ? Theme.on-air : Theme.border;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+                        SectionHeader {
+                            title: root.on-air-done ? "ÚLTIMA EMISIÓN" : "AL AIRE";
+                            Text {
+                                text: root.on-air-time;
+                                font-family: Theme.mono;
+                                font-size: 12px;
+                                color: Theme.text-dim;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                            }
+                        }
+                        Monitor {
+                            source: root.on-air-image;
+                            has-image: root.on-air-has-image;
+                            aspect: root.on-air-aspect;
+                            progress: root.on-air-progress;
+                            scanning: !root.on-air-done;
+                            placeholder: "Sin emisiones todavía";
+                        }
+                        Text {
+                            text: root.on-air-title;
+                            font-size: 14px;
+                            font-weight: 700;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: root.on-air-info;
+                            font-size: 12px;
+                            color: Theme.text-dim;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            height: 4px;
+                            border-radius: 2px;
+                            background: Theme.field;
+                            Rectangle {
+                                x: 0px;
+                                width: parent.width * (root.on-air-done ? 0 : root.on-air-progress);
+                                border-radius: 2px;
+                                background: Theme.on-air;
+                            }
+                        }
+                    }
+                }
+                Panel {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+                        SectionHeader {
+                            title: "SIGUIENTE";
+                            Text {
+                                text: root.next-info;
+                                font-size: 12px;
+                                color: Theme.text-dim;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        Monitor {
+                            source: root.next-image;
+                            has-image: root.next-has-image;
+                            aspect: root.next-aspect;
+                            placeholder: "Agregá programas para ver la próxima imagen";
+                        }
+                        Text {
+                            text: root.mode-detail;
+                            font-size: 11px;
+                            color: Theme.text-faint;
+                        }
+                        ToolButton {
+                            icon: "layers";
+                            text: "Editar gráfica del canal";
+                            clicked => { root.open-editor(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ───────────── Bottom: log + listening ─────────────
+        HorizontalLayout {
+            height: 190px;
+            spacing: Theme.gap;
+            Panel {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 6px;
+                    SectionHeader {
+                        title: "REGISTRO DE EMISIONES";
+                    }
+                    ListView {
+                        for e in root.log : HorizontalLayout {
+                            height: 24px;
+                            spacing: 12px;
+                            Text {
+                                text: e.time;
+                                width: 120px;
+                                font-family: Theme.mono;
+                                font-size: 12px;
+                                color: Theme.text-dim;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "#" + e.serial;
+                                width: 50px;
+                                font-family: Theme.mono;
+                                font-size: 12px;
+                                color: Theme.text-faint;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: e.program;
+                                horizontal-stretch: 1;
+                                font-size: 12px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: e.mode;
+                                width: 90px;
+                                font-size: 12px;
+                                color: Theme.text-dim;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: e.origin;
+                                width: 150px;
+                                font-size: 12px;
+                                color: Theme.text-dim;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: e.result;
+                                width: 160px;
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: e.ok ? Theme.ready : Theme.danger;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+            Panel {
+                width: 380px;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    SectionHeader {
+                        title: "ESCUCHA";
+                        Text {
+                            text: root.listen-state;
+                            font-size: 11px;
+                            color: root.listen-error != "" ? Theme.danger : root.listen-on ? Theme.ready : Theme.text-faint;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    Rectangle {
+                        height: 6px;
+                        border-radius: 3px;
+                        background: Theme.field;
+                        Rectangle {
+                            x: 0px;
+                            width: parent.width * root.listen-level;
+                            border-radius: 3px;
+                            background: root.listen-level > 0.9 ? Theme.on-air : root.listen-level > 0.7 ? Theme.paused : Theme.ready;
+                            animate width { duration: 150ms; }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        PanelTitle {
+                            text: "CW";
+                            width: 40px;
+                        }
+                        Rectangle {
+                            background: Theme.field;
+                            border-radius: 4px;
+                            height: 28px;
+                            clip: true;
+                            Text {
+                                x: parent.width - self.width - 8px;
+                                text: root.listen-cw == "" ? "—" : root.listen-cw;
+                                font-family: Theme.mono;
+                                font-size: 13px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        PanelTitle {
+                            text: "DTMF";
+                            width: 40px;
+                        }
+                        Rectangle {
+                            background: Theme.field;
+                            border-radius: 4px;
+                            height: 28px;
+                            Text {
+                                x: 8px;
+                                text: root.listen-dtmf == "" ? "—" : root.listen-dtmf;
+                                font-family: Theme.mono;
+                                font-size: 15px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Text {
+                        text: root.listen-error != "" ? root.listen-error : "Los disparadores se configuran en Proyecto → Escucha.";
+                        font-size: 11px;
+                        color: root.listen-error != "" ? Theme.danger : Theme.text-faint;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+}

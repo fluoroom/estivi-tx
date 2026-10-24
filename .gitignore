@@ -1,0 +1,5 @@
+/target
+*.tmp~
+/estivi.toml
+estivi.log
+*-registro.csv

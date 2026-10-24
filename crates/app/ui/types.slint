@@ -1,0 +1,99 @@
+export struct ProgramItem {
+    id: int,
+    name: string,
+    file: string,
+    enabled: bool,
+    thumb: image,
+    missing: bool,
+    count: int,
+    hours: string,
+    mode: string,
+}
+
+export struct ImageItem {
+    path: string,
+    name: string,
+    enabled: bool,
+    thumb: image,
+    missing: bool,
+    mode-index: int,
+}
+
+export struct ModeCheat {
+    name: string,
+    size: string,
+    color: string,
+    time: string,
+    vis: string,
+}
+
+export struct SlotItem {
+    id: int,
+    enabled: bool,
+    name: string,
+    days: string,
+    hours: string,
+    content: string,
+    freq: string,
+}
+
+// A transmission on the day timeline. start/len are fractions of the day.
+// state: 0 pending, 1 aired OK, 2 failed or cut, 3 on air
+export struct GridBlock {
+    start: float,
+    len: float,
+    state: int,
+}
+
+export struct LogItem {
+    time: string,
+    serial: string,
+    program: string,
+    mode: string,
+    origin: string,
+    result: string,
+    ok: bool,
+}
+
+export struct TriggerItem {
+    enabled: bool,
+    source: int,
+    code: string,
+    action: int,
+    program: int,
+}
+
+// Everything the graphics editor shows for one layer.
+export struct LayerItem {
+    id: int,
+    is-text: bool,
+    name: string,
+    visible: bool,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    opacity: float,
+    text: string,
+    font: string,
+    font-index: int,
+    bold: bool,
+    size: float,
+    color: color,
+    color-hex: string,
+    align: int,
+    valign: int,
+    shrink: bool,
+    outline: float,
+    outline-color: color,
+    outline-hex: string,
+    shadow: bool,
+    box-color: color,
+    box-hex: string,
+    api-on: bool,
+    api-url: string,
+    api-path: string,
+    api-refresh: int,
+    image-path: string,
+    keep-aspect: bool,
+}

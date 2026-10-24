@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[workspace.dependencies]
+estivi-core = { path = "crates/core" }
+anyhow = "1"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+crossbeam-channel = "0.5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif"] }
+
+[profile.release]
+# Size over speed: the SSTV encoder needs a tiny fraction of one core.
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Image/DSP code is unusable without optimizations; keep debug builds snappy.
+[profile.dev.package."*"]
+opt-level = 2
+[profile.dev.package.estivi-core]
+opt-level = 2

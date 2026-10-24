@@ -1,0 +1,19 @@
+[package]
+name = "estivi"
+description = "Estivi: programación de canal SSTV"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+estivi-core.workspace = true
+anyhow.workspace = true
+log.workspace = true
+chrono.workspace = true
+crossbeam-channel.workspace = true
+image.workspace = true
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility", "unstable-winit-030"] }
+rfd = { version = "0.17", default-features = false, features = ["gtk3"] }
+
+[build-dependencies]
+slint-build = "1.18"
