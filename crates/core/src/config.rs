@@ -13,6 +13,35 @@ pub struct Config {
     pub ptt: PttConfig,
     pub cat: CatConfig,
     pub ui: UiConfig,
+    pub time: TimeSync,
+}
+
+/// Offset against an NTP server. The operating-system clock is not changed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TimeSync {
+    /// The first-run offer has already been answered.
+    pub prompted: bool,
+    pub enabled: bool,
+    pub server: String,
+    pub period_h: u32,
+    pub offset_ms: i64,
+    pub last_sync: String,
+    pub last_error: String,
+}
+
+impl Default for TimeSync {
+    fn default() -> Self {
+        TimeSync {
+            prompted: false,
+            enabled: false,
+            server: "pool.ntp.org".into(),
+            period_h: 6,
+            offset_ms: 0,
+            last_sync: String::new(),
+            last_error: String::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use estivi_core::compose::data_ctx;
+use estivi_core::compose::{LiveText, data_ctx};
 use estivi_core::dynamic::PLACEHOLDERS;
-use estivi_core::graphics::{Align, ApiSource, Fit, ImageLayer, Layer, LayerKind, Rgba, TextLayer};
+use estivi_core::graphics::{Align, ApiSource, Fit, ImageLayer, Layer, LayerKind, QrLayer, Rgba, TextLayer};
 
 use crate::app::{App, Shared, apply_theme_to, bind_files, hook_os_drops, is_image, paths_model, pick_native, with_app, NativePick};
 use crate::i18n;
@@ -36,6 +36,11 @@ fn placeholder_desc(en: &str) -> String {
         "Last callsign heard in CW" => i18n::t("Last callsign heard in CW", "Último indicativo oído en CW"),
         "Last DTMF sequence" => i18n::t("Last DTMF sequence", "Última secuencia DTMF"),
         "This layer's API response" => i18n::t("This layer's API response", "Respuesta de la API de la capa"),
+        "Block name" => i18n::t("Block name", "Nombre del bloque"),
+        "Block hours" => i18n::t("Block hours", "Horario del bloque"),
+        "Weekdays" => i18n::t("Weekdays", "Días"),
+        "Days left" => i18n::t("Days left", "Días que quedan"),
+        "Upcoming blocks" => i18n::t("Upcoming blocks", "Próximos bloques"),
         other => other.to_string(),
     }
 }
@@ -80,6 +85,11 @@ fn edit(w: &Weak<RefCell<App>>, f: impl FnOnce(&mut Editor, &mut App)) {
 
 fn layer_mut(a: &mut App, id: u64) -> Option<&mut Layer> {
     a.project.graphics.layers.iter_mut().find(|l| l.id == id)
+}
+
+fn canvas_of(a: &App) -> (u32, u32) {
+    let spec = a.project.tx.mode.spec();
+    (spec.width, spec.height)
 }
 
 fn align_of(i: f32) -> Align {
@@ -163,6 +173,10 @@ impl Editor {
         win.on_add_image({
             let w = w.clone();
             move || edit(&w, |ed, a| ed.add_image_placeholder(a))
+        });
+        win.on_add_qr({
+            let w = w.clone();
+            move || edit(&w, |ed, a| ed.add_qr(a))
         });
         win.on_pick_image({
             let weak = win.as_weak();
@@ -355,7 +369,8 @@ impl Editor {
         if self.selected.is_some_and(|id| !g.layers.iter().any(|l| l.id == id)) {
             self.selected = None;
         }
-        self.layers.set_vec(g.layers.iter().map(|l| view::layer_item(l, &self.fonts)).collect::<Vec<_>>());
+        let canvas = (spec.width, spec.height);
+        self.layers.set_vec(g.layers.iter().map(|l| view::layer_item(l, &self.fonts, canvas)).collect::<Vec<_>>());
         self.update_selection_index(a);
         if force_inspector {
             self.reset_inspector(a);
@@ -372,7 +387,8 @@ impl Editor {
 
     /// Recreates the property panel for the selected layer.
     fn reset_inspector(&mut self, a: &App) {
-        let item = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).map(|l| view::layer_item(l, &self.fonts));
+        let canvas = canvas_of(a);
+        let item = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).map(|l| view::layer_item(l, &self.fonts, canvas));
         self.current.set_vec(item.into_iter().collect::<Vec<_>>());
         self.inspector_for = Some(self.selected);
         self.win.set_api_result("".into());
@@ -386,18 +402,22 @@ impl Editor {
         }
         if let Some(l) = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)) {
             if self.current.row_count() == 1 {
-                self.current.set_row_data(0, view::layer_item(l, &self.fonts));
+                self.current.set_row_data(0, view::layer_item(l, &self.fonts, canvas_of(a)));
             }
         }
     }
 
     fn render(&mut self, a: &mut App) {
         let program = self.preview.and_then(|id| a.project.program(id)).cloned();
-        let name = program.as_ref().map_or(i18n::ts("Program", "Programa"), |p| p.name.as_str()).to_string();
-        let mode = a.project.mode_of(program.as_ref(), program.as_ref().and_then(|p| p.enabled_images().next()));
-        let ctx = data_ctx(&a.project, Utc::now(), a.status.serial + 1, &name, 0, &a.status.last_cw, &a.status.last_dtmf, mode);
+        let mode = a.project.tx.mode;
+        let live = LiveText {
+            program: program.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            block: program.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            ..LiveText::default()
+        };
+        let ctx = data_ctx(&a.project, Utc::now(), a.status.serial + 1, mode, &live, a.project.freq_hz, &a.status.last_cw, &a.status.last_dtmf);
         let dir = a.dir();
-        let frame = a.composer.frame(&a.project, dir.as_deref(), program.as_ref(), &ctx);
+        let frame = a.composer.frame_image(&a.project, dir.as_deref(), None, mode, &ctx);
         self.win.set_frame(view::to_image(&frame));
         self.last_render = Instant::now();
     }
@@ -415,7 +435,7 @@ impl Editor {
         a.graphics_changed(notify_engine);
         if let Some(i) = self.selected.and_then(|id| a.project.graphics.layers.iter().position(|l| l.id == id)) {
             if i < self.layers.row_count() {
-                self.layers.set_row_data(i, view::layer_item(&a.project.graphics.layers[i], &self.fonts));
+                self.layers.set_row_data(i, view::layer_item(&a.project.graphics.layers[i], &self.fonts, canvas_of(a)));
             }
         }
         self.sync_inspector(a);
@@ -439,6 +459,21 @@ impl Editor {
         a.project.graphics.layers.push(layer);
         self.structural(a);
         self.reset_inspector(a);
+    }
+
+    fn add_qr(&mut self, a: &mut App) {
+        let id = a.project.graphics.next_layer_id();
+        let layer = Layer {
+            id,
+            name: i18n::t("QR", "QR"),
+            x: 0.72,
+            y: 0.62,
+            w: 0.24,
+            h: 0.32,
+            kind: LayerKind::Qr(QrLayer::default()),
+            ..Default::default()
+        };
+        self.select_new(a, layer);
     }
 
     fn add_text(&mut self, a: &mut App) {
@@ -624,6 +659,10 @@ impl Editor {
             ("box-color", LayerKind::Text(t)) if color.is_some() => t.box_color = color.unwrap(),
             ("api-url", LayerKind::Text(t)) => t.api.get_or_insert_with(ApiSource::default).url = v.to_string(),
             ("api-path", LayerKind::Text(t)) => t.api.get_or_insert_with(ApiSource::default).json_path = v.to_string(),
+            ("qr-text", LayerKind::Qr(q)) => q.text = v.to_string(),
+            ("qr-command", LayerKind::Qr(q)) => q.command = v.to_string(),
+            ("qr-api-url", LayerKind::Qr(q)) => q.api.get_or_insert_with(ApiSource::default).url = v.to_string(),
+            ("qr-api-path", LayerKind::Qr(q)) => q.api.get_or_insert_with(ApiSource::default).json_path = v.to_string(),
             _ => return,
         }
         self.edited(a, true);
@@ -644,6 +683,24 @@ impl Editor {
             ("align", LayerKind::Text(t)) => t.align = align_of(v),
             ("valign", LayerKind::Text(t)) => t.valign = align_of(v),
             ("api-refresh", LayerKind::Text(t)) => t.api.get_or_insert_with(ApiSource::default).refresh_s = v.max(10.0) as u32,
+            ("qr-source", LayerKind::Qr(q)) => {
+                q.source = match v.round() as i32 {
+                    1 => "command",
+                    2 => "api",
+                    _ => "text",
+                }
+                .into();
+            }
+            ("qr-ecc", LayerKind::Qr(q)) => {
+                q.ecc = match v.round() as i32 {
+                    0 => "L",
+                    2 => "Q",
+                    3 => "H",
+                    _ => "M",
+                }
+                .into();
+            }
+            ("qr-api-refresh", LayerKind::Qr(q)) => q.api.get_or_insert_with(ApiSource::default).refresh_s = v.max(10.0) as u32,
             _ => return,
         }
         self.edited(a, true);
@@ -671,6 +728,7 @@ impl Editor {
         let src = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).and_then(|l| match &l.kind {
             LayerKind::Text(t) => t.api.clone(),
             LayerKind::Image(_) => None,
+            LayerKind::Qr(q) => q.api.clone(),
         });
         let Some(src) = src.filter(|s| !s.url.trim().is_empty()) else {
             self.win.set_api_result(i18n::ts("URL is missing.", "Falta la URL.").into());
@@ -691,19 +749,3 @@ impl Editor {
     }
 }
 
-pub fn image_picked_mut(a: &mut App, new_layer: bool, path: &std::path::Path) {
-    if let Some(mut ed) = a.editor.take() {
-        if new_layer {
-            ed.add_image(a, path);
-        } else {
-            let stored = a.relativize(path);
-            if let Some(l) = ed.selected.and_then(|id| layer_mut(a, id)) {
-                if let LayerKind::Image(i) = &mut l.kind {
-                    i.path = stored;
-                    ed.edited(a, true);
-                }
-            }
-        }
-        a.editor = Some(ed);
-    }
-}

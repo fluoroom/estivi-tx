@@ -1,8 +1,8 @@
 //! DTMF detection with the Goertzel algorithm over ~25 ms blocks.
 
-const ROWS: [f32; 4] = [697.0, 770.0, 852.0, 941.0];
-const COLS: [f32; 4] = [1209.0, 1336.0, 1477.0, 1633.0];
-const KEYS: [[char; 4]; 4] = [['1', '2', '3', 'A'], ['4', '5', '6', 'B'], ['7', '8', '9', 'C'], ['*', '0', '#', 'D']];
+pub(crate) const ROWS: [f32; 4] = [697.0, 770.0, 852.0, 941.0];
+pub(crate) const COLS: [f32; 4] = [1209.0, 1336.0, 1477.0, 1633.0];
+pub(crate) const KEYS: [[char; 4]; 4] = [['1', '2', '3', 'A'], ['4', '5', '6', 'B'], ['7', '8', '9', 'C'], ['*', '0', '#', 'D']];
 
 const BLOCK_S: f32 = 0.0256;
 /// Both tones together must carry most of the block energy.

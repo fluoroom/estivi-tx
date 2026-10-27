@@ -24,6 +24,16 @@ pub struct DataCtx {
     pub freq_hz: u64,
     pub cw: String,
     pub dtmf: String,
+    /// Name of the block on air (program name, or the common block's own name).
+    pub block: String,
+    /// `14:00-14:30`
+    pub range: String,
+    /// Weekday list for a program. Empty for a common block.
+    pub days: String,
+    /// Days-left number, or empty when the block is not a program.
+    pub daysleft: String,
+    /// Upcoming blocks, one per line, already limited the way the AX.25 info is.
+    pub next: String,
 }
 
 /// (placeholder, description) for the editor's "insert data" menu.
@@ -40,6 +50,11 @@ pub const PLACEHOLDERS: &[(&str, &str)] = &[
     ("{serial:4}", "Number with zeros (0042)"),
     ("{mode}", "SSTV mode"),
     ("{program}", "Program name"),
+    ("{block}", "Block name"),
+    ("{range}", "Block hours"),
+    ("{days}", "Weekdays"),
+    ("{daysleft}", "Days left"),
+    ("{next}", "Upcoming blocks"),
     ("{freq}", "Frequency (MHz)"),
     ("{cw}", "Last received CW text"),
     ("{cwcall}", "Last callsign heard in CW"),
@@ -111,6 +126,11 @@ fn resolve(name: &str, arg: Option<&str>, ctx: &DataCtx, api: Option<&str>) -> O
         },
         "mode" => ctx.mode.name().to_string(),
         "program" => ctx.program.clone(),
+        "block" => ctx.block.clone(),
+        "range" => ctx.range.clone(),
+        "days" => ctx.days.clone(),
+        "daysleft" => ctx.daysleft.clone(),
+        "next" => ctx.next.clone(),
         "freq" if ctx.freq_hz == 0 => String::new(),
         "freq" => format!("{:.3} MHz", ctx.freq_hz as f64 / 1e6),
         "cw" => ctx.cw.clone(),
@@ -147,8 +167,7 @@ fn is_callsign(s: &str) -> bool {
 const MAX_BODY: u64 = 256 * 1024;
 const MAX_VALUE_CHARS: usize = 500;
 
-/// Calls the API and returns the text to show.
-pub fn fetch(src: &ApiSource) -> anyhow::Result<String> {
+fn fetch_raw(src: &ApiSource) -> anyhow::Result<String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(8)))
         .user_agent(concat!("estivi/", env!("CARGO_PKG_VERSION")))
@@ -161,8 +180,21 @@ pub fn fetch(src: &ApiSource) -> anyhow::Result<String> {
         .with_config()
         .limit(MAX_BODY)
         .read_to_string()?;
-    let value = if src.json_path.trim().is_empty() { body.trim().to_string() } else { extract_json(&body, &src.json_path)? };
-    Ok(value.chars().take(MAX_VALUE_CHARS).collect())
+    if src.json_path.trim().is_empty() { Ok(body.trim().to_string()) } else { extract_json(&body, &src.json_path) }
+}
+
+/// Text for a graphics layer. Longer answers are cut so a template cannot grow without limit.
+pub fn fetch(src: &ApiSource) -> anyhow::Result<String> {
+    Ok(fetch_raw(src)?.chars().take(MAX_VALUE_CHARS).collect())
+}
+
+/// Text an activation will transmit. Longer than 500 characters is an error, not a cut.
+pub fn fetch_for_tx(src: &ApiSource) -> anyhow::Result<String> {
+    let value = fetch_raw(src)?;
+    let n = value.chars().count();
+    anyhow::ensure!(n <= MAX_VALUE_CHARS, "la respuesta tiene {n} caracteres (máximo {MAX_VALUE_CHARS})");
+    anyhow::ensure!(!value.trim().is_empty(), "respuesta vacía");
+    Ok(value)
 }
 
 /// Follows a dotted path (`a.b.0.c`, `a.items[2].name`) into a JSON document.
@@ -276,6 +308,11 @@ mod tests {
             freq_hz: 14_230_000,
             cw: "CQ DE LU2XYZ 5NN".into(),
             dtmf: "123".into(),
+            block: "Logo".into(),
+            range: "14:00-14:30".into(),
+            days: "Mon,Tue".into(),
+            daysleft: "12".into(),
+            next: "Clima|18:00-18:15|Sat|0".into(),
         }
     }
 
@@ -284,6 +321,7 @@ mod tests {
         let c = ctx();
         assert_eq!(expand("{call} {utc}Z #{serial:4}", &c, None), "LU1ABC 21:05Z #0042");
         assert_eq!(expand("{freq} {mode}", &c, None), "14.230 MHz Martin M1");
+        assert_eq!(expand("{block} {range} {days} {daysleft}", &c, None), "Logo 14:00-14:30 Mon,Tue 12");
         assert_eq!(expand("{{literal}} {nope} {utc:%d/%m}", &c, None), "{literal} {nope} 23/10");
         assert_eq!(expand("T: {api}°", &c, Some("21.5")), "T: 21.5°");
         assert_eq!(expand("unterminated {call", &c, None), "unterminated {call");

@@ -7,351 +7,6 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "Cancel"
-msgstr "Cancelar"
-
-msgid "Save"
-msgstr "Guardar"
-
-msgid "Grid block"
-msgstr "Bloque de la grilla"
-
-msgid "Block name"
-msgstr "Nombre del bloque"
-
-msgid "e.g. Night on 80 m"
-msgstr "Ej.: Noche en 80 m"
-
-msgid "Days"
-msgstr "Días"
-
-msgid "Mo"
-msgstr "L"
-
-msgid "Tu"
-msgstr "M"
-
-msgid "We"
-msgstr "X"
-
-msgid "Th"
-msgstr "J"
-
-msgid "Fr"
-msgstr "V"
-
-msgid "Sa"
-msgstr "S"
-
-msgid "Su"
-msgstr "D"
-
-msgid "Starts ({})"
-msgstr "Comienza ({})"
-
-msgid "Repeat"
-msgstr "Repetir"
-
-msgid "Every (minutes)"
-msgstr "Cada (minutos)"
-
-msgid "Until ({})"
-msgstr "Hasta ({})"
-
-msgid "If Until is earlier than the start, the block ends the next day. If a transmission lasts longer than the interval, the next one waits for the minimum pause."
-msgstr "Si «hasta» es más temprano que el comienzo, el bloque termina al día siguiente. Si una emisión dura más que el intervalo, la siguiente espera la pausa mínima."
-
-msgid "What goes on air"
-msgstr "Qué sale al aire"
-
-msgid "Frequency (MHz, optional — set via CAT if enabled)"
-msgstr "Frecuencia (MHz, opcional — se fija por CAT si está habilitado)"
-
-msgid "e.g. 14.230"
-msgstr "Ej.: 14.230"
-
-msgid "Block enabled"
-msgstr "Bloque habilitado"
-
-msgid "Project"
-msgstr "Proyecto"
-
-msgid "Station"
-msgstr "Estación"
-
-msgid "Channel / project name"
-msgstr "Nombre del canal / proyecto"
-
-msgid "Callsign"
-msgstr "Indicativo"
-
-msgid "Operator"
-msgstr "Operador"
-
-msgid "These fields can appear on the graphics as {{call}}, {{op}}, {{qth}} and {{loc}}. SSTV mode is chosen in the main bar and is also saved with the project."
-msgstr "Estos datos se pueden mostrar en la gráfica con {{call}}, {{op}}, {{qth}} y {{loc}}. El modo SSTV se elige en la barra principal y también se guarda con el proyecto."
-
-msgid "Transmission"
-msgstr "Transmisión"
-
-msgid "Minimum pause between transmissions (seconds) — protects the radio"
-msgstr "Pausa mínima entre emisiones (segundos) — protege el equipo"
-
-msgid "Grid delay — every TX starts this long after the block time"
-msgstr "Retraso de la grilla — todas las TX salen esta cantidad después de la hora del bloque"
-
-msgid "min"
-msgstr "min"
-
-msgid "s"
-msgstr "s"
-
-msgid "Blocks are written on the hour (14:00). The delay lets several channels share a frequency: if another occupies 14:00–14:03, set 3 min and yours start at 14:03."
-msgstr "Los bloques se escriben en hora redonda (14:00). El retraso sirve para compartir frecuencia: si otro canal ocupa 14:00–14:03, poné 3 min y las tuyas empiezan a las 14:03."
-
-msgid "Robot / PD color range"
-msgstr "Escala de color Robot / PD"
-
-msgid "Full 0–255 (QSSTV, slowrx; recommended)"
-msgstr "Completa 0–255 (QSSTV, slowrx; recomendada)"
-
-msgid "Studio BT.601 16–235"
-msgstr "Estudio BT.601 16–235"
-
-msgid "Preamble tones before VIS (open VOX)"
-msgstr "Tonos de preámbulo antes del VIS (abren el VOX)"
-
-msgid "FSK ID at the end (callsign readable by MMSSTV)"
-msgstr "FSK ID al final (indicativo legible por MMSSTV)"
-
-msgid "CW identification before VIS (preamble)"
-msgstr "Identificación en CW antes del VIS (preámbulo)"
-
-msgid "CW identification at the end of each transmission"
-msgstr "Identificación en CW al final de cada emisión"
-
-msgid "CW text"
-msgstr "Texto CW"
-
-msgid "Speed (wpm)"
-msgstr "Velocidad (ppm)"
-
-msgid "Tone (Hz)"
-msgstr "Tono (Hz)"
-
-msgid "The preamble comes after the VOX tones and before VIS. The post comes after the picture (and FSK ID if enabled). The text accepts {{call}}."
-msgstr "El preámbulo va después de los tonos VOX y antes del VIS. El post, después de la imagen (y del FSK ID si está). El texto admite {{call}}."
-
-msgid "Listen and triggers"
-msgstr "Escucha y disparadores"
-
-msgid "Decode CW"
-msgstr "Decodificar CW"
-
-msgid "Fixed speed (wpm)"
-msgstr "Velocidad fija (ppm)"
-
-msgid "Decode DTMF"
-msgstr "Decodificar DTMF"
-
-msgid "TRIGGERS"
-msgstr "DISPARADORES"
-
-msgid "Add"
-msgstr "Agregar"
-
-msgid "DTMF: the sequence ends with # or after 2.5 s of silence (e.g. *12#). CW: fires when received text ends with those words (e.g. QRV SSTV)."
-msgstr "DTMF: la secuencia termina con # o tras 2,5 s de silencio (ej.: *12#). CW: se dispara cuando el texto recibido termina con esas palabras (ej.: QRV SSTV)."
-
-msgid "Transmit"
-msgstr "Transmitir"
-
-msgid "Pause grid"
-msgstr "Pausar grilla"
-
-msgid "Resume grid"
-msgstr "Reanudar grilla"
-
-msgid "Equipment: audio, PTT and CAT"
-msgstr "Equipo: audio, PTT y CAT"
-
-msgid "Audio"
-msgstr "Audio"
-
-msgid "Output (to the transmitter)"
-msgstr "Salida (hacia el transmisor)"
-
-msgid "Input (from the receiver, for CW / DTMF)"
-msgstr "Entrada (desde el receptor, para CW / DTMF)"
-
-msgid "Sample rate"
-msgstr "Frecuencia de muestreo"
-
-msgid "Device default"
-msgstr "La del dispositivo"
-
-msgid "Output channel"
-msgstr "Canal de salida"
-
-msgid "Both"
-msgstr "Ambos"
-
-msgid "Left"
-msgstr "Izquierdo"
-
-msgid "Right"
-msgstr "Derecho"
-
-msgid "Output level: {} %"
-msgstr "Nivel de salida: {} %"
-
-msgid "Sound-card clock correction (ppm) — if pictures come out slanted"
-msgstr "Corrección del reloj de la placa (ppm) — si las imágenes salen inclinadas"
-
-msgid "Test tone 5 s (with PTT)"
-msgstr "Tono de prueba 5 s (con PTT)"
-
-msgid "Rescan devices"
-msgstr "Volver a buscar dispositivos"
-
-msgid "With the test tone, raise the level until the radio ALC just starts to move."
-msgstr "Con el tono de prueba ajustá el nivel hasta que el ALC del equipo apenas se mueva."
-
-msgid "PTT and CAT"
-msgstr "PTT y CAT"
-
-msgid "How the radio is keyed"
-msgstr "Cómo se pone en transmisión el equipo"
-
-msgid "None (audio only)"
-msgstr "Ninguno (solo audio)"
-
-msgid "Radio VOX"
-msgstr "VOX del equipo"
-
-msgid "Serial port (RTS / DTR)"
-msgstr "Puerto serie (RTS / DTR)"
-
-msgid "CAT via Hamlib (rigctld)"
-msgstr "CAT por Hamlib (rigctld)"
-
-msgid "Detected port"
-msgstr "Puerto detectado"
-
-msgid "or another (e.g. COM7, /dev/ttyACM0)"
-msgstr "u otro (ej.: COM7, /dev/ttyACM0)"
-
-msgid "Line"
-msgstr "Línea"
-
-msgid "RTS and DTR"
-msgstr "RTS y DTR"
-
-msgid "Inverted (active low)"
-msgstr "Invertida (activa en bajo)"
-
-msgid "rigctld host"
-msgstr "Host de rigctld"
-
-msgid "Port"
-msgstr "Puerto"
-
-msgid "Set each block frequency before transmitting"
-msgstr "Fijar la frecuencia de cada bloque antes de transmitir"
-
-msgid "Example: rigctld -m <model> -r /dev/ttyUSB0 -s 38400. Hamlib supports hundreds of radios."
-msgstr "Ejemplo: rigctld -m <modelo> -r /dev/ttyUSB0 -s 38400. Hamlib soporta cientos de equipos."
-
-msgid "Lead before audio (ms)"
-msgstr "Retardo antes del audio (ms)"
-
-msgid "Tail after (ms)"
-msgstr "Cola después (ms)"
-
-msgid "Maximum time (s)"
-msgstr "Tiempo máximo (s)"
-
-msgid "Test PTT (2 s)"
-msgstr "Probar PTT (2 s)"
-
-msgid "General"
-msgstr "General"
-
-msgid "Start with the grid on air (unattended stations)"
-msgstr "Arrancar con la grilla al aire (estaciones desatendidas)"
-
-msgid "Draw the UI with the GPU (OpenGL; uses more memory, requires restart)"
-msgstr "Dibujar la interfaz con la GPU (OpenGL; usa más memoria, requiere reiniciar)"
-
-msgid "Light theme"
-msgstr "Tema claro"
-
-msgid "Language"
-msgstr "Idioma"
-
-msgid "This configuration belongs to this PC (audio, port, PTT) and is saved apart from the project, in:\n{}"
-msgstr "Esta configuración es de esta PC (audio, puerto, PTT) y se guarda aparte del proyecto, en:\n{}"
-
-msgid "OK"
-msgstr "Aceptar"
-
-msgid "Rename"
-msgstr "Renombrar"
-
-msgid "Program"
-msgstr "Programa"
-
-msgid "Pictures"
-msgstr "Imágenes"
-
-msgid "Program name"
-msgstr "Nombre del programa"
-
-msgid "Picture order"
-msgstr "Orden de las imágenes"
-
-msgid "In order"
-msgstr "En orden"
-
-msgid "Shuffle (no repeats)"
-msgstr "Aleatorio (sin repetir)"
-
-msgid "Program SSTV mode (default for its pictures)"
-msgstr "Modo SSTV del programa (default de sus imágenes)"
-
-msgid "Drop or pick pictures"
-msgstr "Soltá o elegí imágenes"
-
-msgid "MISSING"
-msgstr "FALTA"
-
-msgid "A program is a group of pictures. Drop several or pick them with the button."
-msgstr "Un programa es un grupo de imágenes. Arrastrá varias o elegilas con el botón."
-
-msgid "Program enabled"
-msgstr "Programa habilitado"
-
-msgid "Use the project CW"
-msgstr "Usar el CW del proyecto"
-
-msgid "CW before VIS"
-msgstr "CW antes del VIS"
-
-msgid "CW at the end"
-msgstr "CW al final"
-
-msgid "Text (empty = project text)"
-msgstr "Texto (vacío = el del proyecto)"
-
-msgid "Activations"
-msgstr "Activaciones"
-
-msgid "TRIGGERS FOR THIS PROGRAM"
-msgstr "DISPARADORES DE ESTE PROGRAMA"
-
-msgid "When the code is heard, this program is transmitted (or the grid is paused / resumed). DTMF ends with #; CW, when the text ends with those words."
-msgstr "Si se oye el código, se transmite este programa (o se pausa / reanuda la grilla). DTMF termina en #; CW, cuando el texto acaba en esas palabras."
-
 msgid "Channel graphics — {}"
 msgstr "Gráfica del canal — {}"
 
@@ -360,6 +15,9 @@ msgstr "Texto"
 
 msgid "PNG image"
 msgstr "Imagen PNG"
+
+msgid "QR"
+msgstr "QR"
 
 msgid "Bring forward"
 msgstr "Al frente"
@@ -442,8 +100,14 @@ msgstr "Color"
 msgid "Alignment"
 msgstr "Alineación"
 
+msgid "Left"
+msgstr "Izquierdo"
+
 msgid "Center"
 msgstr "Centro"
+
+msgid "Right"
+msgstr "Derecho"
 
 msgid "Top"
 msgstr "Arriba"
@@ -468,6 +132,27 @@ msgstr "Sombra"
 
 msgid "Background box (transparent = none)"
 msgstr "Caja de fondo (transparente = sin caja)"
+
+msgid "Source"
+msgstr "Origen"
+
+msgid "Command"
+msgstr "Comando"
+
+msgid "API"
+msgstr "API"
+
+msgid "Error correction"
+msgstr "Corrección de errores"
+
+msgid "Command (the line is expanded, not its output)"
+msgstr "Comando (se expande la línea, no su salida)"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "JSON path (empty = raw body)"
+msgstr "Ruta JSON (vacío = cuerpo crudo)"
 
 msgid "File"
 msgstr "Archivo"
@@ -505,29 +190,20 @@ msgstr "Soltá…"
 msgid "Browse…"
 msgstr "Elegir…"
 
+msgid "OK"
+msgstr "Aceptar"
+
 msgid "Drop the file or folder here"
 msgstr "Soltá el archivo o la carpeta aquí"
 
 msgid "Or type the path"
 msgstr "O escribí la ruta"
 
-msgid "SSTV Channel"
-msgstr "Canal SSTV"
+msgid "Cancel"
+msgstr "Cancelar"
 
-msgid "No transmissions on the grid"
-msgstr "Sin emisiones en la grilla"
-
-msgid "Nothing transmitted yet"
-msgstr "Nada transmitido todavía"
-
-msgid "Off"
-msgstr "Desactivada"
-
-msgid "unsaved"
-msgstr "sin guardar"
-
-msgid "New project (no file yet)"
-msgstr "Proyecto nuevo (todavía sin archivo)"
+msgid "Standby"
+msgstr "En espera"
 
 msgid "New"
 msgstr "Nuevo"
@@ -535,14 +211,14 @@ msgstr "Nuevo"
 msgid "Open"
 msgstr "Abrir"
 
-msgid "Save as…"
-msgstr "Guardar como…"
+msgid "Save"
+msgstr "Guardar"
 
 msgid "Graphics"
 msgstr "Gráfica"
 
-msgid "Equipment"
-msgstr "Equipo"
+msgid "Modes"
+msgstr "Modos"
 
 msgid "Dark"
 msgstr "Oscuro"
@@ -550,141 +226,377 @@ msgstr "Oscuro"
 msgid "Light"
 msgstr "Claro"
 
-msgid "UTC · {} · local {}"
-msgstr "UTC · {} · local {}"
+msgid "On air"
+msgstr "Al aire"
 
-msgid "ON AIR"
-msgstr "AL AIRE"
-
-msgid "PTT…"
-msgstr "PTT…"
-
-msgid "TAIL"
-msgstr "COLA"
-
-msgid "STANDBY"
-msgstr "EN ESPERA"
-
-msgid "PAUSED"
-msgstr "PAUSADA"
-
-msgid "TRIGGER WAITING"
-msgstr "DISPARADOR EN ESPERA"
-
-msgid "NEXT TRANSMISSION"
-msgstr "PRÓXIMA EMISIÓN"
-
-msgid "Error: {}"
-msgstr "Error: {}"
-
-msgid "REMAINING"
-msgstr "FALTAN"
-
-msgid "GRID PAUSED"
-msgstr "GRILLA PAUSADA"
-
-msgid "Project mode"
-msgstr "Modo del proyecto"
+msgid "Next"
+msgstr "Siguiente"
 
 msgid "Grid on air"
 msgstr "Grilla al aire"
 
-msgid "Transmit now"
-msgstr "Transmitir ahora"
-
-msgid "Cut"
+msgid "Stop"
 msgstr "Cortar"
 
-msgid "PROGRAMS"
-msgstr "PROGRAMAS"
+msgid "Month"
+msgstr "Mes"
 
-msgid "{n} program"
-msgid_plural "{n} programs"
-msgstr[0] "{n} programa"
-msgstr[1] "{n} programas"
+msgid "Week"
+msgstr "Semana"
 
-msgid "{n} picture"
-msgid_plural "{n} pictures"
-msgstr[0] "{n} imagen"
-msgstr[1] "{n} imágenes"
+msgid "Day"
+msgstr "Día"
 
-msgid "Drop pictures or an .estivi"
-msgstr "Soltá imágenes o un .estivi"
-
-msgid "A program is a group of pictures, with order, CW and activations."
-msgstr "Un programa es un grupo de imágenes, con orden, CW y activaciones."
-
-msgid "Sequential rotation"
-msgstr "Rotación en orden"
-
-msgid "GRID"
-msgstr "GRILLA"
-
-msgid "UTC time"
-msgstr "Horario UTC"
-
-msgid "Local time"
-msgstr "Horario local"
-
-msgid "upcoming"
-msgstr "por emitir"
-
-msgid "aired"
-msgstr "emitida"
-
-msgid "error"
-msgstr "con error"
-
-msgid "on air"
-msgstr "al aire"
-
-msgid "BLOCK"
-msgstr "BLOQUE"
-
-msgid "DAYS"
-msgstr "DÍAS"
-
-msgid "TIME"
-msgstr "HORARIO"
-
-msgid "PROGRAM"
-msgstr "PROGRAMA"
-
-msgid "FREQUENCY"
-msgstr "FRECUENCIA"
-
-msgid "The grid is empty. Add a block: for example, 21:00 to 23:00 every 5 minutes."
-msgstr "La grilla está vacía. Agregá un bloque: por ejemplo, de 21:00 a 23:00 cada 5 minutos."
+msgid "Today"
+msgstr "Hoy"
 
 msgid "Block"
 msgstr "Bloque"
 
+msgid "Instant"
+msgstr "Instantánea"
+
+msgid "Activations"
+msgstr "Activaciones"
+
+msgid "Channel"
+msgstr "Canal"
+
+msgid "Equipment"
+msgstr "Equipo"
+
+msgid "Double-click an empty hour to create a block, or click a card."
+msgstr "Doble clic en una hora vacía para crear un bloque, o clic en una tarjeta."
+
+msgid "Name"
+msgstr "Nombre"
+
+msgid "Start"
+msgstr "Comienzo"
+
+msgid "End"
+msgstr "Fin"
+
+msgid "This day"
+msgstr "Este día"
+
+msgid "Program enabled"
+msgstr "Programa habilitado"
+
+msgid "Weekdays"
+msgstr "Días"
+
+msgid "Mo"
+msgstr "L"
+
+msgid "Tu"
+msgstr "M"
+
+msgid "We"
+msgstr "X"
+
+msgid "Th"
+msgstr "J"
+
+msgid "Fr"
+msgstr "V"
+
+msgid "Sa"
+msgstr "S"
+
+msgid "Su"
+msgstr "D"
+
+msgid "Hue"
+msgstr "Tono"
+
+msgid "Ends (empty = forever)"
+msgstr "Termina (vacío = para siempre)"
+
+msgid "Welcome"
+msgstr "Bienvenida"
+
+msgid "Set welcome"
+msgstr "Poner bienvenida"
+
+msgid "Mode"
+msgstr "Modo"
+
+msgid "Clear"
+msgstr "Quitar"
+
+msgid "Bye"
+msgstr "Despedida"
+
+msgid "Set bye"
+msgstr "Poner despedida"
+
+msgid "Delete program"
+msgstr "Borrar programa"
+
+msgid "Delete block"
+msgstr "Borrar bloque"
+
+msgid "Pictures"
+msgstr "Imágenes"
+
+msgid "Add"
+msgstr "Agregar"
+
+msgid "Import folder"
+msgstr "Importar carpeta"
+
+msgid "Link up"
+msgstr "Unir arriba"
+
+msgid "Link down"
+msgstr "Unir abajo"
+
+msgid "Unlink"
+msgstr "Desunir"
+
+msgid "Up"
+msgstr "Subir"
+
+msgid "Down"
+msgstr "Bajar"
+
+msgid "On/off"
+msgstr "Activar"
+
+msgid "Remove"
+msgstr "Quitar"
+
+msgid "One transmission"
+msgstr "Una transmisión"
+
+msgid "Instant transmission is outside the grid. A block end does not cut it."
+msgstr "La transmisión instantánea está fuera de la grilla. El fin de un bloque no la corta."
+
+msgid "Use the selected picture"
+msgstr "Usar la imagen elegida"
+
+msgid "Choose picture"
+msgstr "Elegir imagen"
+
+msgid "CW identification"
+msgstr "Identificación CW"
+
+msgid "AX.25 info"
+msgstr "Info AX.25"
+
+msgid "Pre bumper"
+msgstr "Cortina previa"
+
+msgid "Set pre bumper"
+msgstr "Poner cortina previa"
+
+msgid "Post bumper"
+msgstr "Cortina posterior"
+
+msgid "Set post bumper"
+msgstr "Poner cortina posterior"
+
+msgid "Transmit"
+msgstr "Transmitir"
+
+msgid "Activations are not on the grid. Triggers are OR. Pause does not cut a transmission already on the air."
+msgstr "Las activaciones no están en la grilla. Los disparadores se suman. La pausa no corta una transmisión que ya está al aire."
+
+msgid "New activation"
+msgstr "Nueva activación"
+
 msgid "Edit"
 msgstr "Editar"
 
-msgid "LAST TRANSMISSION"
-msgstr "ÚLTIMA EMISIÓN"
+msgid "Channel name"
+msgstr "Nombre del canal"
 
-msgid "No transmissions yet"
-msgstr "Sin emisiones todavía"
+msgid "Callsign"
+msgstr "Indicativo"
 
-msgid "NEXT"
-msgstr "SIGUIENTE"
+msgid "Operator"
+msgstr "Operador"
 
-msgid "Add programs to see the next picture"
-msgstr "Agregá programas para ver la próxima imagen"
+msgid "QTH"
+msgstr "QTH"
 
-msgid "Edit channel graphics"
-msgstr "Editar gráfica del canal"
+msgid "Locator"
+msgstr "Localizador"
 
-msgid "TRANSMISSION LOG"
-msgstr "REGISTRO DE EMISIONES"
+msgid "Frequency (MHz, 0 = do not retune)"
+msgstr "Frecuencia (MHz, 0 = no cambiar)"
 
-msgid "LISTEN"
-msgstr "ESCUCHA"
+msgid "Interval (minutes)"
+msgstr "Intervalo (minutos)"
 
-msgid "Triggers are set in Project → Listen."
-msgstr "Los disparadores se configuran en Proyecto → Escucha."
+msgid "Offset (seconds)"
+msgstr "Desfase (segundos)"
+
+msgid "Minimum pause (seconds)"
+msgstr "Pausa mínima (segundos)"
+
+msgid "VOX preamble"
+msgstr "Preámbulo VOX"
+
+msgid "CW before the pictures"
+msgstr "CW antes de las imágenes"
+
+msgid "CW after the pictures"
+msgstr "CW después de las imágenes"
+
+msgid "CW text"
+msgstr "Texto CW"
+
+msgid "AX.25 info frame"
+msgstr "Trama de info AX.25"
+
+msgid "AX.25 mode frame"
+msgstr "Trama de modo AX.25"
+
+msgid "Upcoming blocks"
+msgstr "Próximos bloques"
+
+msgid "or hours"
+msgstr "o horas"
+
+msgid "One upcoming block per program"
+msgstr "Un próximo bloque por programa"
+
+msgid "Grid timezone"
+msgstr "Huso de la grilla"
+
+msgid "UTC"
+msgstr "UTC"
+
+msgid "Local"
+msgstr "Local"
+
+msgid "New program"
+msgstr "Nuevo programa"
+
+msgid "Export audio"
+msgstr "Exportar audio"
+
+msgid "PTT"
+msgstr "PTT"
+
+msgid "None"
+msgstr "Ninguno"
+
+msgid "VOX"
+msgstr "VOX"
+
+msgid "Serial"
+msgstr "Serie"
+
+msgid "CAT"
+msgstr "CAT"
+
+msgid "Serial port"
+msgstr "Puerto serie"
+
+msgid "Lead (ms)"
+msgstr "Arranque (ms)"
+
+msgid "Tail (ms)"
+msgstr "Cola (ms)"
+
+msgid "rigctld host"
+msgstr "Host de rigctld"
+
+msgid "rigctld port"
+msgstr "Puerto de rigctld"
+
+msgid "Set the channel frequency before each grid transmission"
+msgstr "Fijar la frecuencia del canal antes de cada transmisión de la grilla"
+
+msgid "Audio output (empty = default)"
+msgstr "Salida de audio (vacío = predeterminada)"
+
+msgid "Audio input (empty = default)"
+msgstr "Entrada de audio (vacío = predeterminada)"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "English"
+msgstr "Inglés"
+
+msgid "Spanish"
+msgstr "Español"
+
+msgid "Clock"
+msgstr "Reloj"
+
+msgid "The computer clock is not changed. Estivi stores an NTP offset and uses it for the grid."
+msgstr "El reloj de la computadora no se cambia. Estivi guarda un desfase NTP y lo usa para la grilla."
+
+msgid "Correct the clock"
+msgstr "Corregir el reloj"
+
+msgid "NTP server"
+msgstr "Servidor NTP"
+
+msgid "Every (hours)"
+msgstr "Cada (horas)"
+
+msgid "Date"
+msgstr "Fecha"
+
+msgid "Also keep empty days until"
+msgstr "Conservar también los días vacíos hasta"
+
+msgid "From"
+msgstr "Desde"
+
+msgid "To"
+msgstr "Hasta"
+
+msgid "Shape"
+msgstr "Forma"
+
+msgid "Whole file"
+msgstr "Archivo entero"
+
+msgid "Each transmission and each silence"
+msgstr "Cada transmisión y cada silencio"
+
+msgid "Each piece"
+msgstr "Cada pieza"
+
+msgid "Slices"
+msgstr "Trozos"
+
+msgid "One file per block"
+msgstr "Un archivo por bloque"
+
+msgid "Seconds per slice"
+msgstr "Segundos por trozo"
+
+msgid "Sample rate"
+msgstr "Frecuencia de muestreo"
+
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgid "Trigger"
+msgstr "Disparador"
+
+msgid "DTMF"
+msgstr "DTMF"
+
+msgid "CW"
+msgstr "CW"
+
+msgid "Code"
+msgstr "Código"
+
+msgid "Actions, one per line"
+msgstr "Acciones, una por línea"
+
+msgid "cw text · dtmf 123 · image path · pause · resume · ax25 comment · command cw|the line · api cw|https://… · random a.png|b.png"
+msgstr "cw texto · dtmf 123 · image ruta · pause · resume · ax25 comentario · command cw|la línea · api cw|https://… · random a.png|b.png"
 
 msgid "Utils — SSTV cheat sheet"
 msgstr "Utils — machete SSTV"
@@ -692,11 +604,8 @@ msgstr "Utils — machete SSTV"
 msgid "SSTV mode cheat sheet"
 msgstr "Machete de modos SSTV"
 
-msgid "The project mode is the default. A program can set another for its pictures, and each picture can set its own. Channel graphics scale to the canvas of the mode that goes on air."
-msgstr "El modo del proyecto es el default. Un programa puede fijar otro para sus imágenes, y cada imagen puede fijar el suyo. La gráfica del canal se escala al lienzo del modo que sale al aire."
-
-msgid "Mode"
-msgstr "Modo"
+msgid "The project mode is the default for a picture that has none. Bumpers, the welcome and the bye each keep their own mode. Channel graphics, including a QR layer, scale to the canvas of the mode that goes on air."
+msgstr "El modo del proyecto es el predeterminado de una imagen que no tiene uno. Las cortinas, la bienvenida y la despedida tienen el suyo. Los gráficos del canal, incluido un QR, se escalan al lienzo del modo que sale al aire."
 
 msgid "Canvas"
 msgstr "Lienzo"

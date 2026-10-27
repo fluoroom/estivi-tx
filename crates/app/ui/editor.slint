@@ -78,6 +78,7 @@ export component EditorWindow inherits Window {
 
     callback add-text();
     callback add-image();
+    callback add-qr();
     callback select(int);
     callback toggle-visible(int);
     callback move-layer(int);
@@ -115,6 +116,11 @@ export component EditorWindow inherits Window {
                 icon: "image";
                 text: @tr("PNG image");
                 clicked => { root.add-image(); }
+            }
+            ToolButton {
+                icon: "qr";
+                text: @tr("QR");
+                clicked => { root.add-qr(); }
             }
             Rectangle {
                 width: 1px;
@@ -207,7 +213,7 @@ export component EditorWindow inherits Window {
                                 VerticalLayout {
                                     alignment: center;
                                     Icon {
-                                        name: item.is-text ? "text" : "image";
+                                        name: item.is-qr ? "qr" : item.is-text ? "text" : "image";
                                         fill: Theme.text-faint;
                                     }
                                 }
@@ -406,7 +412,7 @@ export component EditorWindow inherits Window {
                         for cur in root.current : VerticalLayout {
                             spacing: 10px;
                             PanelTitle {
-                                text: cur.is-text ? "TEXTO" : "IMAGEN";
+                                text: cur.is-qr ? "QR" : cur.is-text ? "TEXTO" : "IMAGEN";
                             }
                             Field {
                                 label: @tr("Layer name");
@@ -575,7 +581,64 @@ export component EditorWindow inherits Window {
                                 }
                             }
 
-                            if !cur.is-text : VerticalLayout {
+                            if cur.is-qr : VerticalLayout {
+                                spacing: 10px;
+                                Field {
+                                    label: @tr("Source");
+                                    ComboBox {
+                                        model: [@tr("Text"), @tr("Command"), @tr("API")];
+                                        current-index: cur.qr-source;
+                                        selected => { root.set-num("qr-source", self.current-index); }
+                                    }
+                                }
+                                Field {
+                                    label: @tr("Error correction");
+                                    ComboBox {
+                                        model: ["L", "M", "Q", "H"];
+                                        current-index: cur.qr-ecc;
+                                        selected => { root.set-num("qr-ecc", self.current-index); }
+                                    }
+                                }
+                                if cur.qr-source == 0 : Field {
+                                    label: @tr("Text (can include fields in braces)");
+                                    LineEdit {
+                                        text: cur.qr-text;
+                                        edited(v) => { root.set-str("qr-text", v); }
+                                    }
+                                }
+                                if cur.qr-source == 1 : Field {
+                                    label: @tr("Command (the line is expanded, not its output)");
+                                    LineEdit {
+                                        text: cur.qr-command;
+                                        edited(v) => { root.set-str("qr-command", v); }
+                                    }
+                                }
+                                if cur.qr-source == 2 : VerticalLayout {
+                                    spacing: 8px;
+                                    Field {
+                                        label: @tr("URL");
+                                        LineEdit {
+                                            text: cur.api-url;
+                                            edited(v) => { root.set-str("qr-api-url", v); }
+                                        }
+                                    }
+                                    Field {
+                                        label: @tr("JSON path (empty = raw body)");
+                                        LineEdit {
+                                            text: cur.api-path;
+                                            edited(v) => { root.set-str("qr-api-path", v); }
+                                        }
+                                    }
+                                }
+                                if cur.qr-warn != "" : Text {
+                                    text: cur.qr-warn;
+                                    font-size: 12px;
+                                    color: Theme.paused;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            if !cur.is-text && !cur.is-qr : VerticalLayout {
                                 spacing: 10px;
                                     Field {
                                         label: @tr("File");

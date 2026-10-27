@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-const HEADER: &str = "inicio_utc,fin_utc,serie,modo,programa,frecuencia_hz,origen,resultado";
+const HEADER: &str = "inicio_utc,fin_utc,serie,modo,programa,frecuencia_hz,origen,resultado,bloque_id,programa_id,cortado";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogEntry {
@@ -17,6 +17,12 @@ pub struct LogEntry {
     pub freq_hz: u64,
     pub origin: String,
     pub result: String,
+    /// 0 when the transmission is not a stored block.
+    pub block_id: u64,
+    /// 0 when it is not a program block.
+    pub program_id: u64,
+    /// The block end cut the audio.
+    pub cut: bool,
 }
 
 /// `canal.estivi` → `canal-registro.csv`.
@@ -37,7 +43,7 @@ pub fn append(path: &Path, e: &LogEntry) -> anyhow::Result<()> {
     }
     writeln!(
         f,
-        "{},{},{},{},{},{},{},{}",
+        "{},{},{},{},{},{},{},{},{},{},{}",
         e.start.format("%Y-%m-%dT%H:%M:%SZ"),
         e.end.format("%Y-%m-%dT%H:%M:%SZ"),
         e.serial,
@@ -45,7 +51,10 @@ pub fn append(path: &Path, e: &LogEntry) -> anyhow::Result<()> {
         field(&e.program),
         e.freq_hz,
         field(&e.origin),
-        field(&e.result)
+        field(&e.result),
+        e.block_id,
+        e.program_id,
+        if e.cut { "1" } else { "0" }
     )?;
     Ok(())
 }
@@ -80,6 +89,9 @@ fn parse(line: &str) -> Option<LogEntry> {
         freq_hz: f.get(5)?.parse().unwrap_or(0),
         origin: f.get(6).cloned().unwrap_or_default(),
         result: f.get(7).cloned().unwrap_or_default(),
+        block_id: f.get(8).and_then(|s| s.parse().ok()).unwrap_or(0),
+        program_id: f.get(9).and_then(|s| s.parse().ok()).unwrap_or(0),
+        cut: f.get(10).is_some_and(|s| s == "1"),
     })
 }
 
@@ -112,6 +124,9 @@ mod tests {
             freq_hz: 14_230_000,
             origin: "grilla".into(),
             result: "OK".into(),
+            block_id: 7,
+            program_id: 3,
+            cut: false,
         };
         append(&path, &e).unwrap();
         append(&path, &LogEntry { serial: 8, ..e.clone() }).unwrap();
@@ -119,6 +134,10 @@ mod tests {
         assert_eq!(back.len(), 2);
         assert_eq!(back[0], e);
         assert_eq!(tail(&path, 1)[0].serial, 8);
+        assert_eq!(back[0].block_id, 7);
+        let old = parse("2026-10-23T21:00:00Z,2026-10-23T21:00:00Z,1,Martin M1,Logo,0,grilla,OK").unwrap();
+        assert_eq!(old.block_id, 0);
+        assert!(!old.cut);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

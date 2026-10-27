@@ -9,7 +9,7 @@ use image::imageops::FilterType;
 use image::{Rgba as Px, RgbaImage};
 
 use super::text::{Mask, TextLayout};
-use super::{Fit, FontBook, Graphics, LayerKind, Rgba, TextLayer};
+use super::{Fit, FontBook, Graphics, LayerKind, QrLayer, Rgba, TextLayer};
 
 /// Decoded pictures and their resized versions, invalidated when the file changes.
 #[derive(Default)]
@@ -86,6 +86,8 @@ pub struct RenderInput<'a> {
     pub resolve: &'a dyn Fn(&str) -> PathBuf,
     /// Final text for a text layer, with its `{datos}` expanded.
     pub text_of: &'a dyn Fn(&TextLayer) -> String,
+    /// Payload of a QR layer. `None` skips that layer (empty, failed, or too big).
+    pub qr_of: &'a dyn Fn(u64, &QrLayer) -> Option<String>,
     pub fonts: &'a FontBook,
 }
 
@@ -132,9 +134,67 @@ pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
                 let text = (input.text_of)(tl);
                 draw_text_layer(&mut canvas, input.fonts, tl, &text, (bx, by, bw, bh), opacity);
             }
+            LayerKind::Qr(qr) => {
+                let Some(payload) = (input.qr_of)(layer.id, qr) else { continue };
+                draw_qr(&mut canvas, &payload, &qr.ecc, (bx, by, bw, bh), opacity, &layer.name);
+            }
         }
     }
     canvas
+}
+
+fn ecc_level(s: &str) -> qrcode::EcLevel {
+    match s.trim().to_ascii_uppercase().as_str() {
+        "L" => qrcode::EcLevel::L,
+        "Q" => qrcode::EcLevel::Q,
+        "H" => qrcode::EcLevel::H,
+        _ => qrcode::EcLevel::M,
+    }
+}
+
+/// Module size in whole pixels, including the 4-module quiet zone, for a layer box.
+pub fn qr_module_px(box_w: f32, box_h: f32, modules: usize) -> u32 {
+    let side = box_w.min(box_h).max(0.0);
+    let span = modules.saturating_add(8).max(1) as f32;
+    (side / span).floor().max(0.0) as u32
+}
+
+fn draw_qr(canvas: &mut RgbaImage, payload: &str, ecc: &str, bx: (f32, f32, f32, f32), opacity: f32, name: &str) {
+    let (x, y, w, h) = bx;
+    let code = match qrcode::QrCode::with_error_correction_level(payload.as_bytes(), ecc_level(ecc)) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("QR {name}: {e}");
+            return;
+        }
+    };
+    let n = code.width();
+    let px = qr_module_px(w, h, n);
+    if px == 0 {
+        log::warn!("QR {name}: no entra en la capa");
+        return;
+    }
+    let span = (n + 8) as f32 * px as f32;
+    let x0 = (x + (w - span) / 2.0).round() as i32;
+    let y0 = (y + (h - span) / 2.0).round() as i32;
+    for my in 0..(n + 8) {
+        for mx in 0..(n + 8) {
+            let inside = mx >= 4 && my >= 4 && mx < n + 4 && my < n + 4;
+            let dark = inside && code[(mx - 4, my - 4)] == qrcode::Color::Dark;
+            let rgb = if dark { [0, 0, 0] } else { [255, 255, 255] };
+            let px0 = x0 + (mx * px as usize) as i32;
+            let py0 = y0 + (my * px as usize) as i32;
+            for dy in 0..px as i32 {
+                for dx in 0..px as i32 {
+                    let (pxi, pyi) = (px0 + dx, py0 + dy);
+                    if pxi < 0 || pyi < 0 || pxi >= canvas.width() as i32 || pyi >= canvas.height() as i32 {
+                        continue;
+                    }
+                    mix(canvas.get_pixel_mut(pxi as u32, pyi as u32), rgb, opacity);
+                }
+            }
+        }
+    }
 }
 
 fn draw_text_layer(canvas: &mut RgbaImage, fonts: &FontBook, tl: &TextLayer, text: &str, bx: (f32, f32, f32, f32), opacity: f32) {
@@ -254,6 +314,7 @@ mod tests {
                 program: None,
                 resolve: &|p| PathBuf::from(p),
                 text_of: &|t| t.text.clone(),
+                qr_of: &|_, _| None,
                 fonts: &fonts,
             },
             &mut ImageCache::default(),
@@ -261,5 +322,41 @@ mod tests {
         let lit = |x0, y0, x1, y1| (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| out.get_pixel(x, y).0[0] > 128).count();
         assert!(lit(0, 0, 160, 64) > 200, "text should be drawn in its box");
         assert_eq!(lit(160, 64, 320, 256), 0, "nothing outside the box");
+    }
+
+    #[test]
+    fn qr_is_black_modules_on_white() {
+        let g = Graphics {
+            layers: vec![Layer {
+                id: 3,
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+                kind: LayerKind::Qr(crate::graphics::QrLayer { text: "HI".into(), ..Default::default() }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let fonts = FontBook::new();
+        let out = render(
+            &RenderInput {
+                width: 160,
+                height: 160,
+                graphics: &g,
+                program: None,
+                resolve: &|p| PathBuf::from(p),
+                text_of: &|t| t.text.clone(),
+                qr_of: &|_, q| Some(q.text.clone()),
+                fonts: &fonts,
+            },
+            &mut ImageCache::default(),
+        );
+        let black = out.pixels().filter(|p| p.0[0] < 16 && p.0[1] < 16 && p.0[2] < 16).count();
+        let white = out.pixels().filter(|p| p.0[0] > 240).count();
+        assert!(black > 20, "modules");
+        assert!(white > 20, "quiet zone");
+        assert_eq!(qr_module_px(20.0, 20.0, 21), 0);
+        assert!(qr_module_px(200.0, 200.0, 21) >= 2);
     }
 }

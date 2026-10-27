@@ -1,6 +1,7 @@
-format = 1
+format = 2
 name = "Canal de prueba"
-rotation = "sequential"
+freq_hz = 14230000
+interval_min = 10
 
 [station]
 call = "N0CALL"
@@ -12,7 +13,6 @@ locator = "FF78"
 mode = "M1"
 color_range = "full"
 vox_preamble = false
-fsk_id = false
 cw_preamble = true
 cw_id = true
 cw_text = "DE {call}"
@@ -20,70 +20,72 @@ cw_wpm = 20.0
 cw_tone_hz = 800.0
 min_pause_s = 60
 
+[ax25]
+info = true
+mode = true
+by_count = true
+next_count = 8
+next_hours = 6
+dedupe = true
+
 [[programs]]
 id = 1
 name = "Ajuste y paisaje"
 enabled = true
-rotation = "sequential"
+weekdays = [true, true, true, true, true, false, false]
+start = "12:00"
+end = "15:00"
+hue = 200
 
-[[programs.images]]
+[programs.welcome]
 path = "programas/carta-de-ajuste.png"
-enabled = true
-
-[[programs.images]]
-path = "programas/atardecer.png"
-enabled = true
+mode = "R36"
 
 [[programs]]
 id = 2
 name = "Cierre"
 enabled = true
-rotation = "sequential"
+weekdays = [false, false, false, false, false, true, false]
+start = "23:45"
+end = "23:55"
+hue = 28
 
-[[programs.images]]
+[programs.bye]
 path = "programas/73.png"
+mode = "R24"
+
+[[blocks]]
+id = 3
+date = "2026-10-27"
+name = "Noche en 80 m"
+start = "21:00"
+end = "23:30"
 enabled = true
 
-[[programs.activations]]
+[[activations]]
+id = 10
 enabled = true
+name = "Pausa"
+[[activations.triggers]]
 source = "dtmf"
-code = "*3#"
-action = "transmit"
+code = "*0#"
+[[activations.actions]]
+kind = "pause"
+
+[[activations]]
+id = 11
+enabled = true
+name = "Carta"
+[[activations.triggers]]
+source = "dtmf"
+code = "*1#"
+[[activations.actions]]
+kind = "image"
+path = "programas/carta-de-ajuste.png"
+mode = "M1"
 
 [grid]
 timezone = "utc"
-
-[[grid.slots]]
-id = 1
-enabled = true
-name = "Mañana en 20 m"
-days = [true, true, true, true, true, false, false]
-start = "12:00"
-end = "15:00"
-every_min = 10
-program = 1
-freq_hz = 14230000
-
-[[grid.slots]]
-id = 2
-enabled = true
-name = "Cierre del sábado"
-days = [false, false, false, false, false, true, false]
-start = "23:45"
-end = ""
-every_min = 0
-program = 2
-freq_hz = 0
-
-[[grid.slots]]
-id = 3
-enabled = true
-name = "Noche en 80 m"
-days = [true, true, true, true, true, true, true]
-start = "21:00"
-end = "23:30"
-every_min = 5
-freq_hz = 3730000
 
 [graphics]
 background = "#000000"
@@ -122,7 +124,7 @@ w = 0.5
 h = 0.1
 opacity = 1.0
 tipo = "text"
-text = "{utc}Z  #{serial:3}"
+text = "{utc}Z  #{serial:3}  {block}"
 font = "Noto Sans Mono"
 bold = true
 size = 0.075
@@ -176,20 +178,22 @@ url = "https://api.open-meteo.com/v1/forecast?latitude=-31.42&longitude=-64.18&c
 json_path = "current.temperature_2m"
 refresh_s = 600
 
+[[graphics.layers]]
+id = 5
+name = "QR"
+visible = true
+x = 0.03
+y = 0.55
+w = 0.22
+h = 0.28
+opacity = 1.0
+tipo = "qr"
+ecc = "M"
+source = "text"
+text = "{call} {freq}"
+
 [listen]
 cw = false
 cw_wpm = 20.0
 cw_tone_hz = 700.0
 dtmf = true
-
-[[listen.triggers]]
-enabled = true
-source = "dtmf"
-code = "*1#"
-action = "transmit"
-
-[[listen.triggers]]
-enabled = true
-source = "dtmf"
-code = "*0#"
-action = "pause"

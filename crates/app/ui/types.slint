@@ -1,3 +1,33 @@
+export struct CardItem {
+    idx: int,
+    cell: int,
+    stack: int,
+    name: string,
+    hours: string,
+    y: float,
+    h: float,
+    r: int,
+    g: int,
+    b: int,
+    opacity: float,
+    empty: bool,
+}
+
+export struct PicItem {
+    id: int,
+    label: string,
+    detail: string,
+    on: bool,
+    // 0 normal, 1 pre bumper, 2 post bumper
+    role: int,
+}
+
+export struct StepItem {
+    label: string,
+    time: string,
+    dim: bool,
+}
+
 export struct ProgramItem {
     id: int,
     name: string,
@@ -96,4 +126,10 @@ export struct LayerItem {
     api-refresh: int,
     image-path: string,
     keep-aspect: bool,
+    is-qr: bool,
+    qr-source: int,
+    qr-ecc: int,
+    qr-text: string,
+    qr-command: string,
+    qr-warn: string,
 }

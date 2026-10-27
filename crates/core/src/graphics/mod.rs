@@ -1,4 +1,4 @@
-//! Channel graphics: the program picture at the bottom, then text and image layers.
+//! Channel graphics: the program picture at the bottom, then text, image and QR layers.
 //!
 //! Geometry is stored normalized (0..1 of the canvas) so the same graphics fit every
 //! mode, from 160x120 (Robot 24) to 800x616 (PD 290).
@@ -8,7 +8,7 @@ mod render;
 mod text;
 
 pub use fonts::FontBook;
-pub use render::{ImageCache, RenderInput, render};
+pub use render::{ImageCache, RenderInput, qr_module_px, render};
 
 use serde::{Deserialize, Serialize};
 
@@ -121,6 +121,7 @@ impl Default for Layer {
 pub enum LayerKind {
     Text(TextLayer),
     Image(ImageLayer),
+    Qr(QrLayer),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -197,6 +198,25 @@ impl Default for ImageLayer {
     }
 }
 
+/// A QR drawn on every frame that already carries the channel graphics.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QrLayer {
+    /// `L`, `M`, `Q` or `H`. Anything else is M.
+    pub ecc: String,
+    /// `text`, `command` or `api`.
+    pub source: String,
+    pub text: String,
+    pub command: String,
+    pub api: Option<ApiSource>,
+}
+
+impl Default for QrLayer {
+    fn default() -> Self {
+        QrLayer { ecc: "M".into(), source: "text".into(), text: "{call}".into(), command: String::new(), api: None }
+    }
+}
+
 impl Graphics {
     pub fn next_layer_id(&self) -> u64 {
         self.layers.iter().map(|l| l.id).max().unwrap_or(0) + 1
@@ -206,6 +226,7 @@ impl Graphics {
         self.layers.iter().filter_map(|l| match &l.kind {
             LayerKind::Text(t) => t.api.as_ref().filter(|a| !a.url.trim().is_empty()),
             LayerKind::Image(_) => None,
+            LayerKind::Qr(q) => q.api.as_ref().filter(|a| !a.url.trim().is_empty()),
         })
     }
 }

@@ -6,7 +6,7 @@ use image::RgbImage;
 use serde::{Deserialize, Serialize};
 
 use crate::modes::*;
-use crate::synth::{Seg, Synth, cw_segments, fskid_segments};
+use crate::synth::{Seg, Synth, cw_segments};
 
 pub const SYNC_HZ: f32 = 1200.0;
 pub const BLACK_HZ: f32 = 1500.0;
@@ -65,10 +65,9 @@ pub struct TxOptions {
     /// MMSSTV-style 800 ms tone burst before the VIS, to open VOX circuits.
     pub vox_preamble: bool,
     pub color_range: ColorRange,
-    pub fsk_id: Option<String>,
     /// CW before the VIS (after the VOX burst, if any).
     pub cw_preamble: Option<CwIdent>,
-    /// CW after the picture (and after FSK ID, if any).
+    /// CW after the picture.
     pub cw_id: Option<CwIdent>,
 }
 
@@ -217,6 +216,23 @@ pub fn vis_segments(code: u8) -> Vec<Seg> {
 const VOX_PREAMBLE: [f32; 8] = [1900.0, 1500.0, 1900.0, 1500.0, 2300.0, 1500.0, 2300.0, 1500.0];
 const ID_GAP_MS: f64 = 250.0;
 
+/// The 800 ms VOX burst: eight 100 ms tones. It sits in front of a whole transmission,
+/// not in front of each picture.
+pub fn vox_segments() -> Vec<Seg> {
+    VOX_PREAMBLE.iter().copied().map(|hz| Seg::tone(hz, 100.0)).collect()
+}
+
+pub const VOX_MS: f64 = 800.0;
+
+/// VIS header, plus the 9 ms sync Scottie receivers expect glued to it.
+pub fn sstv_header(mode: Mode) -> Vec<Seg> {
+    let mut head = vis_segments(mode.spec().vis);
+    if mode.spec().family == Family::Scottie {
+        head.push(Seg::tone(SYNC_HZ, SCOTTIE_SYNC_MS));
+    }
+    head
+}
+
 /// A complete transmission: optional preamble, VIS, picture and identification.
 #[derive(Clone)]
 pub struct TxPlan {
@@ -236,14 +252,8 @@ impl TxPlan {
             head.extend(cw_segments(&cw.text, cw.wpm, cw.tone_hz));
             head.push(Seg::silence(ID_GAP_MS));
         }
-        head.extend(vis_segments(spec.vis));
-        if spec.family == Family::Scottie {
-            head.push(Seg::tone(SYNC_HZ, SCOTTIE_SYNC_MS));
-        }
+        head.extend(sstv_header(spec.mode));
         let mut tail = Vec::new();
-        if let Some(text) = opts.fsk_id.as_deref().filter(|t| !t.trim().is_empty()) {
-            tail.extend(fskid_segments(text.trim()));
-        }
         if let Some(cw) = opts.cw_id.as_ref().filter(|c| !c.text.trim().is_empty()) {
             tail.push(Seg::silence(ID_GAP_MS));
             tail.extend(cw_segments(&cw.text, cw.wpm, cw.tone_hz));

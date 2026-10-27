@@ -7,10 +7,11 @@
 
 use std::f64::consts::TAU;
 
-/// One tone segment. `hz == 0.0` is silence.
+/// One tone segment. `hz == 0.0` is silence. `hz2` adds a second tone (DTMF).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seg {
     pub hz: f32,
+    pub hz2: f32,
     pub ms: f64,
     /// Keyed (CW) segments get raised-cosine edges to avoid key clicks.
     pub keyed: bool,
@@ -18,13 +19,16 @@ pub struct Seg {
 
 impl Seg {
     pub const fn tone(hz: f32, ms: f64) -> Seg {
-        Seg { hz, ms, keyed: false }
+        Seg { hz, hz2: 0.0, ms, keyed: false }
+    }
+    pub const fn dual(hz: f32, hz2: f32, ms: f64) -> Seg {
+        Seg { hz, hz2, ms, keyed: false }
     }
     pub const fn keyed(hz: f32, ms: f64) -> Seg {
-        Seg { hz, ms, keyed: true }
+        Seg { hz, hz2: 0.0, ms, keyed: true }
     }
     pub const fn silence(ms: f64) -> Seg {
-        Seg { hz: 0.0, ms, keyed: false }
+        Seg { hz: 0.0, hz2: 0.0, ms, keyed: false }
     }
 }
 
@@ -44,6 +48,7 @@ pub struct Synth<I: Iterator<Item = Seg>> {
     fs: f64,
     amp: f32,
     phase: f64,
+    phase2: f64,
     n: u64,
     cur: Option<Seg>,
     seg_start: u64,
@@ -62,6 +67,7 @@ impl<I: Iterator<Item = Seg>> Synth<I> {
             fs,
             amp: amp.clamp(0.0, 1.0),
             phase: 0.0,
+            phase2: 0.0,
             n: 0,
             cur: None,
             seg_start: 0,
@@ -111,16 +117,23 @@ impl<I: Iterator<Item = Seg> + Send> SampleSource for Synth<I> {
                 return i;
             }
             let seg = self.cur.expect("advance() returned true");
-            let mut v = if seg.hz > 0.0 {
-                let s = self.phase.sin() as f32;
+            let mut v = 0.0f32;
+            let env = self.key_envelope(&seg);
+            if seg.hz > 0.0 {
+                v += self.phase.sin() as f32 * env;
                 self.phase += TAU * seg.hz as f64 / self.fs;
                 if self.phase > TAU {
                     self.phase -= TAU;
                 }
-                s * self.key_envelope(&seg)
-            } else {
-                0.0
-            };
+            }
+            if seg.hz2 > 0.0 {
+                // Two full-scale sines would clip. Each takes half, so the sum stays in [-1, 1].
+                v = v * 0.5 + 0.5 * self.phase2.sin() as f32 * env;
+                self.phase2 += TAU * seg.hz2 as f64 / self.fs;
+                if self.phase2 > TAU {
+                    self.phase2 -= TAU;
+                }
+            }
             if self.n < self.fade_in {
                 v *= self.n as f32 / self.fade_in as f32;
             }
@@ -182,6 +195,20 @@ pub fn fskid_segments(text: &str) -> Vec<Seg> {
     out
 }
 
+/// DTMF digits. Unknown characters are skipped. 80 ms of tone and 70 ms of silence
+/// is long enough for the decoder's two agreeing blocks and the release between repeats.
+pub fn dtmf_segments(sequence: &str) -> Vec<Seg> {
+    let mut out = Vec::new();
+    for d in sequence.chars() {
+        let Some((r, c)) = (0..4).flat_map(|r| (0..4).map(move |c| (r, c))).find(|&(r, c)| crate::rx::dtmf::KEYS[r][c] == d.to_ascii_uppercase()) else {
+            continue;
+        };
+        out.push(Seg::dual(crate::rx::dtmf::ROWS[r], crate::rx::dtmf::COLS[c], 80.0));
+        out.push(Seg::silence(70.0));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,5 +244,19 @@ mod tests {
         // First symbol 0x20 = 100000b, LSB first → five zeros then a one.
         let hz: Vec<f32> = segs[..6].iter().map(|s| s.hz).collect();
         assert_eq!(hz, [2100.0, 2100.0, 2100.0, 2100.0, 2100.0, 1900.0]);
+    }
+
+    #[test]
+    fn dtmf_roundtrip() {
+        let segs = dtmf_segments("*12#");
+        let ms: f64 = segs.iter().map(|s| s.ms).sum();
+        let fs = 8000.0;
+        let mut synth = Synth::new(segs.into_iter(), fs, 1.0, ms);
+        let mut audio = vec![0.0f32; synth.total_samples() as usize];
+        synth.fill(&mut audio);
+        let mut dec = crate::rx::dtmf::DtmfDecoder::new(fs as u32);
+        let mut got = String::new();
+        dec.process(&audio, |d| got.push(d));
+        assert_eq!(got, "*12#");
     }
 }

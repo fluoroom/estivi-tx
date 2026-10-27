@@ -2,14 +2,17 @@
 //! Shared by the engine (transmission) and the UI (previews), so what you see is
 //! exactly what goes on air.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use image::RgbaImage;
 
 use crate::dynamic::{ApiCache, DataCtx, expand};
-use crate::graphics::{FontBook, ImageCache, RenderInput, render};
-use crate::project::{Program, Project, resolve};
+use crate::graphics::{FontBook, ImageCache, QrLayer, RenderInput, render};
+use crate::project::{Project, resolve};
+use crate::shell;
 
 pub struct Composer {
     pub fonts: FontBook,
@@ -17,6 +20,9 @@ pub struct Composer {
     pub api: ApiCache,
     /// Project fonts folder currently loaded (outer None = nothing loaded yet).
     fonts_dir: Option<Option<PathBuf>>,
+    /// Expanded command line → (when, stdout or the error). Failures are remembered so a
+    /// preview does not launch the same command on every frame.
+    commands: HashMap<String, (Instant, Result<String, String>)>,
 }
 
 /// `fuentes/` next to the executable (portable install).
@@ -26,7 +32,7 @@ fn exe_fonts_dir() -> Option<PathBuf> {
 
 impl Composer {
     pub fn new(api: ApiCache) -> Composer {
-        let mut c = Composer { fonts: FontBook::new(), cache: ImageCache::default(), api, fonts_dir: None };
+        let mut c = Composer { fonts: FontBook::new(), cache: ImageCache::default(), api, fonts_dir: None, commands: HashMap::new() };
         c.set_project_dir(None);
         c
     }
@@ -49,23 +55,11 @@ impl Composer {
         self.fonts_dir = Some(wanted);
     }
 
-    pub fn frame(&mut self, project: &Project, dir: Option<&Path>, program: Option<&Program>, ctx: &DataCtx) -> RgbaImage {
-        let image = program.and_then(|p| p.enabled_images().next());
-        let mode = project.mode_of(program, image);
-        self.frame_image(project, dir, image.map(|i| i.path.as_str()), mode, ctx)
-    }
-
     /// `image` is a path stored in the project (relative or absolute).
-    pub fn frame_image(
-        &mut self,
-        project: &Project,
-        dir: Option<&Path>,
-        image: Option<&str>,
-        mode: crate::modes::Mode,
-        ctx: &DataCtx,
-    ) -> RgbaImage {
+    pub fn frame_image(&mut self, project: &Project, dir: Option<&Path>, image: Option<&str>, mode: crate::modes::Mode, ctx: &DataCtx) -> RgbaImage {
         let spec = mode.spec();
         let program_path = image.filter(|p| !p.trim().is_empty()).map(|p| resolve(dir, p));
+        let qr = self.qr_payloads(project, ctx);
         let api = &self.api;
         render(
             &RenderInput {
@@ -75,24 +69,87 @@ impl Composer {
                 program: program_path.as_deref(),
                 resolve: &|stored| resolve(dir, stored),
                 text_of: &|tl| expand(&tl.text, ctx, tl.api.as_ref().and_then(|a| api.value(a)).as_deref()),
+                qr_of: &|id, _| qr.get(&id).cloned(),
                 fonts: &self.fonts,
             },
             &mut self.cache,
         )
     }
+
+    fn qr_payloads(&mut self, project: &Project, ctx: &DataCtx) -> HashMap<u64, String> {
+        let mut out = HashMap::new();
+        for layer in &project.graphics.layers {
+            let crate::graphics::LayerKind::Qr(qr) = &layer.kind else { continue };
+            if !layer.visible {
+                continue;
+            }
+            match self.qr_text(qr, ctx) {
+                Some(text) if !text.trim().is_empty() => {
+                    out.insert(layer.id, text);
+                }
+                Some(_) => log::info!("QR {}: payload vacío, la capa no se dibuja", layer.name),
+                None => {}
+            }
+        }
+        out
+    }
+
+    fn qr_text(&mut self, qr: &QrLayer, ctx: &DataCtx) -> Option<String> {
+        match qr.source.trim().to_ascii_lowercase().as_str() {
+            "command" => {
+                let line = expand(&qr.command, ctx, None);
+                match self.command(&line) {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        log::warn!("QR comando: {e}");
+                        None
+                    }
+                }
+            }
+            "api" => {
+                let api = qr.api.as_ref()?;
+                if self.api.value(api).is_none() {
+                    if let Err(e) = self.api.fetch_now(api) {
+                        log::warn!("QR API: {e}");
+                    }
+                }
+                self.api.value(api)
+            }
+            _ => {
+                let api = qr.api.as_ref().and_then(|a| self.api.value(a));
+                Some(expand(&qr.text, ctx, api.as_deref()))
+            }
+        }
+    }
+
+    fn command(&mut self, line: &str) -> Result<String, String> {
+        if line.trim().is_empty() {
+            return Err("comando vacío".into());
+        }
+        if let Some((at, cached)) = self.commands.get(line) {
+            if at.elapsed() < Duration::from_secs(30) {
+                return cached.clone();
+            }
+        }
+        let result = shell::capture(line, Duration::from_secs(10)).map_err(|e| e.to_string());
+        self.commands.insert(line.to_string(), (Instant::now(), result.clone()));
+        result
+    }
+}
+
+/// Names the graphics templates can show for the block on air.
+#[derive(Clone, Debug, Default)]
+pub struct LiveText {
+    pub program: String,
+    pub block: String,
+    pub range: String,
+    pub days: String,
+    pub daysleft: String,
+    pub next: String,
 }
 
 /// Live data for `{datos}`.
-pub fn data_ctx(
-    project: &Project,
-    now: DateTime<Utc>,
-    serial: u64,
-    program: &str,
-    freq_hz: u64,
-    cw: &str,
-    dtmf: &str,
-    mode: crate::modes::Mode,
-) -> DataCtx {
+pub fn data_ctx(project: &Project, now: DateTime<Utc>, serial: u64, mode: crate::modes::Mode, live: &LiveText, freq_hz: u64, cw: &str, dtmf: &str) -> DataCtx {
     let st = &project.station;
     DataCtx {
         call: st.call.clone(),
@@ -102,9 +159,14 @@ pub fn data_ctx(
         now,
         serial,
         mode,
-        program: program.to_string(),
+        program: live.program.clone(),
         freq_hz,
         cw: cw.to_string(),
         dtmf: dtmf.to_string(),
+        block: live.block.clone(),
+        range: live.range.clone(),
+        days: live.days.clone(),
+        daysleft: live.daysleft.clone(),
+        next: live.next.clone(),
     }
 }

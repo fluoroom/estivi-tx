@@ -60,16 +60,21 @@ fn main() -> anyhow::Result<()> {
     }
     let mut composer = Composer::new(api);
     composer.set_project_dir(dir);
-    let mode = project.mode_of(program, program.and_then(|p| p.enabled_images().next()));
-    let ctx = data_ctx(&project, Utc::now(), 42, program.map_or("", |p| p.name.as_str()), 0, "", "", mode);
-    let frame = composer.frame(&project, dir, program, &ctx);
+    let mode = project.tx.mode;
+    let live = estivi_core::compose::LiveText {
+        program: program.map(|p| p.name.clone()).unwrap_or_default(),
+        block: program.map(|p| p.name.clone()).unwrap_or_default(),
+        ..estivi_core::compose::LiveText::default()
+    };
+    let ctx = data_ctx(&project, Utc::now(), 42, mode, &live, project.freq_hz, "", "");
+    let frame = composer.frame_image(&project, dir, None, mode, &ctx);
     frame.save(&args[2])?;
     println!("{} → {} ({}x{})", mode.name(), args[2], frame.width(), frame.height());
 
     if let Some(wav) = args.get(3).filter(|w| !w.is_empty()) {
         let rgb = image::DynamicImage::ImageRgba8(frame).to_rgb8();
         let scan = ScanImage::new(mode, &rgb, project.tx.color_range)?;
-        let opts = project.tx.options(&project.station.call, |t| expand(t, &ctx, None));
+        let opts = project.tx.options(|t| expand(t, &ctx, None));
         let plan = TxPlan::new(scan, &opts);
         let mut synth = plan.synth(RATE as f64, 0.8);
         let mut samples = vec![0.0f32; synth.total_samples() as usize];

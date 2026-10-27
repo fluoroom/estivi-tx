@@ -32,6 +32,9 @@ pub enum Mode {
     Robot36,
     #[serde(rename = "R72")]
     Robot72,
+    /// Robot 12 color (VIS 0). Not the black-and-white `BW12`.
+    #[serde(rename = "R12")]
+    Robot12,
     #[serde(rename = "BW8")]
     RobotBw8,
     #[serde(rename = "BW12")]
@@ -137,7 +140,7 @@ macro_rules! spec {
     };
 }
 
-static SPECS: [ModeSpec; 20] = [
+static SPECS: [ModeSpec; 21] = [
     spec!(MartinM1, "Martin M1", "M1", Martin, 0x2C, 320 x 256, 256, Timing::Martin { scan_ms: 146.432 }),
     spec!(MartinM2, "Martin M2", "M2", Martin, 0x28, 320 x 256, 256, Timing::Martin { scan_ms: 73.216 }),
     spec!(MartinM3, "Martin M3", "M3", Martin, 0x24, 320 x 256, 128, Timing::Martin { scan_ms: 146.432 }),
@@ -149,6 +152,8 @@ static SPECS: [ModeSpec; 20] = [
     spec!(Robot24, "Robot 24", "R24", Robot, 0x04, 160 x 120, 120, robot_color(6.0, 2.0, 92.0, 3.0, 1.0, 46.0, false)),
     spec!(Robot36, "Robot 36", "R36", Robot, 0x08, 320 x 240, 240, robot_color(9.0, 3.0, 88.0, 4.5, 1.5, 44.0, true)),
     spec!(Robot72, "Robot 72", "R72", Robot, 0x0C, 320 x 240, 240, robot_color(9.0, 3.0, 138.0, 4.5, 1.5, 69.0, false)),
+    // Robot 12 color: 100 ms line. Chroma is the Robot 36 package (50 ms) scaled by 30/50.
+    spec!(Robot12, "Robot 12", "R12", Robot, 0x00, 160 x 120, 120, robot_color(7.0, 3.0, 60.0, 2.7, 0.9, 26.4, true)),
     spec!(RobotBw8, "Robot 8 B/N", "BW8", RobotBw, 0x02, 160 x 120, 120, Timing::RobotBw { sync_ms: 7.0, y_ms: 59.9 }),
     spec!(RobotBw12, "Robot 12 B/N", "BW12", RobotBw, 0x06, 160 x 120, 120, Timing::RobotBw { sync_ms: 7.0, y_ms: 93.0 }),
     spec!(RobotBw24, "Robot 24 B/N", "BW24", RobotBw, 0x0A, 320 x 240, 240, Timing::RobotBw { sync_ms: 7.0, y_ms: 93.0 }),
@@ -162,7 +167,7 @@ static SPECS: [ModeSpec; 20] = [
 ];
 
 impl Mode {
-    pub const ALL: [Mode; 20] = [
+    pub const ALL: [Mode; 21] = [
         Mode::MartinM1,
         Mode::MartinM2,
         Mode::MartinM3,
@@ -173,6 +178,7 @@ impl Mode {
         Mode::Robot24,
         Mode::Robot36,
         Mode::Robot72,
+        Mode::Robot12,
         Mode::RobotBw8,
         Mode::RobotBw12,
         Mode::RobotBw24,
@@ -315,6 +321,31 @@ mod tests {
     }
 
     #[test]
+    fn robot12_color_is_twelve_seconds_of_picture() {
+        let spec = Mode::Robot12.spec();
+        assert_eq!(spec.short, "R12");
+        assert_eq!(spec.vis, 0x00);
+        assert_eq!((spec.width, spec.height, spec.tx_lines), (160, 120, 120));
+        match spec.timing {
+            Timing::Robot { sync_ms, porch_ms, y_ms, sep_ms, sep_porch_ms, c_ms, alternating: true } => {
+                assert_eq!(sync_ms, 7.0);
+                assert_eq!(porch_ms, 3.0);
+                assert_eq!(y_ms, 60.0);
+                assert!((sep_ms + sep_porch_ms + c_ms - 30.0).abs() < 1e-9);
+                assert_eq!(sep_ms, 2.7);
+                assert_eq!(sep_porch_ms, 0.9);
+                assert_eq!(c_ms, 26.4);
+            }
+            other => panic!("Robot 12 must be alternating color, got {other:?}"),
+        }
+        assert!((spec.line_ms() - 100.0).abs() < 1e-9, "{}", spec.line_ms());
+        assert!((spec.image_ms() - 12_000.0).abs() < 1e-6, "{}", spec.image_ms());
+        // The published 12 s are the picture. The VIS header is extra, as with Robot 36.
+        assert!((spec.total_ms() - spec.image_ms() - VIS_HEADER_MS).abs() < 1e-6);
+        assert!(spec.is_color());
+    }
+
+    #[test]
     fn vis_codes_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for m in Mode::ALL {
@@ -326,6 +357,7 @@ mod tests {
     fn cheat_sheet_matches_the_usual_definitions() {
         assert_eq!(Mode::Robot72.spec().color_space(), "YCrCb 4:2:2");
         assert_eq!(Mode::Robot72.spec().size_label(), "320×240");
+        assert_eq!(Mode::Robot12.spec().color_space(), "YCrCb 4:2:0");
         assert_eq!(Mode::Robot36.spec().color_space(), "YCrCb 4:2:0");
         assert_eq!(Mode::MartinM1.spec().color_space(), "RGB");
         assert_eq!(Mode::MartinM1.spec().size_label(), "320×256");
