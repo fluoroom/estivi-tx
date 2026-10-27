@@ -44,7 +44,7 @@ component NumberField inherits Field {
 }
 
 export component EditorWindow inherits Window {
-    title: "Gráfica del canal — " + root.mode-name;
+    title: @tr("Channel graphics — {}", root.mode-name);
     icon: @image-url("../assets/icon.png");
     preferred-width: 1280px;
     preferred-height: 800px;
@@ -108,12 +108,12 @@ export component EditorWindow inherits Window {
             spacing: 6px;
             ToolButton {
                 icon: "text";
-                text: "Texto";
+                text: @tr("Text");
                 clicked => { root.add-text(); }
             }
             ToolButton {
                 icon: "image";
-                text: "Imagen PNG";
+                text: @tr("PNG image");
                 clicked => { root.add-image(); }
             }
             Rectangle {
@@ -122,25 +122,25 @@ export component EditorWindow inherits Window {
             }
             ToolButton {
                 icon: "up";
-                text: "Al frente";
+                text: @tr("Bring forward");
                 enabled: root.selected >= 0 && root.selected < root.layers.length - 1;
                 clicked => { root.move-layer(1); }
             }
             ToolButton {
                 icon: "down";
-                text: "Atrás";
+                text: @tr("Send back");
                 enabled: root.selected > 0;
                 clicked => { root.move-layer(-1); }
             }
             ToolButton {
                 icon: "copy";
-                text: "Duplicar";
+                text: @tr("Duplicate");
                 enabled: root.selected >= 0;
                 clicked => { root.duplicate(); }
             }
             ToolButton {
                 icon: "trash";
-                text: "Borrar";
+                text: @tr("Delete");
                 enabled: root.selected >= 0;
                 clicked => { root.remove(); }
             }
@@ -150,7 +150,7 @@ export component EditorWindow inherits Window {
             VerticalLayout {
                 alignment: center;
                 Text {
-                    text: "Ver con el programa";
+                    text: @tr("Preview with program");
                     font-size: 12px;
                     color: Theme.text-dim;
                 }
@@ -174,7 +174,7 @@ export component EditorWindow inherits Window {
                     padding: 10px;
                     spacing: 6px;
                     PanelTitle {
-                        text: "CAPAS";
+                        text: @tr("LAYERS");
                         height: 20px;
                     }
                     ListView {
@@ -245,13 +245,13 @@ export component EditorWindow inherits Window {
                             VerticalLayout {
                                 alignment: center;
                                 Text {
-                                    text: "Imagen base";
+                                    text: @tr("Base picture");
                                     font-size: 13px;
                                     font-weight: 600;
                                     color: Theme.text;
                                 }
                                 Text {
-                                    text: "el programa que sale al aire";
+                                    text: @tr("the program that goes on air");
                                     font-size: 11px;
                                     color: Theme.text-faint;
                                 }
@@ -334,7 +334,7 @@ export component EditorWindow inherits Window {
                 Text {
                     x: canvas.ix;
                     y: canvas.iy + canvas.ih + 8px;
-                    text: root.canvas-w + " × " + root.canvas-h + " px · " + root.mode-name + " · arrastrá para mover, las esquinas para cambiar el tamaño, flechas para ajustar";
+                    text: @tr("{} × {} px · {} · drag to move, corners to resize, arrows to nudge", root.canvas-w, root.canvas-h, root.mode-name);
                     font-size: 11px;
                     color: Theme.text-faint;
                 }
@@ -377,24 +377,24 @@ export component EditorWindow inherits Window {
                         if root.selected == -1 : VerticalLayout {
                             spacing: 10px;
                             PanelTitle {
-                                text: "IMAGEN BASE";
+                                text: @tr("BASE PICTURE");
                             }
                             Text {
-                                text: "Es la imagen de cada programa. Queda siempre abajo de todo y se adapta al tamaño del modo.";
+                                text: @tr("This is each program's picture. It always stays at the bottom and is fitted to the mode size.");
                                 font-size: 12px;
                                 color: Theme.text-dim;
                                 wrap: word-wrap;
                             }
                             Field {
-                                label: "Cómo se ajusta";
+                                label: @tr("How it is fitted");
                                 ComboBox {
-                                    model: ["Recortar para llenar", "Entera (con bandas)", "Estirar"];
+                                    model: [@tr("Crop to fill"), @tr("Fit (with bars)"), @tr("Stretch")];
                                     current-index: root.fit-index;
                                     selected => { root.fit-selected(self.current-index); }
                                 }
                             }
                             Field {
-                                label: "Color de fondo (bandas)";
+                                label: @tr("Background color (bars)");
                                 ColorField {
                                     value: root.background-color;
                                     hex: root.background-hex;
@@ -409,7 +409,7 @@ export component EditorWindow inherits Window {
                                 text: cur.is-text ? "TEXTO" : "IMAGEN";
                             }
                             Field {
-                                label: "Nombre de la capa";
+                                label: @tr("Layer name");
                                 LineEdit {
                                     text: cur.name;
                                     edited(v) => { root.set-str("name", v); }
@@ -419,7 +419,7 @@ export component EditorWindow inherits Window {
                             if cur.is-text : VerticalLayout {
                                 spacing: 10px;
                                 Field {
-                                    label: "Texto (puede llevar datos entre llaves)";
+                                    label: @tr("Text (can include fields in braces)");
                                     text-edit := TextEdit {
                                         height: 74px;
                                         text: cur.text;
@@ -439,7 +439,7 @@ export component EditorWindow inherits Window {
                                     }
                                 }
                                 CheckBox {
-                                    text: "Dato desde una API web → {api}";
+                                    text: @tr("Data from a web API → {{api}}");
                                     checked: cur.api-on;
                                     toggled => { root.set-bool("api", self.checked); }
                                 }
@@ -456,7 +456,7 @@ export component EditorWindow inherits Window {
                                     HorizontalLayout {
                                         spacing: 8px;
                                         Field {
-                                            label: "Campo JSON (vacío = todo)";
+                                            label: @tr("JSON field (empty = all)");
                                             horizontal-stretch: 2;
                                             LineEdit {
                                                 text: cur.api-path;
@@ -465,7 +465,7 @@ export component EditorWindow inherits Window {
                                             }
                                         }
                                         NumberField {
-                                            label: "Cada (s)";
+                                            label: @tr("Every (s)");
                                             minimum: 10;
                                             maximum: 86400;
                                             value: cur.api-refresh;
@@ -475,7 +475,7 @@ export component EditorWindow inherits Window {
                                     HorizontalLayout {
                                         spacing: 8px;
                                         ToolButton {
-                                            text: "Probar";
+                                            text: @tr("Test");
                                             clicked => { root.api-test(); }
                                         }
                                         Text {
@@ -489,7 +489,7 @@ export component EditorWindow inherits Window {
                                     }
                                 }
                                 Section {
-                                    title: "LETRA";
+                                    title: @tr("TYPE");
                                     HorizontalLayout {
                                         spacing: 8px;
                                         ComboBox {
@@ -501,14 +501,14 @@ export component EditorWindow inherits Window {
                                         VerticalLayout {
                                             alignment: center;
                                             CheckBox {
-                                                text: "Negrita";
+                                                text: @tr("Bold");
                                                 checked: cur.bold;
                                                 toggled => { root.set-bool("bold", self.checked); }
                                             }
                                         }
                                     }
                                     Field {
-                                        label: "Tamaño: " + round(cur.size * 100) + " % del alto";
+                                        label: @tr("Size: {} % of height", round(cur.size * 100));
                                         Slider {
                                             minimum: 3;
                                             maximum: 40;
@@ -517,7 +517,7 @@ export component EditorWindow inherits Window {
                                         }
                                     }
                                     Field {
-                                        label: "Color";
+                                        label: @tr("Color");
                                         ColorField {
                                             value: cur.color;
                                             hex: cur.color-hex;
@@ -525,28 +525,28 @@ export component EditorWindow inherits Window {
                                         }
                                     }
                                     Field {
-                                        label: "Alineación";
+                                        label: @tr("Alignment");
                                         Segmented {
-                                            options: ["Izquierda", "Centro", "Derecha"];
+                                            options: [@tr("Left"), @tr("Center"), @tr("Right")];
                                             current: cur.align;
                                             chosen(i) => { root.set-num("align", i); }
                                         }
                                     }
                                     Segmented {
-                                        options: ["Arriba", "Medio", "Abajo"];
+                                        options: [@tr("Top"), @tr("Middle"), @tr("Bottom")];
                                         current: cur.valign;
                                         chosen(i) => { root.set-num("valign", i); }
                                     }
                                     CheckBox {
-                                        text: "Achicar la letra si no entra en la caja";
+                                        text: @tr("Shrink the type if it does not fit the box");
                                         checked: cur.shrink;
                                         toggled => { root.set-bool("shrink", self.checked); }
                                     }
                                 }
                                 Section {
-                                    title: "LEGIBILIDAD EN EL AIRE";
+                                    title: @tr("ON-AIR READABILITY");
                                     Field {
-                                        label: "Contorno: " + round(cur.outline * 100) + " %";
+                                        label: @tr("Outline: {} %", round(cur.outline * 100));
                                         Slider {
                                             minimum: 0;
                                             maximum: 30;
@@ -560,12 +560,12 @@ export component EditorWindow inherits Window {
                                         changed(h) => { root.set-str("outline-color", h); }
                                     }
                                     CheckBox {
-                                        text: "Sombra";
+                                        text: @tr("Shadow");
                                         checked: cur.shadow;
                                         toggled => { root.set-bool("shadow", self.checked); }
                                     }
                                     Field {
-                                        label: "Caja de fondo (transparente = sin caja)";
+                                        label: @tr("Background box (transparent = none)");
                                         ColorField {
                                             value: cur.box-color;
                                             hex: cur.box-hex;
@@ -578,24 +578,24 @@ export component EditorWindow inherits Window {
                             if !cur.is-text : VerticalLayout {
                                 spacing: 10px;
                                     Field {
-                                        label: "Archivo";
+                                        label: @tr("File");
                                         FileDrop {
                                             compact: true;
-                                            title: cur.image-path == "" ? "Soltá o elegí la imagen" : cur.image-path;
+                                            title: cur.image-path == "" ? @tr("Drop or pick the picture") : cur.image-path;
                                             path: cur.image-path;
                                             dropped(paths) => { root.drop-image(paths); }
                                             browse => { root.pick-image(); }
                                         }
                                     }
                                 CheckBox {
-                                    text: "Mantener proporción";
+                                    text: @tr("Keep aspect ratio");
                                     checked: cur.keep-aspect;
                                     toggled => { root.set-bool("keep-aspect", self.checked); }
                                 }
                             }
 
                             Section {
-                                title: "POSICIÓN Y TAMAÑO (px)";
+                                title: @tr("POSITION AND SIZE (px)");
                                 HorizontalLayout {
                                     spacing: 8px;
                                     NumberField {
@@ -612,20 +612,20 @@ export component EditorWindow inherits Window {
                                 HorizontalLayout {
                                     spacing: 8px;
                                     NumberField {
-                                        label: "Ancho";
+                                        label: @tr("Width");
                                         minimum: 1;
                                         value: round(cur.w * root.canvas-w);
                                         edited(v) => { root.set-num("w", v); }
                                     }
                                     NumberField {
-                                        label: "Alto";
+                                        label: @tr("Height");
                                         minimum: 1;
                                         value: round(cur.h * root.canvas-h);
                                         edited(v) => { root.set-num("h", v); }
                                     }
                                 }
                                 Field {
-                                    label: "Opacidad: " + round(cur.opacity * 100) + " %";
+                                    label: @tr("Opacity: {} %", round(cur.opacity * 100));
                                     Slider {
                                         minimum: 0;
                                         maximum: 100;
@@ -640,7 +640,7 @@ export component EditorWindow inherits Window {
             }
         }
         Text {
-            text: "Los cambios se aplican al momento y se guardan con el proyecto (Guardar en la ventana principal).";
+            text: @tr("Changes apply immediately and are saved with the project (Save in the main window).");
             font-size: 11px;
             color: Theme.text-faint;
         }

@@ -17,11 +17,11 @@ component DialogFooter inherits HorizontalLayout {
         wrap: word-wrap;
     }
     ToolButton {
-        text: "Cancelar";
+        text: @tr("Cancel");
         clicked => { root.cancel(); }
     }
     ToolButton {
-        text: "Guardar";
+        text: @tr("Save");
         primary: true;
         clicked => { root.save(); }
     }
@@ -75,7 +75,7 @@ export struct SlotForm {
 }
 
 export component SlotDialog inherits Window {
-    title: "Bloque de la grilla";
+    title: @tr("Grid block");
     icon: @image-url("../assets/icon.png");
     width: 520px;
     height: 560px;
@@ -95,37 +95,37 @@ export component SlotDialog inherits Window {
         padding: 18px;
         spacing: 14px;
         Field {
-            label: "Nombre del bloque";
+            label: @tr("Block name");
             name-edit := LineEdit {
                 text: root.form.name;
-                placeholder-text: "Ej.: Noche en 80 m";
+                placeholder-text: @tr("e.g. Night on 80 m");
             }
         }
         Field {
-            label: "Días";
+            label: @tr("Days");
             HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
-                d0 := DayToggle { label: "L"; on: root.form.d0; }
-                d1 := DayToggle { label: "M"; on: root.form.d1; }
-                d2 := DayToggle { label: "X"; on: root.form.d2; }
-                d3 := DayToggle { label: "J"; on: root.form.d3; }
-                d4 := DayToggle { label: "V"; on: root.form.d4; }
-                d5 := DayToggle { label: "S"; on: root.form.d5; }
-                d6 := DayToggle { label: "D"; on: root.form.d6; }
+                d0 := DayToggle { label: @tr("Mo"); on: root.form.d0; }
+                d1 := DayToggle { label: @tr("Tu"); on: root.form.d1; }
+                d2 := DayToggle { label: @tr("We"); on: root.form.d2; }
+                d3 := DayToggle { label: @tr("Th"); on: root.form.d3; }
+                d4 := DayToggle { label: @tr("Fr"); on: root.form.d4; }
+                d5 := DayToggle { label: @tr("Sa"); on: root.form.d5; }
+                d6 := DayToggle { label: @tr("Su"); on: root.form.d6; }
             }
         }
         HorizontalLayout {
             spacing: 12px;
             Field {
-                label: "Comienza (" + root.tz-name + ")";
+                label: @tr("Starts ({})", root.tz-name);
                 start-edit := LineEdit {
                     text: root.form.start;
                     placeholder-text: "HH:MM";
                 }
             }
             Field {
-                label: "Repetir";
+                label: @tr("Repeat");
                 HorizontalLayout {
                     alignment: start;
                     VerticalLayout {
@@ -141,7 +141,7 @@ export component SlotDialog inherits Window {
         if root.repeat : HorizontalLayout {
             spacing: 12px;
             Field {
-                label: "Cada (minutos)";
+                label: @tr("Every (minutes)");
                 every-spin := SpinBox {
                     minimum: 1;
                     maximum: 1440;
@@ -150,7 +150,7 @@ export component SlotDialog inherits Window {
                 }
             }
             Field {
-                label: "Hasta (" + root.tz-name + ")";
+                label: @tr("Until ({})", root.tz-name);
                 end-edit := LineEdit {
                     text: root.form.end;
                     placeholder-text: "HH:MM";
@@ -159,26 +159,26 @@ export component SlotDialog inherits Window {
             }
         }
         if root.repeat : Hint {
-            text: "Si «hasta» es más temprano que el comienzo, el bloque termina al día siguiente. Si una emisión dura más que el intervalo, la siguiente sale apenas termina la pausa mínima.";
+            text: @tr("If Until is earlier than the start, the block ends the next day. If a transmission lasts longer than the interval, the next one waits for the minimum pause.");
         }
         Field {
-            label: "Qué sale al aire";
+            label: @tr("What goes on air");
             program-box := ComboBox {
                 model: root.program-names;
                 current-index: root.form.program;
             }
         }
         Field {
-            label: "Frecuencia (MHz, opcional — se fija por CAT si está habilitado)";
+            label: @tr("Frequency (MHz, optional — set via CAT if enabled)");
             freq-edit := LineEdit {
                 text: root.form.freq;
-                placeholder-text: "Ej.: 14.230";
+                placeholder-text: @tr("e.g. 14.230");
             }
         }
         HorizontalLayout {
             alignment: start;
             enabled-box := CheckBox {
-                text: "Bloque habilitado";
+                text: @tr("Block enabled");
                 checked: root.form.enabled;
             }
         }
@@ -234,7 +234,7 @@ export struct ProjectForm {
 }
 
 export component ProjectDialog inherits Window {
-    title: "Proyecto";
+    title: @tr("Project");
     icon: @image-url("../assets/icon.png");
     width: 640px;
     height: 640px;
@@ -257,23 +257,23 @@ export component ProjectDialog inherits Window {
         TabWidget {
             vertical-stretch: 1;
             Tab {
-                title: "Estación";
+                title: @tr("Station");
                 VerticalLayout {
                     padding: 14px;
                     spacing: 12px;
                     alignment: start;
                     Field {
-                        label: "Nombre del canal / proyecto";
+                        label: @tr("Channel / project name");
                         name-edit := LineEdit { text: root.form.name; }
                     }
                     HorizontalLayout {
                         spacing: 12px;
                         Field {
-                            label: "Indicativo";
+                            label: @tr("Callsign");
                             call-edit := LineEdit { text: root.form.call; placeholder-text: "LU1ABC"; }
                         }
                         Field {
-                            label: "Operador";
+                            label: @tr("Operator");
                             op-edit := LineEdit { text: root.form.operator; }
                         }
                     }
@@ -289,79 +289,79 @@ export component ProjectDialog inherits Window {
                         }
                     }
                     Hint {
-                        text: "Estos datos se pueden mostrar en la gráfica con {call}, {op}, {qth} y {loc}. El modo SSTV se elige en la barra principal y también se guarda con el proyecto.";
+                        text: @tr("These fields can appear on the graphics as {{call}}, {{op}}, {{qth}} and {{loc}}. SSTV mode is chosen in the main bar and is also saved with the project.");
                     }
                 }
             }
             Tab {
-                title: "Transmisión";
+                title: @tr("Transmission");
                 VerticalLayout {
                     padding: 14px;
                     spacing: 12px;
                     alignment: start;
                     Field {
-                        label: "Pausa mínima entre emisiones (segundos) — protege el equipo";
+                        label: @tr("Minimum pause between transmissions (seconds) — protects the radio");
                         pause-spin := SpinBox { minimum: 0; maximum: 3600; value: root.form.pause; }
                     }
                     Field {
-                        label: "Retraso de la grilla — todas las TX salen esta cantidad después de la hora del bloque";
+                        label: @tr("Grid delay — every TX starts this long after the block time");
                         HorizontalLayout {
                             spacing: 8px;
                             offset-min-spin := SpinBox { minimum: 0; maximum: 180; value: root.form.offset-min; }
-                            Text { text: "min"; vertical-alignment: center; color: Theme.text-dim; }
+                            Text { text: @tr("min"); vertical-alignment: center; color: Theme.text-dim; }
                             offset-sec-spin := SpinBox { minimum: 0; maximum: 59; value: root.form.offset-sec; }
-                            Text { text: "s"; vertical-alignment: center; color: Theme.text-dim; }
+                            Text { text: @tr("s"); vertical-alignment: center; color: Theme.text-dim; }
                         }
                     }
                     Hint {
-                        text: "Los bloques se escriben en hora redonda (14:00). El retraso sirve para compartir frecuencia: si otro canal ocupa 14:00–14:03, poné 3 min y las tuyas empiezan a las 14:03.";
+                        text: @tr("Blocks are written on the hour (14:00). The delay lets several channels share a frequency: if another occupies 14:00–14:03, set 3 min and yours start at 14:03.");
                     }
                     Field {
-                        label: "Escala de color Robot / PD";
+                        label: @tr("Robot / PD color range");
                         range-box := ComboBox {
-                            model: ["Completa 0–255 (QSSTV, slowrx; recomendada)", "Estudio BT.601 16–235"];
+                            model: [@tr("Full 0–255 (QSSTV, slowrx; recommended)"), @tr("Studio BT.601 16–235")];
                             current-index: root.form.color-range;
                         }
                     }
                     vox-box := CheckBox {
-                        text: "Tonos de preámbulo antes del VIS (abren el VOX)";
+                        text: @tr("Preamble tones before VIS (open VOX)");
                         checked: root.form.vox;
                     }
                     fsk-box := CheckBox {
-                        text: "FSK ID al final (indicativo legible por MMSSTV)";
+                        text: @tr("FSK ID at the end (callsign readable by MMSSTV)");
                         checked: root.form.fsk;
                     }
                     cw-pre-box := CheckBox {
-                        text: "Identificación en CW antes del VIS (preámbulo)";
+                        text: @tr("CW identification before VIS (preamble)");
                         checked: root.form.cw-preamble;
                     }
                     cw-box := CheckBox {
-                        text: "Identificación en CW al final de cada emisión";
+                        text: @tr("CW identification at the end of each transmission");
                         checked: root.form.cw;
                     }
                     HorizontalLayout {
                         spacing: 12px;
                         Field {
-                            label: "Texto CW";
+                            label: @tr("CW text");
                             horizontal-stretch: 2;
                             cw-text-edit := LineEdit { text: root.form.cw-text; }
                         }
                         Field {
-                            label: "Velocidad (ppm)";
+                            label: @tr("Speed (wpm)");
                             cw-wpm-spin := SpinBox { minimum: 5; maximum: 50; value: root.form.cw-wpm; }
                         }
                         Field {
-                            label: "Tono (Hz)";
+                            label: @tr("Tone (Hz)");
                             cw-tone-spin := SpinBox { minimum: 300; maximum: 2500; step-size: 50; value: root.form.cw-tone; }
                         }
                     }
                     Hint {
-                        text: "El preámbulo va después de los tonos VOX y antes del VIS. El post, después de la imagen (y del FSK ID si está). El texto admite {call}. El reglamento (ENACOM) marca cada cuánto hay que identificarse.";
+                        text: @tr("The preamble comes after the VOX tones and before VIS. The post comes after the picture (and FSK ID if enabled). The text accepts {{call}}.");
                     }
                 }
             }
             Tab {
-                title: "Escucha y disparadores";
+                title: @tr("Listen and triggers");
                 VerticalLayout {
                     padding: 14px;
                     spacing: 10px;
@@ -369,32 +369,32 @@ export component ProjectDialog inherits Window {
                         spacing: 12px;
                         VerticalLayout {
                             alignment: center;
-                            listen-cw-box := CheckBox { text: "Decodificar CW"; checked: root.form.listen-cw; }
+                            listen-cw-box := CheckBox { text: @tr("Decode CW"); checked: root.form.listen-cw; }
                         }
                         Field {
-                            label: "Velocidad fija (ppm)";
+                            label: @tr("Fixed speed (wpm)");
                             listen-wpm-spin := SpinBox { minimum: 5; maximum: 50; value: root.form.listen-wpm; }
                         }
                         Field {
-                            label: "Tono (Hz)";
+                            label: @tr("Tone (Hz)");
                             listen-tone-spin := SpinBox { minimum: 300; maximum: 2500; step-size: 10; value: root.form.listen-tone; }
                         }
                     }
-                    listen-dtmf-box := CheckBox { text: "Decodificar DTMF"; checked: root.form.listen-dtmf; }
+                    listen-dtmf-box := CheckBox { text: @tr("Decode DTMF"); checked: root.form.listen-dtmf; }
                     Rectangle {
                         height: 1px;
                         background: Theme.border;
                     }
                     HorizontalLayout {
-                        PanelTitle { text: "DISPARADORES"; horizontal-stretch: 1; }
+                        PanelTitle { text: @tr("TRIGGERS"); horizontal-stretch: 1; }
                         ToolButton {
                             icon: "plus";
-                            text: "Agregar";
+                            text: @tr("Add");
                             clicked => { root.trigger-add(); }
                         }
                     }
                     Hint {
-                        text: "DTMF: la secuencia termina con # o tras 2,5 s de silencio (ej.: *12#). CW: se dispara cuando el texto recibido termina con esas palabras (ej.: QRV SSTV).";
+                        text: @tr("DTMF: the sequence ends with # or after 2.5 s of silence (e.g. *12#). CW: fires when received text ends with those words (e.g. QRV SSTV).");
                     }
                     ScrollView {
                         vertical-stretch: 1;
@@ -425,7 +425,7 @@ export component ProjectDialog inherits Window {
                                 }
                                 ComboBox {
                                     width: 130px;
-                                    model: ["Transmitir", "Pausar grilla", "Reanudar grilla"];
+                                    model: [@tr("Transmit"), @tr("Pause grid"), @tr("Resume grid")];
                                     current-index: t.action;
                                     selected => { root.trigger-edit(i, { enabled: t.enabled, source: t.source, code: t.code, action: self.current-index, program: t.program }); }
                                 }
@@ -500,10 +500,11 @@ export struct ConfigForm {
     autostart: bool,
     gpu: bool,
     light: bool,
+    lang: int,
 }
 
 export component ConfigDialog inherits Window {
-    title: "Equipo: audio, PTT y CAT";
+    title: @tr("Equipment: audio, PTT and CAT");
     icon: @image-url("../assets/icon.png");
     width: 640px;
     height: 660px;
@@ -547,6 +548,7 @@ export component ConfigDialog inherits Window {
             autostart: autostart-box.checked,
             gpu: gpu-box.checked,
             light: light-box.checked,
+            lang: lang-box.current-index,
         };
     }
 
@@ -565,42 +567,42 @@ export component ConfigDialog inherits Window {
         TabWidget {
             vertical-stretch: 1;
             Tab {
-                title: "Audio";
+                title: @tr("Audio");
                 VerticalLayout {
                     padding: 14px;
                     spacing: 12px;
                     alignment: start;
                     Field {
-                        label: "Salida (hacia el transmisor)";
+                        label: @tr("Output (to the transmitter)");
                         out-box := ComboBox { model: root.out-devices; current-index: root.form.out-index; }
                     }
                     Field {
-                        label: "Entrada (desde el receptor, para CW / DTMF)";
+                        label: @tr("Input (from the receiver, for CW / DTMF)");
                         in-box := ComboBox { model: root.in-devices; current-index: root.form.in-index; }
                     }
                     HorizontalLayout {
                         spacing: 12px;
                         Field {
-                            label: "Frecuencia de muestreo";
+                            label: @tr("Sample rate");
                             rate-box := ComboBox {
-                                model: ["La del dispositivo", "8000 Hz", "11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz"];
+                                model: [@tr("Device default"), "8000 Hz", "11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz"];
                                 current-index: root.form.rate-index;
                             }
                         }
                         Field {
-                            label: "Canal de salida";
+                            label: @tr("Output channel");
                             channel-box := ComboBox {
-                                model: ["Ambos", "Izquierdo", "Derecho"];
+                                model: [@tr("Both"), @tr("Left"), @tr("Right")];
                                 current-index: root.form.channel;
                             }
                         }
                     }
                     Field {
-                        label: "Nivel de salida: " + round(level-slider.value) + " %";
+                        label: @tr("Output level: {} %", round(level-slider.value));
                         level-slider := Slider { minimum: 0; maximum: 100; value: root.form.level; }
                     }
                     Field {
-                        label: "Corrección del reloj de la placa (ppm) — si las imágenes salen inclinadas";
+                        label: @tr("Sound-card clock correction (ppm) — if pictures come out slanted");
                         ppm-edit := LineEdit { text: root.form.ppm; placeholder-text: "0"; }
                     }
                     HorizontalLayout {
@@ -608,29 +610,29 @@ export component ConfigDialog inherits Window {
                         alignment: start;
                         ToolButton {
                             icon: "wave";
-                            text: "Tono de prueba 5 s (con PTT)";
+                            text: @tr("Test tone 5 s (with PTT)");
                             clicked => { root.test-tone(root.current()); }
                         }
                         ToolButton {
-                            text: "Volver a buscar dispositivos";
+                            text: @tr("Rescan devices");
                             clicked => { root.refresh(); }
                         }
                     }
                     Hint {
-                        text: "Con el tono de prueba ajustá el nivel hasta que el ALC del equipo apenas se mueva.";
+                        text: @tr("With the test tone, raise the level until the radio ALC just starts to move.");
                     }
                 }
             }
             Tab {
-                title: "PTT y CAT";
+                title: @tr("PTT and CAT");
                 VerticalLayout {
                     padding: 14px;
                     spacing: 12px;
                     alignment: start;
                     Field {
-                        label: "Cómo se pone en transmisión el equipo";
+                        label: @tr("How the radio is keyed");
                         method-box := ComboBox {
-                            model: ["Ninguno (solo audio)", "VOX del equipo", "Puerto serie (RTS / DTR)", "CAT por Hamlib (rigctld)"];
+                            model: [@tr("None (audio only)"), @tr("Radio VOX"), @tr("Serial port (RTS / DTR)"), @tr("CAT via Hamlib (rigctld)")];
                             current-index: root.method;
                             selected => { root.method = self.current-index; }
                         }
@@ -640,7 +642,7 @@ export component ConfigDialog inherits Window {
                         HorizontalLayout {
                             spacing: 12px;
                             Field {
-                                label: "Puerto detectado";
+                                label: @tr("Detected port");
                                 ComboBox {
                                     model: root.ports;
                                     current-index: root.port-index;
@@ -648,7 +650,7 @@ export component ConfigDialog inherits Window {
                                 }
                             }
                             Field {
-                                label: "u otro (ej.: COM7, /dev/ttyACM0)";
+                                label: @tr("or another (e.g. COM7, /dev/ttyACM0)");
                                 LineEdit {
                                     text: root.port-manual;
                                     edited(t) => { root.port-manual = t; }
@@ -658,9 +660,9 @@ export component ConfigDialog inherits Window {
                         HorizontalLayout {
                             spacing: 12px;
                             Field {
-                                label: "Línea";
+                                label: @tr("Line");
                                 ComboBox {
-                                    model: ["RTS", "DTR", "RTS y DTR"];
+                                    model: ["RTS", "DTR", @tr("RTS and DTR")];
                                     current-index: root.line;
                                     selected => { root.line = self.current-index; }
                                 }
@@ -668,7 +670,7 @@ export component ConfigDialog inherits Window {
                             VerticalLayout {
                                 alignment: end;
                                 CheckBox {
-                                    text: "Invertida (activa en bajo)";
+                                    text: @tr("Inverted (active low)");
                                     checked: root.invert;
                                     toggled => { root.invert = self.checked; }
                                 }
@@ -680,7 +682,7 @@ export component ConfigDialog inherits Window {
                         HorizontalLayout {
                             spacing: 12px;
                             Field {
-                                label: "Host de rigctld";
+                                label: @tr("rigctld host");
                                 horizontal-stretch: 2;
                                 LineEdit {
                                     text: root.cat-host;
@@ -688,7 +690,7 @@ export component ConfigDialog inherits Window {
                                 }
                             }
                             Field {
-                                label: "Puerto";
+                                label: @tr("Port");
                                 SpinBox {
                                     minimum: 1;
                                     maximum: 65535;
@@ -698,58 +700,65 @@ export component ConfigDialog inherits Window {
                             }
                         }
                         CheckBox {
-                            text: "Fijar la frecuencia de cada bloque antes de transmitir";
+                            text: @tr("Set each block frequency before transmitting");
                             checked: root.cat-freq;
                             toggled => { root.cat-freq = self.checked; }
                         }
                         Hint {
-                            text: "Ejemplo: rigctld -m <modelo> -r /dev/ttyUSB0 -s 38400. Hamlib soporta cientos de equipos.";
+                            text: @tr("Example: rigctld -m <model> -r /dev/ttyUSB0 -s 38400. Hamlib supports hundreds of radios.");
                         }
                     }
                     HorizontalLayout {
                         spacing: 12px;
                         Field {
-                            label: "Retardo antes del audio (ms)";
+                            label: @tr("Lead before audio (ms)");
                             lead-spin := SpinBox { minimum: 0; maximum: 5000; step-size: 50; value: root.form.lead; }
                         }
                         Field {
-                            label: "Cola después (ms)";
+                            label: @tr("Tail after (ms)");
                             tail-spin := SpinBox { minimum: 0; maximum: 5000; step-size: 50; value: root.form.tail; }
                         }
                         Field {
-                            label: "Tiempo máximo (s)";
+                            label: @tr("Maximum time (s)");
                             timeout-spin := SpinBox { minimum: 30; maximum: 3600; step-size: 30; value: root.form.timeout; }
                         }
                     }
                     HorizontalLayout {
                         alignment: start;
                         ToolButton {
-                            text: "Probar PTT (2 s)";
+                            text: @tr("Test PTT (2 s)");
                             clicked => { root.test-ptt(root.current()); }
                         }
                     }
                 }
             }
             Tab {
-                title: "General";
+                title: @tr("General");
                 VerticalLayout {
                     padding: 14px;
                     spacing: 12px;
                     alignment: start;
                     autostart-box := CheckBox {
-                        text: "Arrancar con la grilla al aire (estaciones desatendidas)";
+                        text: @tr("Start with the grid on air (unattended stations)");
                         checked: root.form.autostart;
                     }
                     gpu-box := CheckBox {
-                        text: "Dibujar la interfaz con la GPU (OpenGL; usa más memoria, requiere reiniciar)";
+                        text: @tr("Draw the UI with the GPU (OpenGL; uses more memory, requires restart)");
                         checked: root.form.gpu;
                     }
                     light-box := CheckBox {
-                        text: "Tema claro";
+                        text: @tr("Light theme");
                         checked: root.form.light;
                     }
+                    Field {
+                        label: @tr("Language");
+                        lang-box := ComboBox {
+                            model: ["English", "Español"];
+                            current-index: root.form.lang;
+                        }
+                    }
                     Hint {
-                        text: "Esta configuración es de esta PC (audio, puerto, PTT) y se guarda aparte del proyecto, en:\n" + root.config-path;
+                        text: @tr("This configuration belongs to this PC (audio, port, PTT) and is saved apart from the project, in:\n{}", root.config-path);
                     }
                 }
             }
@@ -777,7 +786,7 @@ export component ConfirmDialog inherits Window {
    
     in property <string> heading;
     in property <string> message;
-    in property <string> primary: "Aceptar";
+    in property <string> primary: @tr("OK");
     // Empty = button hidden.
     in property <string> secondary;
     in property <string> cancel;
@@ -824,7 +833,7 @@ export component ConfirmDialog inherits Window {
 // ───────────────────────── Rename ─────────────────────────
 
 export component RenameDialog inherits Window {
-    title: "Renombrar";
+    title: @tr("Rename");
     icon: @image-url("../assets/icon.png");
     preferred-width: 420px;
     background: Theme.bg;
@@ -847,11 +856,11 @@ export component RenameDialog inherits Window {
             alignment: end;
             spacing: 8px;
             ToolButton {
-                text: "Cancelar";
+                text: @tr("Cancel");
                 clicked => { root.cancel(); }
             }
             ToolButton {
-                text: "Guardar";
+                text: @tr("Save");
                 primary: true;
                 clicked => { root.save(name-edit.text); }
             }
@@ -874,7 +883,7 @@ export struct ProgramForm {
 }
 
 export component ProgramDialog inherits Window {
-    title: "Programa";
+    title: @tr("Program");
     icon: @image-url("../assets/icon.png");
     width: 760px;
     height: 720px;
@@ -907,26 +916,26 @@ export component ProgramDialog inherits Window {
         TabWidget {
             vertical-stretch: 1;
             Tab {
-                title: "Imágenes";
+                title: @tr("Pictures");
                 VerticalLayout {
                     padding: 12px;
                     spacing: 10px;
                     Field {
-                        label: "Nombre del programa";
+                        label: @tr("Program name");
                         name-edit := LineEdit {
                             text: root.form.name;
-                            placeholder-text: "Ej.: Noche en 80 m";
+                            placeholder-text: @tr("e.g. Night on 80 m");
                         }
                     }
                     Field {
-                        label: "Orden de las imágenes";
+                        label: @tr("Picture order");
                         rot-box := ComboBox {
-                            model: ["En orden", "Aleatorio (sin repetir)"];
+                            model: [@tr("In order"), @tr("Shuffle (no repeats)")];
                             current-index: root.form.rotation;
                         }
                     }
                     Field {
-                        label: "Modo SSTV del programa (default de sus imágenes)";
+                        label: @tr("Program SSTV mode (default for its pictures)");
                         mode-box := ComboBox {
                             model: root.mode-names;
                             current-index: root.form.mode;
@@ -934,7 +943,7 @@ export component ProgramDialog inherits Window {
                     }
                     FileDrop {
                         compact: true;
-                        title: "Soltá o elegí imágenes";
+                        title: @tr("Drop or pick pictures");
                         hint: "PNG, JPG, BMP o GIF. Varias a la vez.";
                         many: true;
                         dropped(paths) => { root.images-dropped(paths); }
@@ -957,7 +966,7 @@ export component ProgramDialog inherits Window {
                                         opacity: img.enabled ? 1.0 : 0.35;
                                     }
                                     if img.missing : Text {
-                                        text: "FALTA";
+                                        text: @tr("MISSING");
                                         font-size: 9px;
                                         color: #ffffff;
                                     }
@@ -1006,13 +1015,13 @@ export component ProgramDialog inherits Window {
                         }
                     }
                     if root.images.length == 0 : Text {
-                        text: "Un programa es un grupo de imágenes. Arrastrá varias o elegilas con el botón.";
+                        text: @tr("A program is a group of pictures. Drop several or pick them with the button.");
                         font-size: 12px;
                         color: Theme.text-faint;
                         wrap: word-wrap;
                     }
                     enabled-box := CheckBox {
-                        text: "Programa habilitado";
+                        text: @tr("Program enabled");
                         checked: root.form.enabled;
                     }
                 }
@@ -1024,44 +1033,44 @@ export component ProgramDialog inherits Window {
                     spacing: 12px;
                     alignment: start;
                     inherit-box := CheckBox {
-                        text: "Usar el CW del proyecto";
+                        text: @tr("Use the project CW");
                         checked: root.form.inherit-cw;
                         toggled => { root.inherit-cw = self.checked; }
                     }
                     if !root.inherit-cw : VerticalLayout {
                         spacing: 10px;
                         CheckBox {
-                            text: "CW antes del VIS";
+                            text: @tr("CW before VIS");
                             checked: root.form.cw-preamble;
                             toggled => { root.cw-pre-value = self.checked; }
                         }
                         CheckBox {
-                            text: "CW al final";
+                            text: @tr("CW at the end");
                             checked: root.form.cw;
                             toggled => { root.cw-value = self.checked; }
                         }
                         Field {
-                            label: "Texto (vacío = el del proyecto)";
+                            label: @tr("Text (empty = project text)");
                             pcw := LineEdit { text: root.form.cw-text; edited(t) => { root.cw-text-value = t; } }
                         }
                     }
                 }
             }
             Tab {
-                title: "Activaciones";
+                title: @tr("Activations");
                 VerticalLayout {
                     padding: 12px;
                     spacing: 8px;
                     HorizontalLayout {
-                        PanelTitle { text: "DISPARADORES DE ESTE PROGRAMA"; horizontal-stretch: 1; }
+                        PanelTitle { text: @tr("TRIGGERS FOR THIS PROGRAM"); horizontal-stretch: 1; }
                         ToolButton {
                             icon: "plus";
-                            text: "Agregar";
+                            text: @tr("Add");
                             clicked => { root.activation-add(); }
                         }
                     }
                     Hint {
-                        text: "Si se oye el código, se transmite este programa (o se pausa / reanuda la grilla). DTMF termina en #; CW, cuando el texto acaba en esas palabras.";
+                        text: @tr("When the code is heard, this program is transmitted (or the grid is paused / resumed). DTMF ends with #; CW, when the text ends with those words.");
                     }
                     ScrollView {
                         vertical-stretch: 1;
@@ -1089,7 +1098,7 @@ export component ProgramDialog inherits Window {
                                 }
                                 ComboBox {
                                     width: 140px;
-                                    model: ["Transmitir", "Pausar grilla", "Reanudar grilla"];
+                                    model: [@tr("Transmit"), @tr("Pause grid"), @tr("Resume grid")];
                                     current-index: t.action;
                                     selected => { root.activation-edit(i, { enabled: t.enabled, source: t.source, code: t.code, action: self.current-index, program: t.program }); }
                                 }

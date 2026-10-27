@@ -10,8 +10,8 @@ export global Files {
 }
 
 export component FileDrop inherits Rectangle {
-    in property <string> title: "Soltá el archivo aquí";
-    in property <string> hint: "Arrastrá desde el explorador o elegí con el botón.";
+    in property <string> title: @tr("Drop the file here");
+    in property <string> hint: @tr("Drag from the file manager or pick with the button.");
     in-out property <string> path;
     in property <bool> many: false;
     in property <bool> compact: false;
@@ -34,7 +34,7 @@ export component FileDrop inherits Rectangle {
         spacing: 4px;
         alignment: center;
         Text {
-            text: root.armed ? "Soltá…" : root.title;
+            text: root.armed ? @tr("Drop…") : root.title;
             font-size: 13px;
             font-weight: 600;
             color: Theme.text;
@@ -75,7 +75,7 @@ export component FileDrop inherits Rectangle {
         x: parent.width - self.width - 8px;
         y: (parent.height - self.height) / 2;
         icon: "folder";
-        text: "Elegir…";
+        text: @tr("Browse…");
         clicked => { root.browse(); }
     }
 }
@@ -85,9 +85,9 @@ export component PathDialog inherits Window {
     icon: @image-url("../assets/icon.png");
     preferred-width: 520px;
     background: Theme.bg;
-    in property <string> heading: "Archivo";
+    in property <string> heading: @tr("File");
     in property <string> hint;
-    in property <string> accept: "Aceptar";
+    in property <string> accept: @tr("OK");
     in-out property <string> path;
     in property <string> error;
     callback save(string);
@@ -111,7 +111,7 @@ export component PathDialog inherits Window {
             wrap: word-wrap;
         }
         FileDrop {
-            title: "Soltá el archivo o la carpeta aquí";
+            title: @tr("Drop the file or folder here");
             path: root.path;
             dropped(paths) => {
                 if paths.length > 0 {
@@ -121,10 +121,10 @@ export component PathDialog inherits Window {
             browse => { root.browse(); }
         }
         Field {
-            label: "O escribí la ruta";
+            label: @tr("Or type the path");
             path-edit := LineEdit {
                 text <=> root.path;
-                placeholder-text: "/ruta/al/archivo";
+                placeholder-text: "/path/to/file";
                 accepted(t) => { root.save(t); }
             }
         }
@@ -138,7 +138,7 @@ export component PathDialog inherits Window {
             alignment: end;
             spacing: 8px;
             ToolButton {
-                text: "Cancelar";
+                text: @tr("Cancel");
                 clicked => { root.cancel(); }
             }
             ToolButton {

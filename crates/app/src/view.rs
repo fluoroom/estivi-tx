@@ -38,24 +38,24 @@ pub fn color(c: Rgba) -> slint::Color {
     slint::Color::from_argb_u8(a, r, g, b)
 }
 
-const DAY_LETTERS: [&str; 7] = ["L", "M", "X", "J", "V", "S", "D"];
-const WEEKDAYS: [&str; 7] = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
-
 pub fn days_summary(days: &[bool; 7]) -> String {
     match days {
-        [true, true, true, true, true, true, true] => "Todos los días".into(),
-        [true, true, true, true, true, false, false] => "Lunes a viernes".into(),
-        [false, false, false, false, false, true, true] => "Fin de semana".into(),
-        [false, false, false, false, false, false, false] => "Ningún día".into(),
-        _ => days.iter().zip(DAY_LETTERS).map(|(&on, l)| if on { l } else { "·" }).collect::<Vec<_>>().join(" "),
+        [true, true, true, true, true, true, true] => crate::i18n::t("Every day", "Todos los días"),
+        [true, true, true, true, true, false, false] => crate::i18n::t("Monday to Friday", "Lunes a viernes"),
+        [false, false, false, false, false, true, true] => crate::i18n::t("Weekend", "Fin de semana"),
+        [false, false, false, false, false, false, false] => crate::i18n::t("No days", "Ningún día"),
+        _ => {
+            let letters = crate::i18n::get().pick("Mo Tu We Th Fr Sa Su", "L M X J V S D").split(' ');
+            days.iter().zip(letters).map(|(&on, l)| if on { l } else { "·" }).collect::<Vec<_>>().join(" ")
+        }
     }
 }
 
 pub fn hours_summary(slot: &Slot) -> String {
     if slot.every_min > 0 && !slot.end.trim().is_empty() {
-        format!("{}–{} · cada {} min", slot.start, slot.end, slot.every_min)
+        crate::i18n::get().t(&format!("{}–{} · every {} min", slot.start, slot.end, slot.every_min), &format!("{}–{} · cada {} min", slot.start, slot.end, slot.every_min))
     } else {
-        format!("{} · una vez", slot.start)
+        crate::i18n::get().t(&format!("{} · once", slot.start), &format!("{} · una vez", slot.start))
     }
 }
 
@@ -102,7 +102,7 @@ pub fn offset_label(offset_s: u32) -> String {
     if offset_s == 0 {
         String::new()
     } else {
-        format!(" · retraso +{}:{:02}", offset_s / 60, offset_s % 60)
+        crate::i18n::get().t(&format!(" · delay +{}:{:02}", offset_s / 60, offset_s % 60), &format!(" · retraso +{}:{:02}", offset_s / 60, offset_s % 60))
     }
 }
 
@@ -123,18 +123,24 @@ pub fn grid_midnight(day: NaiveDate, tz: GridTz) -> DateTime<Utc> {
 }
 
 pub fn day_label(day: NaiveDate, tz: GridTz, offset_s: u32) -> String {
-    format!(
-        "Hoy, {} {:02}/{:02} · {}{}",
-        WEEKDAYS[day.weekday().num_days_from_monday() as usize],
-        day.day(),
-        day.month(),
-        if tz == GridTz::Utc { "horario UTC" } else { "horario local" },
-        offset_label(offset_s)
+    let weekdays = crate::i18n::get().pick(
+        "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday",
+        "lunes,martes,miércoles,jueves,viernes,sábado,domingo",
+    );
+    let weekday = weekdays.split(',').nth(day.weekday().num_days_from_monday() as usize).unwrap_or("");
+    let tz_name = if tz == GridTz::Utc {
+        crate::i18n::ts("UTC time", "horario UTC")
+    } else {
+        crate::i18n::ts("local time", "horario local")
+    };
+    crate::i18n::get().t(
+        &format!("Today, {} {:02}/{:02} · {}{}", weekday, day.day(), day.month(), tz_name, offset_label(offset_s)),
+        &format!("Hoy, {} {:02}/{:02} · {}{}", weekday, day.day(), day.month(), tz_name, offset_label(offset_s)),
     )
 }
 
 pub fn program_names_with_rotation(project: &Project) -> Vec<slint::SharedString> {
-    std::iter::once("Rotación del canal".into()).chain(project.programs.iter().map(|p| p.name.as_str().into())).collect()
+    std::iter::once(crate::i18n::ts("Channel rotation", "Rotación del canal").into()).chain(project.programs.iter().map(|p| p.name.as_str().into())).collect()
 }
 
 pub fn layer_item(layer: &Layer, fonts: &[String]) -> crate::LayerItem {
@@ -190,8 +196,8 @@ mod tests {
 
     #[test]
     fn summaries() {
-        assert_eq!(days_summary(&[true; 7]), "Todos los días");
-        assert_eq!(days_summary(&[true, false, true, false, true, false, false]), "L · X · V · ·");
+        assert_eq!(days_summary(&[true; 7]), "Every day");
+        assert_eq!(days_summary(&[true, false, true, false, true, false, false]), "Mo · We · Fr · ·");
         assert_eq!(parse_mhz("14,230"), Some(14_230_000));
         assert_eq!(parse_mhz(""), Some(0));
         assert_eq!(parse_mhz("abc"), None);

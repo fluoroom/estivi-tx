@@ -4,10 +4,11 @@
 mod app;
 mod dialogs;
 mod editor;
+mod i18n;
 mod logger;
 mod view;
 
-use estivi_core::config::Config;
+use estivi_core::config::{Config, Lang};
 
 slint::include_modules!();
 
@@ -31,15 +32,23 @@ fn select_backend(renderer: &str) -> Result<(), slint::PlatformError> {
 fn main() {
     let config_path = Config::location();
     logger::init(config_path.with_file_name("estivi.log"));
-    let config = Config::load(&config_path).unwrap_or_else(|e| {
-        log::error!("configuración: {e:#}; se usan valores por defecto");
+    let mut config = Config::load(&config_path).unwrap_or_else(|e| {
+        log::error!("config: {e:#}; using defaults");
         Config::default()
     });
+    // First boot (no lang saved yet): follow the OS when it is English or Spanish.
+    if config.ui.lang.trim().is_empty() {
+        config.ui.lang = Lang::from_system().code().to_string();
+        if let Err(e) = config.save(&config_path) {
+            log::warn!("could not save language: {e:#}");
+        }
+    }
+    i18n::set(Lang::resolve(&config.ui.lang));
     // SLINT_BACKEND in the environment still wins, for troubleshooting.
     if std::env::var_os("SLINT_BACKEND").is_none() {
         let renderer = if config.ui.gpu_render { "femtovg" } else { "software" };
         if let Err(e) = select_backend(renderer) {
-            log::warn!("no se pudo elegir el renderizador {renderer}: {e}");
+            log::warn!("could not select renderer {renderer}: {e}");
         }
     }
     if let Err(e) = app::run(config, config_path) {

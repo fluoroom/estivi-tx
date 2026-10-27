@@ -7,7 +7,8 @@ use std::cell::RefCell;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use estivi_core::config::{Config, OutChannel, PttMethod, SerialLine};
+use estivi_core::config::{Config, Lang, OutChannel, PttMethod, SerialLine};
+use crate::i18n;
 use estivi_core::encoder::ColorRange;
 use estivi_core::engine::Command;
 use estivi_core::modes::Mode;
@@ -67,11 +68,15 @@ pub fn open_slot(app: &Shared, index: Option<usize>) {
     let Ok(dlg) = SlotDialog::new() else { return };
     apply_theme_to(&dlg.global::<crate::Theme>(), a.config.ui.light);
     dlg.set_program_names(strings(view::program_names_with_rotation(&a.project)));
-    let tz = if a.project.grid.timezone == GridTz::Utc { "UTC" } else { "hora local" };
+    let tz = if a.project.grid.timezone == GridTz::Utc {
+        "UTC".to_string()
+    } else {
+        i18n::t("local time", "hora local")
+    };
     dlg.set_tz_name(if a.project.grid.offset_s == 0 {
         tz.into()
     } else {
-        format!("{} · al aire +{}:{:02}", tz, a.project.grid.offset_s / 60, a.project.grid.offset_s % 60).into()
+        format!("{} · {} +{}:{:02}", tz, i18n::ts("on air", "al aire"), a.project.grid.offset_s / 60, a.project.grid.offset_s % 60).into()
     });
     let program_index = slot.program.and_then(|id| a.project.programs.iter().position(|p| p.id == id)).map_or(0, |i| i + 1);
     let d = slot.days;
@@ -124,21 +129,21 @@ pub fn open_slot(app: &Shared, index: Option<usize>) {
 
 fn slot_from_form(a: &App, f: &SlotForm, id: Option<u64>) -> Result<Slot, String> {
     if parse_hhmm(&f.start).is_none() {
-        return Err("La hora de comienzo tiene que ser HH:MM (por ejemplo 21:00).".into());
+        return Err(i18n::t("Start time must be HH:MM (for example 21:00).", "La hora de comienzo tiene que ser HH:MM (por ejemplo 21:00)."));
     }
     if f.repeat && parse_hhmm(&f.end).is_none() {
-        return Err("La hora «hasta» tiene que ser HH:MM.".into());
+        return Err(i18n::t("Until time must be HH:MM.", "La hora «hasta» tiene que ser HH:MM."));
     }
-    let freq_hz = view::parse_mhz(&f.freq).ok_or("La frecuencia va en MHz, por ejemplo 14.230.")?;
+    let freq_hz = view::parse_mhz(&f.freq).ok_or_else(|| i18n::t("Frequency is in MHz, for example 14.230.", "La frecuencia va en MHz, por ejemplo 14.230."))?;
     let days = [f.d0, f.d1, f.d2, f.d3, f.d4, f.d5, f.d6];
     if !days.iter().any(|&d| d) {
-        return Err("Elegí al menos un día.".into());
+        return Err(i18n::t("Pick at least one day.", "Elegí al menos un día."));
     }
     let program = (f.program > 0).then(|| a.project.programs.get(f.program as usize - 1).map(|p| p.id)).flatten();
     Ok(Slot {
         id: id.unwrap_or_else(|| a.project.next_slot_id()),
         enabled: f.enabled,
-        name: if f.name.trim().is_empty() { "Bloque".into() } else { f.name.trim().to_string() },
+        name: if f.name.trim().is_empty() { i18n::t("Block", "Bloque") } else { f.name.trim().to_string() },
         days,
         start: f.start.trim().to_string(),
         end: if f.repeat { f.end.trim().to_string() } else { String::new() },
@@ -155,7 +160,7 @@ pub fn rename_program(app: &Shared, index: usize) {
     let mut a = app.borrow_mut();
     let Some(program) = a.project.programs.get(index).cloned() else { return };
     let Ok(dlg) = RenameDialog::new() else { return };
-    dlg.set_heading("Nombre del programa".into());
+    dlg.set_heading(i18n::ts("Program name", "Nombre del programa").into());
     apply_theme_to(&dlg.global::<crate::Theme>(), a.config.ui.light);
     dlg.set_value(program.name.as_str().into());
     dlg.on_cancel({
@@ -244,7 +249,7 @@ pub fn open_project(app: &Shared) {
         listen_tone: p.listen.cw_tone_hz.round() as i32,
         listen_dtmf: p.listen.dtmf,
     });
-    let mut names = vec![SharedString::from("Próximo de la rotación")];
+    let mut names = vec![SharedString::from(i18n::ts("Next in rotation", "Próximo de la rotación"))];
     names.extend(p.programs.iter().map(|p| SharedString::from(p.name.as_str())));
     dlg.set_program_names(strings(names));
     let triggers = p.listen.triggers.clone();
@@ -308,11 +313,11 @@ pub fn open_project(app: &Shared) {
             let Some(dlg) = d.upgrade() else { return };
             with_app(&w, |a| {
                 if f.call.trim().is_empty() && f.cw {
-                    dlg.set_error("Para identificarse en CW hace falta el indicativo.".into());
+                    dlg.set_error(i18n::ts("A callsign is required for CW identification.", "Para identificarse en CW hace falta el indicativo.").into());
                     return;
                 }
                 let p = &mut a.project;
-                p.name = if f.name.trim().is_empty() { "Canal SSTV".into() } else { f.name.trim().to_string() };
+                p.name = if f.name.trim().is_empty() { i18n::t("SSTV Channel", "Canal SSTV") } else { f.name.trim().to_string() };
                 p.station.call = f.call.trim().to_uppercase();
                 p.station.operator = f.operator.trim().to_string();
                 p.station.qth = f.qth.trim().to_string();
@@ -362,9 +367,9 @@ fn device_labels(list: &[String], found: &[audio::DeviceInfo]) -> ModelRc<Shared
     strings(
         list.iter()
             .map(|id| match found.iter().find(|d| d.id == *id) {
-                _ if id.is_empty() => "Predeterminada del sistema".into(),
+                _ if id.is_empty() => i18n::ts("System default", "Predeterminada del sistema").into(),
                 Some(d) => d.label().into(),
-                None => format!("{id} (no conectado)").into(),
+                None => format!("{} ({})", id, i18n::ts("not connected", "no conectado")).into(),
             })
             .collect(),
     )
@@ -381,7 +386,11 @@ fn fill_lists(a: &mut App, dlg: &ConfigDialog) {
     dlg.set_in_devices(device_labels(&a.dialogs.ins, &ins));
     a.dialogs.outs_found = outs;
     a.dialogs.ins_found = ins;
-    let none = if ports_found.is_empty() { "(no se detectaron puertos)" } else { "(elegir)" };
+    let none = if ports_found.is_empty() {
+        i18n::ts("(no ports detected)", "(no se detectaron puertos)")
+    } else {
+        i18n::ts("(choose)", "(elegir)")
+    };
     dlg.set_ports(strings(a.dialogs.ports.iter().map(|p| if p.is_empty() { none.into() } else { p.as_str().into() }).collect()));
 }
 
@@ -428,6 +437,10 @@ fn form_of(a: &App) -> ConfigForm {
         autostart: c.ui.autostart,
         gpu: c.ui.gpu_render,
         light: c.ui.light,
+        lang: match Lang::resolve(&c.ui.lang) {
+            Lang::English => 0,
+            Lang::Spanish => 1,
+        },
     }
 }
 
@@ -444,9 +457,13 @@ fn config_from_form(a: &App, f: &ConfigForm) -> Result<Config, String> {
     };
     c.audio.level = (f.level / 100.0).clamp(0.0, 1.0);
     let ppm = f.ppm.trim().replace(',', ".");
-    c.audio.tx_ppm = if ppm.is_empty() { 0.0 } else { ppm.parse::<f64>().map_err(|_| "La corrección del reloj tiene que ser un número (ppm).")? };
+    c.audio.tx_ppm = if ppm.is_empty() {
+        0.0
+    } else {
+        ppm.parse::<f64>().map_err(|_| i18n::t("Clock correction must be a number (ppm).", "La corrección del reloj tiene que ser un número (ppm)."))?
+    };
     if c.audio.tx_ppm.abs() > 5000.0 {
-        return Err("La corrección del reloj parece demasiado grande (más de 5000 ppm).".into());
+        return Err(i18n::t("Clock correction looks too large (over 5000 ppm).", "La corrección del reloj parece demasiado grande (más de 5000 ppm)."));
     }
     c.ptt.method = match f.ptt_method {
         0 => PttMethod::None,
@@ -456,7 +473,7 @@ fn config_from_form(a: &App, f: &ConfigForm) -> Result<Config, String> {
     };
     c.ptt.port = if !f.port_manual.trim().is_empty() { f.port_manual.trim().to_string() } else { pick(&a.dialogs.ports, f.port_index) };
     if c.ptt.method == PttMethod::Serial && c.ptt.port.is_empty() {
-        return Err("Elegí el puerto serie del PTT.".into());
+        return Err(i18n::t("Choose the serial port for PTT.", "Elegí el puerto serie del PTT."));
     }
     c.ptt.line = match f.line {
         1 => SerialLine::Dtr,
@@ -473,6 +490,7 @@ fn config_from_form(a: &App, f: &ConfigForm) -> Result<Config, String> {
     c.ui.autostart = f.autostart;
     c.ui.gpu_render = f.gpu;
     c.ui.light = f.light;
+    c.ui.lang = if f.lang == 1 { "es" } else { "en" }.into();
     Ok(c)
 }
 
@@ -499,8 +517,8 @@ pub fn open_config(app: &Shared) {
             });
         }
     };
-    dlg.on_test_tone(test(w.clone(), dlg.as_weak(), || Command::TestTone, "Tono de 1900 Hz durante 5 s. Si algo falla, el error aparece en la ventana principal."));
-    dlg.on_test_ptt(test(w.clone(), dlg.as_weak(), || Command::TestPtt, "PTT activado 2 s. Si algo falla, el error aparece en la ventana principal."));
+    dlg.on_test_tone(test(w.clone(), dlg.as_weak(), || Command::TestTone, i18n::ts("1900 Hz tone for 5 s. If something fails, the error shows in the main window.", "Tono de 1900 Hz durante 5 s. Si algo falla, el error aparece en la ventana principal.")));
+    dlg.on_test_ptt(test(w.clone(), dlg.as_weak(), || Command::TestPtt, i18n::ts("PTT keyed for 2 s. If something fails, the error shows in the main window.", "PTT activado 2 s. Si algo falla, el error aparece en la ventana principal.")));
     dlg.on_refresh({
         let (w, d) = (w.clone(), dlg.as_weak());
         move || {
@@ -528,13 +546,15 @@ pub fn open_config(app: &Shared) {
             with_app(&w, |a| match config_from_form(a, &f) {
                 Ok(c) => {
                     a.config = c;
+                    i18n::apply_slint(Lang::resolve(&a.config.ui.lang));
                     apply_theme_to(&a.ui().global::<crate::Theme>(), a.config.ui.light);
                     a.engine.send(Command::SetConfig(Box::new(a.config.clone())));
+                    a.refresh_all();
                     match a.config.save(&a.config_path) {
                         Ok(()) => {
                             let _ = dlg.hide();
                         }
-                        Err(e) => dlg.set_error(format!("No se pudo guardar: {e:#}").into()),
+                        Err(e) => dlg.set_error(format!("{}: {e:#}", i18n::ts("Could not save", "No se pudo guardar")).into()),
                     }
                 }
                 Err(e) => dlg.set_error(e.into()),
@@ -566,7 +586,7 @@ pub fn open_program(app: &Shared, index: Option<usize>) {
     let existing = index.and_then(|i| a.project.programs.get(i).cloned());
     let program = existing.clone().unwrap_or_else(|| {
         let id = a.project.next_program_id();
-        estivi_core::project::Program { id, name: "Programa".into(), ..Default::default() }
+        estivi_core::project::Program { id, name: i18n::t("Program", "Programa"), ..Default::default() }
     });
     let Ok(dlg) = ProgramDialog::new() else { return };
     bind_files(&dlg.global::<crate::Files>());
@@ -601,8 +621,8 @@ pub fn open_program(app: &Shared, index: Option<usize>) {
         cw_text: program.cw_text.as_str().into(),
         mode: view::mode_index(program.mode),
     });
-    dlg.set_mode_names(ModelRc::new(VecModel::from(view::mode_choices("Del proyecto"))));
-    dlg.set_image_modes(ModelRc::new(VecModel::from(view::mode_choices("Del programa"))));
+    dlg.set_mode_names(ModelRc::new(VecModel::from(view::mode_choices(i18n::ts("From project", "Del proyecto")))));
+    dlg.set_image_modes(ModelRc::new(VecModel::from(view::mode_choices(i18n::ts("From program", "Del programa")))));
     let images: Vec<ImageItem> = program.images.iter().map(|img| image_item(&mut a, img)).collect();
     let image_model = Rc::new(VecModel::from(images));
     dlg.set_images(image_model.clone().into());
@@ -755,7 +775,7 @@ pub fn open_program(app: &Shared, index: Option<usize>) {
             if creating {
                 with_app(&w, |a| {
                     if let Some(i) = a.project.programs.iter().position(|p| p.id == program_id) {
-                        if a.project.programs[i].images.is_empty() && a.project.programs[i].name == "Programa" {
+                        if a.project.programs[i].images.is_empty() && (a.project.programs[i].name == "Programa" || a.project.programs[i].name == "Program") {
                             a.project.programs.remove(i);
                             a.changed();
                         }
@@ -798,9 +818,9 @@ fn refresh_program_images(a: &mut App, program_id: u64) {
 fn program_from_form(a: &mut App, f: &ProgramForm, id: u64) -> Result<(), String> {
     let activations = a.dialogs.activations.iter().filter(|t| !t.code.is_empty()).cloned().collect();
     let Some(p) = a.project.programs.iter_mut().find(|p| p.id == id) else {
-        return Err("El programa ya no existe.".into());
+        return Err(i18n::t("The program no longer exists.", "El programa ya no existe."));
     };
-    p.name = if f.name.trim().is_empty() { "Programa".into() } else { f.name.trim().to_string() };
+    p.name = if f.name.trim().is_empty() { i18n::t("Program", "Programa") } else { f.name.trim().to_string() };
     p.enabled = f.enabled;
     p.rotation = if f.rotation == 1 { estivi_core::project::Rotation::Shuffle } else { estivi_core::project::Rotation::Sequential };
     if f.inherit_cw {
@@ -902,7 +922,7 @@ pub fn ask_path(app: &Shared, heading: &str, hint: &str, accept: &str, purpose: 
         move |path| {
             let Some(dlg) = d.upgrade() else { return };
             if path.trim().is_empty() {
-                dlg.set_error("Soltá un archivo, elegilo o escribí la ruta.".into());
+                dlg.set_error(i18n::ts("Drop a file, pick one, or type the path.", "Soltá un archivo, elegilo o escribí la ruta.").into());
                 return;
             }
             with_app(&w, |a| {

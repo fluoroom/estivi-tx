@@ -1,5 +1,7 @@
 //! Estivi core: everything that is not UI.
 
+pub use config::Lang;
+
 pub mod encoder;
 pub mod modes;
 pub mod morse;

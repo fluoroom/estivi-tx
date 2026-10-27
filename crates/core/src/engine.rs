@@ -15,7 +15,7 @@ use image::RgbaImage;
 
 use crate::aslog::{self, LogEntry};
 use crate::compose::{Composer, data_ctx};
-use crate::config::{Config, PttMethod};
+use crate::config::{Config, Lang, PttMethod};
 use crate::dynamic::{ApiCache, expand};
 use crate::encoder::{ScanImage, TxPlan};
 use crate::modes::Mode;
@@ -372,6 +372,10 @@ impl Worker {
         }
     }
 
+    fn tr(&self, en: &str, es: &str) -> String {
+        Lang::resolve(&self.config.ui.lang).t(en, es)
+    }
+
     fn pause_until(&self) -> Option<DateTime<Utc>> {
         self.last_end.map(|t| t + chrono::TimeDelta::seconds(self.project.tx.min_pause_s as i64))
     }
@@ -383,7 +387,7 @@ impl Worker {
                 .program
                 .filter(|id| self.project.program(*id).is_some())
                 .or_else(|| self.rotator.peek(&self.project.programs, self.project.rotation));
-            let program_name = program.and_then(|id| self.project.program(id)).map_or_else(|| "(sin programas)".into(), |p| p.name.clone());
+            let program_name = program.and_then(|id| self.project.program(id)).map_or_else(|| self.tr("(no programs)", "(sin programas)"), |p| p.name.clone());
             NextUp {
                 at: o.at,
                 due: due_time(o.at, pause_until),
@@ -426,7 +430,7 @@ impl Worker {
                     }
                     Due::Go => {
                         self.cursor = n.at + chrono::TimeDelta::seconds(1);
-                        self.transmit(n.program, format!("grilla: {}", n.slot), n.freq_hz);
+                        self.transmit(n.program, format!("{}: {}", self.tr("grid", "grilla"), n.slot), n.freq_hz);
                         self.compute_next();
                     }
                 }
@@ -514,7 +518,7 @@ impl Worker {
                 return Ok(Outcome::Cancelled);
             }
             if started.elapsed() > timeout {
-                anyhow::bail!("se cortó por superar el tiempo máximo de transmisión ({} s)", timeout.as_secs());
+                anyhow::bail!("{} ({} s)", self.tr("cut: transmission exceeded the maximum time", "se cortó por superar el tiempo máximo de transmisión"), timeout.as_secs());
             }
             let elapsed_ms = (playback.played_samples() as f64 / rate * 1000.0).min(total_ms);
             on_progress(self, elapsed_ms);
@@ -544,13 +548,13 @@ impl Worker {
             .filter(|id| project.program(*id).is_some())
             .or_else(|| self.rotator.next(&project.programs, project.rotation));
         let Some(prog) = id.and_then(|id| project.program(id)).cloned() else {
-            self.set_status(|s| s.error = Some("No hay programas habilitados para transmitir".into()));
+            self.set_status(|s| s.error = Some(self.tr("No programs enabled to transmit", "No hay programas habilitados para transmitir")));
             return;
         };
         self.rotator.aired(prog.id);
         let image_idx = self.image_rotators.entry(prog.id).or_default().next(&prog.images, prog.rotation);
         let Some(image_idx) = image_idx else {
-            self.set_status(|s| s.error = Some(format!("«{}» no tiene imágenes habilitadas", prog.name)));
+            self.set_status(|s| s.error = Some(self.tr(&format!("“{}” has no enabled pictures", prog.name), &format!("«{}» no tiene imágenes habilitadas", prog.name))));
             return;
         };
         let image = &prog.images[image_idx];
@@ -618,7 +622,7 @@ impl Worker {
         let result_text = match &result {
             Ok(Outcome::Completed) => "OK".to_string(),
             Ok(Outcome::Cancelled) => "Cortada".to_string(),
-            Err(e) => format!("Error: {e:#}"),
+            Err(e) => format!("{}: {e:#}", self.tr("Error", "Error")),
         };
         let entry = LogEntry {
             start: started,
@@ -658,7 +662,7 @@ impl Worker {
         let (seg, total_ms) = if tone { (Seg::tone(1900.0, 5000.0), 5000.0) } else { (Seg::silence(2000.0), 2000.0) };
         let result = self.air(0, total_ms, move |rate| Box::new(Synth::new(std::iter::once(seg), rate as f64 * k, 1.0, total_ms)), |_, _| {});
         if let Err(e) = result {
-            self.set_status(|s| s.error = Some(format!("Prueba: {e:#}")));
+            self.set_status(|s| s.error = Some(format!("{}: {e:#}", self.tr("Test", "Prueba"))));
         }
     }
 }

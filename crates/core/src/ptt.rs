@@ -28,7 +28,7 @@ impl Ptt {
             PttMethod::None | PttMethod::Vox => Ptt::None,
             PttMethod::Serial => {
                 if cfg.ptt.port.trim().is_empty() {
-                    bail!("PTT serie: no hay puerto elegido");
+                    bail!("serial PTT: no port selected");
                 }
                 let port = serialport::new(cfg.ptt.port.trim(), 9600)
                     .timeout(Duration::from_millis(200))

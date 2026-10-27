@@ -31,7 +31,7 @@ impl Default for Project {
     fn default() -> Self {
         Project {
             format: FORMAT,
-            name: "Canal SSTV".into(),
+            name: "SSTV Channel".into(),
             station: Station::default(),
             tx: TxSettings::default(),
             rotation: Rotation::Sequential,
@@ -263,7 +263,7 @@ impl Default for Slot {
         Slot {
             id: 0,
             enabled: true,
-            name: "Bloque".into(),
+            name: "Block".into(),
             days: [true; 7],
             start: "21:00".into(),
             end: "23:00".into(),
@@ -323,7 +323,7 @@ impl Project {
     pub fn load(path: &Path) -> anyhow::Result<Project> {
         let text = std::fs::read_to_string(path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
         let mut p: Project = toml::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
-        anyhow::ensure!(p.format <= FORMAT, "el proyecto es de una versión más nueva de Estivi");
+        anyhow::ensure!(p.format <= FORMAT, "this project is from a newer Estivi version");
         p.migrate();
         Ok(p)
     }
@@ -346,7 +346,7 @@ impl Project {
                 }
                 used.insert(s.id);
                 s.program = Some(p.id);
-                if s.name.trim().is_empty() || s.name == "Bloque" {
+                if s.name.trim().is_empty() || s.name == "Bloque" || s.name == "Block" {
                     s.name = p.name.clone();
                 }
                 extra.push(s);

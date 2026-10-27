@@ -1,6 +1,6 @@
 [package]
 name = "estivi"
-description = "Estivi: programación de canal SSTV"
+description = "Estivi: SSTV channel scheduler"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

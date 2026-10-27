@@ -3,7 +3,7 @@ import { Theme, ToolButton, PanelTitle } from "theme.slint";
 import { ModeCheat } from "types.slint";
 
 export component UtilsDialog inherits Window {
-    title: "Utils — machete SSTV";
+    title: @tr("Utils — SSTV cheat sheet");
     icon: @image-url("../assets/icon.png");
     preferred-width: 640px;
     preferred-height: 720px;
@@ -16,13 +16,13 @@ export component UtilsDialog inherits Window {
         padding: 16px;
         spacing: 12px;
         Text {
-            text: "Machete de modos SSTV";
+            text: @tr("SSTV mode cheat sheet");
             font-size: 16px;
             font-weight: 600;
             color: Theme.text;
         }
         Text {
-            text: "El modo del proyecto es el default. Un programa puede fijar otro para sus imágenes, y cada imagen puede fijar el suyo. La gráfica del canal se escala al lienzo del modo que sale al aire.";
+            text: @tr("The project mode is the default. A program can set another for its pictures, and each picture can set its own. Channel graphics scale to the canvas of the mode that goes on air.");
             font-size: 12px;
             color: Theme.text-dim;
             wrap: word-wrap;
@@ -38,10 +38,10 @@ export component UtilsDialog inherits Window {
             padding-top: 4px;
             padding-bottom: 4px;
             spacing: 8px;
-            Text { text: "Modo"; width: 120px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
-            Text { text: "Lienzo"; width: 110px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
-            Text { text: "Color"; horizontal-stretch: 1; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
-            Text { text: "Imagen"; width: 70px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: @tr("Mode"); width: 120px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: @tr("Canvas"); width: 110px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: @tr("Color"); horizontal-stretch: 1; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
+            Text { text: @tr("Picture"); width: 70px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
             Text { text: "VIS"; width: 48px; font-size: 11px; font-weight: 600; color: Theme.text-faint; }
         }
         Rectangle { height: 1px; background: Theme.border; }
@@ -67,7 +67,7 @@ export component UtilsDialog inherits Window {
             }
         }
         Text {
-            text: "M2, M4 y S2 barren en la mitad de tiempo que M1/S1: el lienzo sigue en 320 px, pero se escriben 160(320). Robot 36 alterna R-Y/B-Y (4:2:0); Robot 72 manda ambos croma en cada línea (4:2:2). Martin y Scottie envían G, B, R en secuencia.";
+            text: @tr("M2, M4 and S2 scan in half the time of M1/S1: the canvas stays 320 px, written as 160(320). Robot 36 alternates R-Y/B-Y (4:2:0); Robot 72 sends both chromas on every line (4:2:2). Martin and Scottie send G, B, R in sequence.");
             font-size: 11px;
             color: Theme.text-faint;
             wrap: word-wrap;
@@ -75,7 +75,7 @@ export component UtilsDialog inherits Window {
         HorizontalLayout {
             alignment: end;
             ToolButton {
-                text: "Cerrar";
+                text: @tr("Close");
                 primary: true;
                 clicked => { root.dismiss(); }
             }

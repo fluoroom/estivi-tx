@@ -15,8 +15,30 @@ use estivi_core::dynamic::PLACEHOLDERS;
 use estivi_core::graphics::{Align, ApiSource, Fit, ImageLayer, Layer, LayerKind, Rgba, TextLayer};
 
 use crate::app::{App, Shared, apply_theme_to, bind_files, hook_os_drops, is_image, paths_model, pick_native, with_app, NativePick};
+use crate::i18n;
 use crate::view;
 use crate::{EditorWindow, LayerItem};
+
+fn placeholder_desc(en: &str) -> String {
+    match en {
+        "Callsign" => i18n::t("Callsign", "Indicativo"),
+        "Operator" => i18n::t("Operator", "Operador"),
+        "UTC time (HH:MM)" => i18n::t("UTC time (HH:MM)", "Hora UTC (HH:MM)"),
+        "UTC date (YYYY-MM-DD)" => i18n::t("UTC date (YYYY-MM-DD)", "Fecha UTC (AAAA-MM-DD)"),
+        "Local time (HH:MM)" => i18n::t("Local time (HH:MM)", "Hora local (HH:MM)"),
+        "UTC with a custom format" => i18n::t("UTC with a custom format", "UTC con formato propio"),
+        "Transmission number" => i18n::t("Transmission number", "Número de emisión"),
+        "Number with zeros (0042)" => i18n::t("Number with zeros (0042)", "Número con ceros (0042)"),
+        "SSTV mode" => i18n::t("SSTV mode", "Modo SSTV"),
+        "Program name" => i18n::t("Program name", "Nombre del programa"),
+        "Frequency (MHz)" => i18n::t("Frequency (MHz)", "Frecuencia (MHz)"),
+        "Last received CW text" => i18n::t("Last received CW text", "Último texto CW recibido"),
+        "Last callsign heard in CW" => i18n::t("Last callsign heard in CW", "Último indicativo oído en CW"),
+        "Last DTMF sequence" => i18n::t("Last DTMF sequence", "Última secuencia DTMF"),
+        "This layer's API response" => i18n::t("This layer's API response", "Respuesta de la API de la capa"),
+        other => other.to_string(),
+    }
+}
 
 /// Snap distance, as a fraction of the canvas.
 const SNAP: f32 = 0.015;
@@ -120,8 +142,8 @@ impl Editor {
         let current = Rc::new(VecModel::default());
         win.set_layers(layers.clone().into());
         win.set_current(current.clone().into());
-        let labels: Vec<SharedString> = std::iter::once("Insertar dato…".into())
-            .chain(PLACEHOLDERS.iter().map(|(t, d)| SharedString::from(format!("{t}  —  {d}"))))
+        let labels: Vec<SharedString> = std::iter::once(i18n::ts("Insert field…", "Insertar dato…").into())
+            .chain(PLACEHOLDERS.iter().map(|(t, d)| SharedString::from(format!("{t}  —  {}", placeholder_desc(d)))))
             .collect();
         let tokens: Vec<SharedString> = std::iter::once("".into()).chain(PLACEHOLDERS.iter().map(|(t, _)| SharedString::from(*t))).collect();
         win.set_placeholders(ModelRc::new(VecModel::from(labels)));
@@ -313,7 +335,11 @@ impl Editor {
             self.preview = programs.first().map(|p| p.id);
         }
         let names: Vec<SharedString> =
-            if programs.is_empty() { vec!["(sin programas: solo fondo)".into()] } else { programs.iter().map(|p| p.name.as_str().into()).collect() };
+            if programs.is_empty() {
+                vec![i18n::ts("(no programs: background only)", "(sin programas: solo fondo)").into()]
+            } else {
+                programs.iter().map(|p| p.name.as_str().into()).collect()
+            };
         self.win.set_program_names(ModelRc::new(VecModel::from(names)));
         self.win.set_preview_index(self.preview.and_then(|id| programs.iter().position(|p| p.id == id)).unwrap_or(0) as i32);
 
@@ -367,7 +393,7 @@ impl Editor {
 
     fn render(&mut self, a: &mut App) {
         let program = self.preview.and_then(|id| a.project.program(id)).cloned();
-        let name = program.as_ref().map_or("Programa", |p| p.name.as_str()).to_string();
+        let name = program.as_ref().map_or(i18n::ts("Program", "Programa"), |p| p.name.as_str()).to_string();
         let mode = a.project.mode_of(program.as_ref(), program.as_ref().and_then(|p| p.enabled_images().next()));
         let ctx = data_ctx(&a.project, Utc::now(), a.status.serial + 1, &name, 0, &a.status.last_cw, &a.status.last_dtmf, mode);
         let dir = a.dir();
@@ -420,7 +446,7 @@ impl Editor {
         let n = a.project.graphics.layers.iter().filter(|l| matches!(l.kind, LayerKind::Text(_))).count() + 1;
         let layer = Layer {
             id,
-            name: format!("Texto {n}"),
+            name: format!("{} {n}", i18n::ts("Text", "Texto")),
             x: 0.04,
             y: 0.80,
             w: 0.92,
@@ -435,7 +461,7 @@ impl Editor {
         let id = a.project.graphics.next_layer_id();
         let layer = Layer {
             id,
-            name: "Imagen".into(),
+            name: i18n::t("Image", "Imagen"),
             x: 0.66,
             y: 0.04,
             w: 0.3,
@@ -454,7 +480,7 @@ impl Editor {
         let id = a.project.graphics.next_layer_id();
         let layer = Layer {
             id,
-            name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Imagen".into()),
+            name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| i18n::t("Image", "Imagen")),
             x: 0.96 - w,
             y: 0.04,
             w,
@@ -647,17 +673,17 @@ impl Editor {
             LayerKind::Image(_) => None,
         });
         let Some(src) = src.filter(|s| !s.url.trim().is_empty()) else {
-            self.win.set_api_result("Falta la URL.".into());
+            self.win.set_api_result(i18n::ts("URL is missing.", "Falta la URL.").into());
             return;
         };
-        self.win.set_api_result("Consultando…".into());
+        self.win.set_api_result(i18n::ts("Fetching…", "Consultando…").into());
         let cache = a.composer.api.clone();
         let win = self.win.as_weak();
         let flag = self.api_updated.clone();
         std::thread::spawn(move || {
             let text = match cache.fetch_now(&src) {
-                Ok(v) => format!("Respuesta: {v}"),
-                Err(e) => format!("Error: {e}"),
+                Ok(v) => format!("{}: {v}", i18n::ts("Response", "Respuesta")),
+                Err(e) => format!("{}: {e}", i18n::ts("Error", "Error")),
             };
             flag.store(true, Ordering::Relaxed);
             let _ = win.upgrade_in_event_loop(move |w| w.set_api_result(text.into()));

@@ -113,6 +113,89 @@ impl Default for CatConfig {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Lang {
+    #[default]
+    English,
+    Spanish,
+}
+
+impl Lang {
+    pub fn code(self) -> &'static str {
+        match self {
+            Lang::English => "en",
+            Lang::Spanish => "es",
+        }
+    }
+
+    /// `None` if empty or not English/Spanish (caller should default to English).
+    pub fn parse(s: &str) -> Option<Self> {
+        let primary = s.trim().split(['-', '_', '.', '@', ':']).next().unwrap_or("").to_ascii_lowercase();
+        match primary.as_str() {
+            "en" | "eng" | "english" => Some(Lang::English),
+            "es" | "spa" | "spanish" | "español" | "espanol" => Some(Lang::Spanish),
+            _ => None,
+        }
+    }
+
+    /// System locale: Spanish if the OS is es, otherwise English.
+    pub fn from_system() -> Self {
+        for key in ["LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"] {
+            if let Ok(v) = std::env::var(key) {
+                for part in v.split(':') {
+                    if let Some(lang) = Self::parse(part) {
+                        return lang;
+                    }
+                    let primary = part.split(['-', '_', '.']).next().unwrap_or("").to_ascii_lowercase();
+                    if primary.is_empty() || primary == "c" || primary == "posix" {
+                        continue;
+                    }
+                    return Lang::English;
+                }
+            }
+        }
+        #[cfg(windows)]
+        {
+            return windows_ui_lang();
+        }
+        #[cfg(not(windows))]
+        Lang::English
+    }
+
+    /// Saved `"en"`/`"es"`, or system language when the setting has never been written.
+    pub fn resolve(saved: &str) -> Self {
+        Self::parse(saved).unwrap_or_else(Self::from_system)
+    }
+
+    pub fn pick(self, en: &'static str, es: &'static str) -> &'static str {
+        match self {
+            Lang::English => en,
+            Lang::Spanish => es,
+        }
+    }
+
+    pub fn t(self, en: &str, es: &str) -> String {
+        match self {
+            Lang::English => en.to_string(),
+            Lang::Spanish => es.to_string(),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn windows_ui_lang() -> Lang {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetUserDefaultUILanguage() -> u16;
+    }
+    let primary = unsafe { GetUserDefaultUILanguage() } & 0x3FF;
+    match primary {
+        0x0A => Lang::Spanish,
+        _ => Lang::English,
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
@@ -125,6 +208,8 @@ pub struct UiConfig {
     pub autostart: bool,
     /// Light chrome instead of the default dark one.
     pub light: bool,
+    /// `"en"` / `"es"`. Empty = not chosen yet; first boot picks the system language.
+    pub lang: String,
 }
 
 pub const FILE_NAME: &str = "estivi.toml";
@@ -185,7 +270,18 @@ mod tests {
         let mut c = Config::default();
         c.ptt.method = PttMethod::Serial;
         c.ptt.port = "/dev/ttyUSB0".into();
+        c.ui.lang = "es".into();
         let s = toml::to_string_pretty(&c).unwrap();
         assert_eq!(toml::from_str::<Config>(&s).unwrap(), c);
+    }
+
+    #[test]
+    fn lang_parse() {
+        assert_eq!(Lang::parse("es_AR.UTF-8"), Some(Lang::Spanish));
+        assert_eq!(Lang::parse("en_US"), Some(Lang::English));
+        assert_eq!(Lang::parse("fr_FR"), None);
+        assert_eq!(Lang::parse(""), None);
+        assert_eq!(Lang::resolve("es"), Lang::Spanish);
+        assert_eq!(Lang::parse("pt_BR"), None);
     }
 }

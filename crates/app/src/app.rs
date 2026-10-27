@@ -19,6 +19,7 @@ use estivi_core::modes::Mode;
 use estivi_core::project::{self, GridTz, Program, Project, Rotation, Slot, relativize, resolve};
 use estivi_core::schedule;
 
+use crate::i18n;
 use crate::view;
 use crate::{ConfirmDialog, Files, GridBlock, LogItem, MainWindow, ProgramItem, SlotItem, Theme};
 
@@ -99,31 +100,31 @@ pub fn pick_native(kind: NativePick, done: impl FnOnce(Vec<PathBuf>) + Send + 's
         let ext = project::EXTENSION;
         let paths = match kind {
             NativePick::Images { many: true } => rfd::FileDialog::new()
-                .set_title("Elegir imágenes")
-                .add_filter("Imágenes", &IMAGE_EXTS)
+                .set_title(i18n::t("Choose pictures", "Elegir imágenes"))
+                .add_filter(&i18n::t("Pictures", "Imágenes"), &IMAGE_EXTS)
                 .pick_files()
                 .unwrap_or_default(),
             NativePick::Images { many: false } => rfd::FileDialog::new()
-                .set_title("Elegir imagen")
-                .add_filter("Imágenes", &IMAGE_EXTS)
+                .set_title(i18n::t("Choose picture", "Elegir imagen"))
+                .add_filter(&i18n::t("Pictures", "Imágenes"), &IMAGE_EXTS)
                 .pick_file()
                 .into_iter()
                 .collect(),
             NativePick::Media => rfd::FileDialog::new()
-                .set_title("Elegir imágenes o un proyecto")
-                .add_filter("Imágenes", &IMAGE_EXTS)
-                .add_filter("Proyecto Estivi", &[ext])
+                .set_title(i18n::t("Choose pictures or a project", "Elegir imágenes o un proyecto"))
+                .add_filter(&i18n::t("Pictures", "Imágenes"), &IMAGE_EXTS)
+                .add_filter(&i18n::t("Estivi project", "Proyecto Estivi"), &[ext])
                 .pick_files()
                 .unwrap_or_default(),
             NativePick::ProjectOpen => rfd::FileDialog::new()
-                .set_title("Abrir proyecto")
-                .add_filter("Proyecto Estivi", &[ext])
+                .set_title(i18n::t("Open project", "Abrir proyecto"))
+                .add_filter(&i18n::t("Estivi project", "Proyecto Estivi"), &[ext])
                 .pick_file()
                 .into_iter()
                 .collect(),
             NativePick::ProjectSave => rfd::FileDialog::new()
-                .set_title("Guardar proyecto")
-                .add_filter("Proyecto Estivi", &[ext])
+                .set_title(i18n::t("Save project", "Guardar proyecto"))
+                .add_filter(&i18n::t("Estivi project", "Proyecto Estivi"), &[ext])
                 .save_file()
                 .into_iter()
                 .collect(),
@@ -283,7 +284,7 @@ impl App {
         self.refresh_all();
         self.config.ui.last_project = self.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         if let Err(e) = self.config.save(&self.config_path) {
-            log::warn!("no se pudo guardar la configuración: {e:#}");
+            log::warn!("could not save config: {e:#}");
         }
     }
 
@@ -309,7 +310,7 @@ impl App {
         let modes: Vec<SharedString> = Mode::ALL.iter().map(|m| m.name().into()).collect();
         ui.set_modes(ModelRc::new(VecModel::from(modes)));
         ui.set_mode_index(Mode::ALL.iter().position(|m| *m == self.project.tx.mode).unwrap_or(0) as i32);
-        ui.set_mode_detail(format!("{} · {}×{} px · {} por imagen", spec.name, spec.width, spec.height, view::duration(spec.total_ms())).into());
+        ui.set_mode_detail(format!("{} · {}×{} px · {} {}", spec.name, spec.width, spec.height, view::duration(spec.total_ms()), i18n::ts("per picture", "por imagen")).into());
         ui.set_rotation_index(match self.project.rotation {
             Rotation::Sequential => 0,
             Rotation::Shuffle => 1,
@@ -381,8 +382,8 @@ impl App {
                 days: view::days_summary(&s.days).into(),
                 hours: view::hours_summary(s).into(),
                 content: match s.program {
-                    None => "Rotación".into(),
-                    Some(id) => names.get(&id).map_or("(programa borrado → rotación)".into(), |n| SharedString::from(*n)),
+                    None => i18n::ts("Rotation", "Rotación").into(),
+                    Some(id) => names.get(&id).map_or(i18n::ts("(deleted program → rotation)", "(programa borrado → rotación)").into(), |n| SharedString::from(*n)),
                 },
                 freq: view::freq(s.freq_hz).into(),
             })
@@ -481,7 +482,7 @@ impl App {
         ui.set_next_has_image(true);
         ui.set_next_info(match &next {
             Some(n) => format!("{} · {}", view::grid_time(n.at, self.project.grid.timezone), program.name).into(),
-            None => format!("{} (fuera de grilla)", program.name).into(),
+            None => format!("{} ({})", program.name, i18n::ts("off grid", "fuera de grilla")).into(),
         });
     }
 
@@ -507,19 +508,27 @@ impl App {
         });
         ui.set_agenda(st.agenda);
         ui.set_error_text(st.error.clone().unwrap_or_default().into());
-        ui.set_pending_text(st.pending.as_ref().map(|p| format!("{p} · sale cuando termine la pausa mínima")).unwrap_or_default().into());
+        ui.set_pending_text(st.pending.as_ref().map(|p| format!("{} · {}", p, i18n::ts("airs when the minimum pause ends", "sale cuando termine la pausa mínima"))).unwrap_or_default().into());
         let tz = self.project.grid.timezone;
         match &st.next {
             Some(n) => {
                 ui.set_next_time(view::grid_time(n.at, tz).into());
                 ui.set_next_title(n.program_name.as_str().into());
-                let late = if n.due > n.at { format!(" · sale {} por la pausa mínima", view::grid_time(n.due, tz)) } else { String::new() };
-                ui.set_next_slot(format!("Bloque «{}»{}", n.slot, late).into());
+                let late = if n.due > n.at {
+                    format!(" · {} {}", i18n::ts("airs", "sale"), view::grid_time(n.due, tz)) + " " + i18n::ts("due to the minimum pause", "por la pausa mínima")
+                } else {
+                    String::new()
+                };
+                ui.set_next_slot(format!("{} «{}»{}", i18n::ts("Block", "Bloque"), n.slot, late).into());
                 ui.set_countdown(view::countdown((n.due - now).num_seconds()).into());
             }
             None => {
                 ui.set_next_time("--:--".into());
-                ui.set_next_title(if self.project.grid.slots.is_empty() { "La grilla está vacía".into() } else { "Sin emisiones en los próximos días".into() });
+                ui.set_next_title(if self.project.grid.slots.is_empty() {
+                    i18n::ts("The grid is empty", "La grilla está vacía").into()
+                } else {
+                    i18n::ts("No transmissions in the coming days", "Sin emisiones en los próximos días").into()
+                });
                 ui.set_next_slot("".into());
                 ui.set_countdown("--:--".into());
             }
@@ -538,7 +547,7 @@ impl App {
             ui.set_on_air_done(a.done);
             ui.set_on_air_progress(a.picture as f32);
             ui.set_on_air_title(a.program.as_str().into());
-            ui.set_on_air_info(format!("{} · emisión #{} · {}", a.mode.name(), a.serial, a.origin).into());
+            ui.set_on_air_info(format!("{} · {} #{} · {}", a.mode.name(), i18n::ts("TX", "emisión"), a.serial, a.origin).into());
             ui.set_on_air_time(if a.done {
                 a.started.format("%H:%M UTC").to_string().into()
             } else {
@@ -564,20 +573,20 @@ impl App {
         ui.set_listen_error(l.error.clone().unwrap_or_default().into());
         let mut what = Vec::new();
         if self.project.listen.cw {
-            what.push(format!("CW {:.0} ppm a {:.0} Hz", self.project.listen.cw_wpm, self.project.listen.cw_tone_hz));
+            what.push(format!("CW {:.0} {} {:.0} Hz", self.project.listen.cw_wpm, i18n::ts("wpm at", "ppm a"), self.project.listen.cw_tone_hz));
         }
         if self.project.listen.dtmf {
             what.push("DTMF".into());
         }
         ui.set_listen_state(
             if l.error.is_some() {
-                "Error de audio".into()
+                i18n::t("Audio error", "Error de audio")
             } else if !wants {
-                "Desactivada".into()
+                i18n::t("Off", "Desactivada")
             } else if l.running {
-                format!("Activa · {}", what.join(" · "))
+                format!("{} · {}", i18n::ts("On", "Activa"), what.join(" · "))
             } else {
-                "Iniciando…".into()
+                i18n::t("Starting…", "Iniciando…")
             }
             .into(),
         );
@@ -642,7 +651,7 @@ fn normalize_save_path(p: PathBuf, name: &str) -> PathBuf {
 impl App {
     /// A message in our own window (no dependency on zenity or similar helpers).
     pub fn notify(&mut self, heading: &str, message: &str) {
-        self.show_confirm(heading, message, ("Aceptar", "", ""), None);
+        self.show_confirm(heading, message, (i18n::ts("OK", "Aceptar"), "", ""), None);
     }
 
     fn show_confirm(&mut self, heading: &str, message: &str, (primary, secondary, cancel): (&str, &str, &str), then: Option<Then>) {
@@ -678,9 +687,9 @@ pub fn request(app: &Shared, then: Then) {
         return;
     }
     app.borrow_mut().show_confirm(
-        "¿Guardar los cambios?",
-        "El proyecto tiene cambios sin guardar.",
-        ("Guardar", "No guardar", "Cancelar"),
+        i18n::ts("Save changes?", "¿Guardar los cambios?"),
+        i18n::ts("The project has unsaved changes.", "El proyecto tiene cambios sin guardar."),
+        (i18n::ts("Save", "Guardar"), i18n::ts("Don't save", "No guardar"), i18n::ts("Cancel", "Cancelar")),
         Some(then),
     );
 }
@@ -690,15 +699,16 @@ fn perform(app: &Shared, then: Then) {
         Then::New => {
             let mut a = app.borrow_mut();
             a.project = Project::default();
+            a.project.name = i18n::t("SSTV Channel", "Canal SSTV");
             a.path = None;
             a.loaded();
         }
         Then::Open => {
             crate::dialogs::ask_path(
                 app,
-                "Abrir proyecto",
-                "Soltá el archivo .estivi desde el explorador, o escribí la ruta.",
-                "Abrir",
+                i18n::ts("Open project", "Abrir proyecto"),
+                i18n::ts("Drop the .estivi file from the file manager, or type the path.", "Soltá el archivo .estivi desde el explorador, o escribí la ruta."),
+                i18n::ts("Open", "Abrir"),
                 PICK_OPEN,
             );
         }
@@ -728,9 +738,9 @@ pub fn save(app: &Shared, ask: bool, then: Option<Then>) {
             let _ = (current, name, ui);
             crate::dialogs::ask_path(
                 app,
-                "Guardar proyecto",
-                "Soltá una carpeta o un .estivi existente, o escribí la ruta completa.",
-                "Guardar",
+                i18n::ts("Save project", "Guardar proyecto"),
+                i18n::ts("Drop a folder or an existing .estivi, or type the full path.", "Soltá una carpeta o un .estivi existente, o escribí la ruta completa."),
+                i18n::ts("Save", "Guardar"),
                 PICK_SAVE,
             );
         }
@@ -753,7 +763,7 @@ fn write_project(app: &Shared, mut target: PathBuf) -> bool {
             true
         }
         Err(e) => {
-            a.notify("No se pudo guardar el proyecto", &format!("{e:#}"));
+            a.notify(&i18n::t("Could not save the project", "No se pudo guardar el proyecto"), &format!("{e:#}"));
             false
         }
     }
@@ -785,7 +795,7 @@ pub fn apply_picked(a: &mut App, purpose: &str, paths: Vec<PathBuf>) {
                 a.path = Some(first);
                 a.loaded();
             }
-            Err(e) => a.notify("No se pudo abrir el proyecto", &format!("{e:#}")),
+            Err(e) => a.notify(&i18n::t("Could not open the project", "No se pudo abrir el proyecto"), &format!("{e:#}")),
         },
         PICK_PROGRAMS => {
             add_images_as_program(a, paths);
@@ -812,7 +822,7 @@ fn add_images_as_program(a: &mut App, paths: Vec<PathBuf>) {
         .first()
         .and_then(|f| f.file_stem().map(|s| s.to_string_lossy().replace(['_', '-'], " ")))
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "Programa".into());
+        .unwrap_or_else(|| i18n::t("Program", "Programa"));
     let id = a.project.next_program_id();
     a.project.programs.push(Program { id, name, images, ..Default::default() });
     a.changed();
@@ -820,6 +830,7 @@ fn add_images_as_program(a: &mut App, paths: Vec<PathBuf>) {
 
 pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
     let ui = MainWindow::new()?;
+    crate::i18n::apply_slint(estivi_core::Lang::resolve(&config.ui.lang));
     let api = ApiCache::default();
     let engine = Engine::start(config.clone(), config_path.with_file_name("estivi-registro.csv"), api.clone());
     engine.send(Command::SetConfig(Box::new(config.clone())));
@@ -864,7 +875,7 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
                 a.project = p;
                 a.path = Some(path);
             }
-            Err(e) => log::warn!("no se pudo abrir el último proyecto: {e:#}"),
+            Err(e) => log::warn!("could not open last project: {e:#}"),
         }
     }
     app.borrow_mut().loaded();
@@ -1077,8 +1088,8 @@ fn wire(app: &Shared, ui: &MainWindow) {
             if let Some(app) = w.upgrade() {
                 if app.borrow().dirty {
                     app.borrow_mut().notify(
-                        "Hay cambios sin guardar",
-                        "Guardá el proyecto actual y volvé a soltar el archivo .estivi.",
+                        i18n::ts("Unsaved changes", "Hay cambios sin guardar"),
+                        i18n::ts("Save the current project and drop the .estivi file again.", "Guardá el proyecto actual y volvé a soltar el archivo .estivi."),
                     );
                     return;
                 }
@@ -1097,7 +1108,7 @@ fn wire(app: &Shared, ui: &MainWindow) {
                 }
                 a.dialogs.apply_theme(light);
                 if let Err(e) = a.config.save(&a.config_path) {
-                    log::warn!("no se pudo guardar la configuración: {e:#}");
+                    log::warn!("could not save config: {e:#}");
                 }
             })
         }
@@ -1196,7 +1207,7 @@ fn wire(app: &Shared, ui: &MainWindow) {
             with_app(&w, |a| {
                 if let Some(s) = a.project.grid.slots.get(i as usize).cloned() {
                     let id = a.project.next_slot_id();
-                    a.project.grid.slots.insert(i as usize + 1, Slot { id, name: format!("{} (copia)", s.name), ..s });
+                    a.project.grid.slots.insert(i as usize + 1, Slot { id, name: format!("{} ({})", s.name, i18n::ts("copy", "copia")), ..s });
                     a.ui().set_selected_slot(i + 1);
                     a.changed();
                 }

@@ -88,7 +88,7 @@ export component MainWindow inherits Window {
     background: Theme.bg;
 
     // Project / header
-    in property <string> project-name: "Canal SSTV";
+    in property <string> project-name: @tr("SSTV Channel");
     in property <string> project-file;
     in property <bool> dirty;
     in property <string> callsign;
@@ -105,7 +105,7 @@ export component MainWindow inherits Window {
     in property <int> phase;
     in property <bool> agenda;
     in property <string> next-time: "--:--";
-    in property <string> next-title: "Sin emisiones en la grilla";
+    in property <string> next-title: @tr("No transmissions on the grid");
     in property <string> next-slot;
     in property <string> countdown;
     in property <string> pending-text;
@@ -130,7 +130,7 @@ export component MainWindow inherits Window {
     in property <float> on-air-aspect: 0.8;
     in property <float> on-air-progress: 1.0;
     in property <bool> on-air-done: true;
-    in property <string> on-air-title: "Nada transmitido todavía";
+    in property <string> on-air-title: @tr("Nothing transmitted yet");
     in property <string> on-air-info;
     in property <string> on-air-time;
     in property <image> next-image;
@@ -141,7 +141,7 @@ export component MainWindow inherits Window {
     // Log and listening
     in property <[LogItem]> log;
     in property <bool> listen-on;
-    in property <string> listen-state: "Desactivada";
+    in property <string> listen-state: @tr("Off");
     in property <float> listen-level;
     in property <string> listen-cw;
     in property <string> listen-dtmf;
@@ -245,7 +245,7 @@ export component MainWindow inherits Window {
                         }
                     }
                     if root.dirty : Text {
-                        text: "sin guardar";
+                        text: @tr("unsaved");
                         font-size: 12px;
                         color: Theme.paused;
                         vertical-alignment: center;
@@ -256,7 +256,7 @@ export component MainWindow inherits Window {
                     }
                 }
                 Text {
-                    text: root.project-file == "" ? "Proyecto nuevo (todavía sin archivo)" : root.project-file;
+                    text: root.project-file == "" ? @tr("New project (no file yet)") : root.project-file;
                     font-size: 11px;
                     color: Theme.text-faint;
                     overflow: elide;
@@ -271,22 +271,22 @@ export component MainWindow inherits Window {
                         spacing: 4px;
                         ToolButton {
                             icon: "file";
-                            text: "Nuevo";
+                            text: @tr("New");
                             clicked => { root.new-project(); }
                         }
                         ToolButton {
                             icon: "folder";
-                            text: "Abrir";
+                            text: @tr("Open");
                             clicked => { root.open-project(); }
                         }
                         ToolButton {
                             icon: "save";
-                            text: "Guardar";
+                            text: @tr("Save");
                             active: root.dirty;
                             clicked => { root.save-project(); }
                         }
                         ToolButton {
-                            text: "Guardar como…";
+                            text: @tr("Save as…");
                             clicked => { root.save-project-as(); }
                         }
                     }
@@ -301,17 +301,17 @@ export component MainWindow inherits Window {
                         spacing: 4px;
                         ToolButton {
                             icon: "edit";
-                            text: "Proyecto";
+                            text: @tr("Project");
                             clicked => { root.project-settings(); }
                         }
                         ToolButton {
                             icon: "layers";
-                            text: "Gráfica";
+                            text: @tr("Graphics");
                             clicked => { root.open-editor(); }
                         }
                         ToolButton {
                             icon: "gear";
-                            text: "Equipo";
+                            text: @tr("Equipment");
                             clicked => { root.open-config(); }
                         }
                         ToolButton {
@@ -319,7 +319,7 @@ export component MainWindow inherits Window {
                             clicked => { root.open-utils(); }
                         }
                         ToolButton {
-                            text: Theme.light ? "Oscuro" : "Claro";
+                            text: Theme.light ? @tr("Dark") : @tr("Light");
                             clicked => {
                                 root.set-light(!Theme.light);
                                 Palette.color-scheme = !Theme.light ? ColorScheme.light : ColorScheme.dark;
@@ -344,7 +344,7 @@ export component MainWindow inherits Window {
                     horizontal-alignment: right;
                 }
                 Text {
-                    text: "UTC · " + root.utc-date + " · local " + root.local-time;
+                    text: @tr("UTC · {} · local {}", root.utc-date, root.local-time);
                     font-size: 11px;
                     color: Theme.text-faint;
                     horizontal-alignment: right;
@@ -368,7 +368,7 @@ export component MainWindow inherits Window {
                     alignment: center;
                     width: 150px;
                     Pill {
-                        text: root.phase == 2 ? "AL AIRE" : root.phase == 1 ? "PTT…" : root.phase == 3 ? "COLA" : root.agenda ? "EN ESPERA" : "PAUSADA";
+                        text: root.phase == 2 ? @tr("ON AIR") : root.phase == 1 ? @tr("PTT…") : root.phase == 3 ? @tr("TAIL") : root.agenda ? @tr("STANDBY") : @tr("PAUSED");
                         tone: root.phase != 0 ? Theme.on-air : root.agenda ? Theme.ready : Theme.paused;
                         filled: root.phase != 0;
                     }
@@ -378,7 +378,7 @@ export component MainWindow inherits Window {
                     spacing: 2px;
                     horizontal-stretch: 1;
                     PanelTitle {
-                        text: root.pending-text != "" ? "DISPARADOR EN ESPERA" : "PRÓXIMA EMISIÓN";
+                        text: root.pending-text != "" ? @tr("TRIGGER WAITING") : @tr("NEXT TRANSMISSION");
                     }
                     Text {
                         text: root.pending-text != "" ? root.pending-text : root.next-time + "  ·  " + root.next-title;
@@ -388,7 +388,7 @@ export component MainWindow inherits Window {
                         overflow: elide;
                     }
                     Text {
-                        text: root.error-text != "" ? "Error: " + root.error-text : root.next-slot;
+                        text: root.error-text != "" ? @tr("Error: {}", root.error-text) : root.next-slot;
                         font-size: 12px;
                         color: root.error-text != "" ? Theme.danger : Theme.text-dim;
                         overflow: elide;
@@ -398,7 +398,7 @@ export component MainWindow inherits Window {
                     alignment: center;
                     spacing: 0px;
                     PanelTitle {
-                        text: root.agenda ? "FALTAN" : "GRILLA PAUSADA";
+                        text: root.agenda ? @tr("REMAINING") : @tr("GRID PAUSED");
                         horizontal-alignment: right;
                     }
                     Text {
@@ -418,7 +418,7 @@ export component MainWindow inherits Window {
                     spacing: 4px;
                     width: 190px;
                     Text {
-                        text: "Modo del proyecto";
+                        text: @tr("Project mode");
                         font-size: 11px;
                         color: Theme.text-faint;
                     }
@@ -433,7 +433,7 @@ export component MainWindow inherits Window {
                     alignment: center;
                     spacing: 4px;
                     Text {
-                        text: "Grilla al aire";
+                        text: @tr("Grid on air");
                         font-size: 11px;
                         color: Theme.text-faint;
                     }
@@ -448,7 +448,7 @@ export component MainWindow inherits Window {
                         spacing: 8px;
                         ToolButton {
                             icon: "play";
-                            text: "Transmitir ahora";
+                            text: @tr("Transmit now");
                             primary: true;
                             enabled: root.phase == 0;
                             height: 38px;
@@ -456,7 +456,7 @@ export component MainWindow inherits Window {
                         }
                         ToolButton {
                             icon: "stop";
-                            text: "Cortar";
+                            text: @tr("Cut");
                             danger: root.phase != 0;
                             enabled: root.phase != 0 || root.pending-text != "";
                             height: 38px;
@@ -479,9 +479,9 @@ export component MainWindow inherits Window {
                     padding: 12px;
                     spacing: 8px;
                     SectionHeader {
-                        title: "PROGRAMAS";
+                        title: @tr("PROGRAMS");
                         Text {
-                            text: root.programs.length + (root.programs.length == 1 ? " programa" : " programas");
+                            text: @tr("{n} program" | "{n} programs" % root.programs.length);
                             font-size: 11px;
                             color: Theme.text-faint;
                             horizontal-alignment: right;
@@ -514,7 +514,7 @@ export component MainWindow inherits Window {
                                     if p.missing : Rectangle {
                                         background: #7f1d1dd0;
                                         Text {
-                                            text: "FALTA";
+                                            text: @tr("MISSING");
                                             font-size: 10px;
                                             font-weight: 800;
                                             color: #ffffff;
@@ -533,7 +533,7 @@ export component MainWindow inherits Window {
                                         overflow: elide;
                                     }
                                     Text {
-                                        text: (p.count == 1 ? "1 imagen" : p.count + " imágenes") + (p.mode == "" ? "" : " · " + p.mode);
+                                        text: @tr("{n} picture" | "{n} pictures" % p.count) + (p.mode == "" ? "" : " · " + p.mode);
                                         font-size: 11px;
                                         color: Theme.text-faint;
                                         overflow: elide;
@@ -551,7 +551,7 @@ export component MainWindow inherits Window {
                     }
                     FileDrop {
                         compact: true;
-                        title: "Soltá imágenes o un .estivi";
+                        title: @tr("Drop pictures or an .estivi");
                         many: true;
                         dropped(paths) => {
                             if paths.length == 1 && paths[0] != "" {
@@ -562,14 +562,14 @@ export component MainWindow inherits Window {
                         browse => { root.pick-files(); }
                     }
                     if root.programs.length == 0 : Text {
-                        text: "Un programa es un grupo de imágenes, con orden, CW y activaciones.";
+                        text: @tr("A program is a group of pictures, with order, CW and activations.");
                         font-size: 12px;
                         color: Theme.text-faint;
                         wrap: word-wrap;
                         horizontal-alignment: center;
                     }
                     ComboBox {
-                        model: ["Rotación en orden", "Rotación aleatoria (sin repetir)"];
+                        model: [@tr("Sequential rotation"), @tr("Shuffle (no repeats)")];
                         current-index: root.rotation-index;
                         selected => { root.rotation-selected(self.current-index); }
                     }
@@ -577,7 +577,7 @@ export component MainWindow inherits Window {
                         spacing: 4px;
                         ToolButton {
                             icon: "plus";
-                            text: "Nuevo";
+                            text: @tr("New");
                             horizontal-stretch: 1;
                             clicked => { root.add-programs(); }
                         }
@@ -612,7 +612,7 @@ export component MainWindow inherits Window {
                     padding: 12px;
                     spacing: 8px;
                     SectionHeader {
-                        title: "GRILLA";
+                        title: @tr("GRID");
                         Text {
                             text: root.day-label;
                             font-size: 12px;
@@ -622,7 +622,7 @@ export component MainWindow inherits Window {
                         }
                         ComboBox {
                             width: 150px;
-                            model: ["Horario UTC", "Horario local"];
+                            model: [@tr("UTC time"), @tr("Local time")];
                             current-index: root.tz-index;
                             selected => { root.tz-selected(self.current-index); }
                         }
@@ -674,10 +674,10 @@ export component MainWindow inherits Window {
                             spacing: 12px;
                             alignment: start;
                             for item in [
-                                { c: Theme.accent.transparentize(0.3), t: "por emitir" },
-                                { c: Theme.ready.transparentize(0.35), t: "emitida" },
-                                { c: Theme.danger.transparentize(0.2), t: "con error" },
-                                { c: Theme.on-air, t: "al aire" },
+                                { c: Theme.accent.transparentize(0.3), t: @tr("upcoming") },
+                                { c: Theme.ready.transparentize(0.35), t: @tr("aired") },
+                                { c: Theme.danger.transparentize(0.2), t: @tr("error") },
+                                { c: Theme.on-air, t: @tr("on air") },
                             ] : HorizontalLayout {
                                 spacing: 4px;
                                 VerticalLayout {
@@ -708,23 +708,23 @@ export component MainWindow inherits Window {
                             width: 24px;
                         }
                         PanelTitle {
-                            text: "BLOQUE";
+                            text: @tr("BLOCK");
                             horizontal-stretch: 3;
                         }
                         PanelTitle {
-                            text: "DÍAS";
+                            text: @tr("DAYS");
                             width: 110px;
                         }
                         PanelTitle {
-                            text: "HORARIO";
+                            text: @tr("TIME");
                             width: 150px;
                         }
                         PanelTitle {
-                            text: "PROGRAMA";
+                            text: @tr("PROGRAM");
                             horizontal-stretch: 2;
                         }
                         PanelTitle {
-                            text: "FRECUENCIA";
+                            text: @tr("FREQUENCY");
                             width: 84px;
                         }
                     }
@@ -791,7 +791,7 @@ export component MainWindow inherits Window {
                         }
                     }
                     if root.slots.length == 0 : Text {
-                        text: "La grilla está vacía. Agregá un bloque: por ejemplo, de 21:00 a 23:00 cada 5 minutos.";
+                        text: @tr("The grid is empty. Add a block: for example, 21:00 to 23:00 every 5 minutes.");
                         font-size: 12px;
                         color: Theme.text-faint;
                         horizontal-alignment: center;
@@ -801,24 +801,24 @@ export component MainWindow inherits Window {
                         alignment: start;
                         ToolButton {
                             icon: "plus";
-                            text: "Bloque";
+                            text: @tr("Block");
                             clicked => { root.add-slot(); }
                         }
                         ToolButton {
                             icon: "edit";
-                            text: "Editar";
+                            text: @tr("Edit");
                             enabled: root.selected-slot >= 0;
                             clicked => { root.edit-slot(root.selected-slot); }
                         }
                         ToolButton {
                             icon: "copy";
-                            text: "Duplicar";
+                            text: @tr("Duplicate");
                             enabled: root.selected-slot >= 0;
                             clicked => { root.duplicate-slot(root.selected-slot); }
                         }
                         ToolButton {
                             icon: "trash";
-                            text: "Borrar";
+                            text: @tr("Delete");
                             enabled: root.selected-slot >= 0;
                             clicked => { root.remove-slot(root.selected-slot); }
                         }
@@ -836,7 +836,7 @@ export component MainWindow inherits Window {
                         padding: 12px;
                         spacing: 8px;
                         SectionHeader {
-                            title: root.on-air-done ? "ÚLTIMA EMISIÓN" : "AL AIRE";
+                            title: root.on-air-done ? @tr("LAST TRANSMISSION") : @tr("ON AIR");
                             Text {
                                 text: root.on-air-time;
                                 font-family: Theme.mono;
@@ -852,7 +852,7 @@ export component MainWindow inherits Window {
                             aspect: root.on-air-aspect;
                             progress: root.on-air-progress;
                             scanning: !root.on-air-done;
-                            placeholder: "Sin emisiones todavía";
+                            placeholder: @tr("No transmissions yet");
                         }
                         Text {
                             text: root.on-air-title;
@@ -886,7 +886,7 @@ export component MainWindow inherits Window {
                         padding: 12px;
                         spacing: 8px;
                         SectionHeader {
-                            title: "SIGUIENTE";
+                            title: @tr("NEXT");
                             Text {
                                 text: root.next-info;
                                 font-size: 12px;
@@ -900,7 +900,7 @@ export component MainWindow inherits Window {
                             source: root.next-image;
                             has-image: root.next-has-image;
                             aspect: root.next-aspect;
-                            placeholder: "Agregá programas para ver la próxima imagen";
+                            placeholder: @tr("Add programs to see the next picture");
                         }
                         Text {
                             text: root.mode-detail;
@@ -909,7 +909,7 @@ export component MainWindow inherits Window {
                         }
                         ToolButton {
                             icon: "layers";
-                            text: "Editar gráfica del canal";
+                            text: @tr("Edit channel graphics");
                             clicked => { root.open-editor(); }
                         }
                     }
@@ -927,7 +927,7 @@ export component MainWindow inherits Window {
                     padding: 12px;
                     spacing: 6px;
                     SectionHeader {
-                        title: "REGISTRO DE EMISIONES";
+                        title: @tr("TRANSMISSION LOG");
                     }
                     ListView {
                         for e in root.log : HorizontalLayout {
@@ -991,7 +991,7 @@ export component MainWindow inherits Window {
                     padding: 12px;
                     spacing: 8px;
                     SectionHeader {
-                        title: "ESCUCHA";
+                        title: @tr("LISTEN");
                         Text {
                             text: root.listen-state;
                             font-size: 11px;
@@ -1055,7 +1055,7 @@ export component MainWindow inherits Window {
                         }
                     }
                     Text {
-                        text: root.listen-error != "" ? root.listen-error : "Los disparadores se configuran en Proyecto → Escucha.";
+                        text: root.listen-error != "" ? root.listen-error : @tr("Triggers are set in Project → Listen.");
                         font-size: 11px;
                         color: root.listen-error != "" ? Theme.danger : Theme.text-faint;
                         wrap: word-wrap;

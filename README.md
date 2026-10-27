@@ -26,7 +26,7 @@ Schedule an SSTV channel the way you would a TV station: a **grid** of time bloc
 
 The **minimum pause** between transmissions (Project → Transmission) protects the radio: if a block would start earlier, it waits until the pause ends. Transmissions that slip more than 90 s (for example after the PC was suspended) are skipped instead of going out late.
 
-Light and dark themes live in the window header. **Utils** opens a cheat sheet of every SSTV mode (size, color space, duration, VIS).
+Light and dark themes live in the window header. **Utils** opens a cheat sheet of every SSTV mode (size, color space, duration, VIS). The UI is in **English or Spanish**: first launch follows the system language (anything else defaults to English); Equipment → General can change it.
 
 ## SSTV mode
 

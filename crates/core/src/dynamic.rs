@@ -28,23 +28,23 @@ pub struct DataCtx {
 
 /// (placeholder, description) for the editor's "insert data" menu.
 pub const PLACEHOLDERS: &[(&str, &str)] = &[
-    ("{call}", "Indicativo"),
-    ("{op}", "Operador"),
+    ("{call}", "Callsign"),
+    ("{op}", "Operator"),
     ("{qth}", "QTH"),
     ("{loc}", "Locator"),
-    ("{utc}", "Hora UTC (HH:MM)"),
-    ("{date}", "Fecha UTC (AAAA-MM-DD)"),
-    ("{local}", "Hora local (HH:MM)"),
-    ("{utc:%d/%m %H:%M}", "UTC con formato propio"),
-    ("{serial}", "Número de emisión"),
-    ("{serial:4}", "Número con ceros (0042)"),
-    ("{mode}", "Modo SSTV"),
-    ("{program}", "Nombre del programa"),
-    ("{freq}", "Frecuencia (MHz)"),
-    ("{cw}", "Último texto CW recibido"),
-    ("{cwcall}", "Último indicativo oído en CW"),
-    ("{dtmf}", "Última secuencia DTMF"),
-    ("{api}", "Respuesta de la API de la capa"),
+    ("{utc}", "UTC time (HH:MM)"),
+    ("{date}", "UTC date (YYYY-MM-DD)"),
+    ("{local}", "Local time (HH:MM)"),
+    ("{utc:%d/%m %H:%M}", "UTC with a custom format"),
+    ("{serial}", "Transmission number"),
+    ("{serial:4}", "Number with zeros (0042)"),
+    ("{mode}", "SSTV mode"),
+    ("{program}", "Program name"),
+    ("{freq}", "Frequency (MHz)"),
+    ("{cw}", "Last received CW text"),
+    ("{cwcall}", "Last callsign heard in CW"),
+    ("{dtmf}", "Last DTMF sequence"),
+    ("{api}", "This layer's API response"),
 ];
 
 fn strftime<Tz: chrono::TimeZone>(t: &DateTime<Tz>, fmt: &str) -> String
