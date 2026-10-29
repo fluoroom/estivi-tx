@@ -1,10 +1,9 @@
 format = 2
 name = "Canal de prueba"
 freq_hz = 14230000
-interval_min = 10
 
 [station]
-call = "N0CALL"
+call = "LU1AQY"
 operator = "Operador"
 qth = "Córdoba"
 locator = "FF78"
@@ -32,27 +31,119 @@ dedupe = true
 id = 1
 name = "Ajuste y paisaje"
 enabled = true
-weekdays = [true, true, true, true, true, false, false]
+weekdays = [
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+]
+hue = 200
+
+[[programs.days]]
 start = "12:00"
 end = "15:00"
-hue = 200
+interval_min = 10
+
+[[programs.days]]
+start = "12:00"
+end = "15:00"
+interval_min = 10
+
+[[programs.days]]
+start = "12:00"
+end = "15:00"
+interval_min = 10
+
+[[programs.days]]
+start = "12:00"
+end = "15:00"
+interval_min = 10
+
+[[programs.days]]
+start = "12:00"
+end = "15:00"
+interval_min = 10
+
+[[programs.days]]
+start = "12:00"
+end = "15:00"
+interval_min = 10
+
+[[programs.days]]
+start = "12:00"
+end = "15:00"
+interval_min = 10
 
 [programs.welcome]
 path = "programas/carta-de-ajuste.png"
-mode = "R36"
+mode = "M1"
+
+[programs.graphics]
+background = "#000000"
+fit = "cover"
+layers = []
 
 [[programs]]
 id = 2
 name = "Cierre"
 enabled = true
-weekdays = [false, false, false, false, false, true, false]
+weekdays = [
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+]
+hue = 28
+
+[[programs.days]]
 start = "23:45"
 end = "23:55"
-hue = 28
+interval_min = 5
+
+[[programs.days]]
+start = "23:45"
+end = "23:55"
+interval_min = 5
+
+[[programs.days]]
+start = "23:45"
+end = "23:55"
+interval_min = 5
+
+[[programs.days]]
+start = "23:45"
+end = "23:55"
+interval_min = 5
+
+[[programs.days]]
+start = "23:45"
+end = "23:55"
+interval_min = 5
+
+[[programs.days]]
+start = "23:45"
+end = "23:55"
+interval_min = 5
+
+[[programs.days]]
+start = "23:45"
+end = "23:55"
+interval_min = 5
 
 [programs.bye]
 path = "programas/73.png"
 mode = "R24"
+
+[programs.graphics]
+background = "#000000"
+fit = "cover"
+layers = []
 
 [[blocks]]
 id = 3
@@ -61,14 +152,123 @@ name = "Noche en 80 m"
 start = "21:00"
 end = "23:30"
 enabled = true
+interval_min = 14
+
+[[blocks.images]]
+id = 14
+path = "/mnt/DATA/nic0/Pictures/screenshots/Screenshot_20261027_133647.png"
+enabled = true
+role = "normal"
+
+[[blocks.images]]
+id = 13
+path = "/home/nic0/projects/sstv-audiocodecs-test/sstv-mp3-test/comparison-wav.png"
+enabled = true
+role = "normal"
+
+[blocks.graphics]
+background = "#000000"
+fit = "cover"
+layers = []
+
+[[blocks]]
+id = 12
+program = 1
+date = "2026-10-28"
+enabled = true
+interval_min = 10
+
+[[blocks.images]]
+id = 12
+path = "/home/nic0/projects/sstv-audiocodecs-test/sstv-mp3-test/comparison-wav.png"
+enabled = true
+mode = "M1"
+role = "normal"
+
+[[blocks.images]]
+id = 17
+path = "/mnt/DATA/nic0/Pictures/screenshots/Screenshot_20261028_215105.png"
+enabled = true
+role = "normal"
+
+[blocks.graphics]
+background = "#000000"
+fit = "cover"
+
+[[blocks.graphics.layers]]
+id = 1
+name = "Text 1"
+visible = false
+x = 0.04
+y = 0.8
+w = 0.92
+h = 0.15
+opacity = 1.0
+tipo = "text"
+text = "{call}  {utc}Z"
+font = "Noto Sans"
+bold = true
+size = 0.09
+color = "#FFFFFF"
+align = "start"
+valign = "center"
+shrink_to_fit = true
+outline = 0.1
+outline_color = "#000000"
+shadow = false
+box_color = "#00000000"
+
+[[blocks]]
+id = 15
+date = "2026-10-28"
+name = "New block"
+start = "15:48"
+end = "18:00"
+enabled = true
+interval_min = 6
+
+[[blocks.images]]
+id = 16
+path = "/mnt/DATA/nic0/Pictures/SAC_1061.png"
+enabled = true
+role = "normal"
+
+[blocks.graphics]
+background = "#000000"
+fit = "cover"
+
+[[blocks.graphics.layers]]
+id = 1
+name = "Text 1"
+visible = true
+x = 0.0
+y = 0.85
+w = 0.92
+h = 0.15
+opacity = 1.0
+tipo = "text"
+text = "{call}  TEST  {utc}Z"
+font = "Noto Sans"
+bold = true
+size = 0.09
+color = "#22C55E"
+align = "start"
+valign = "center"
+shrink_to_fit = true
+outline = 0.1
+outline_color = "#000000"
+shadow = false
+box_color = "#00000000"
 
 [[activations]]
 id = 10
-enabled = true
+enabled = false
 name = "Pausa"
+
 [[activations.triggers]]
 source = "dtmf"
 code = "*0#"
+
 [[activations.actions]]
 kind = "pause"
 
@@ -76,16 +276,18 @@ kind = "pause"
 id = 11
 enabled = true
 name = "Carta"
+
 [[activations.triggers]]
 source = "dtmf"
 code = "*1#"
+
 [[activations.actions]]
 kind = "image"
 path = "programas/carta-de-ajuste.png"
 mode = "M1"
 
 [grid]
-timezone = "utc"
+timezone = "local"
 
 [graphics]
 background = "#000000"
@@ -94,7 +296,7 @@ fit = "cover"
 [[graphics.layers]]
 id = 1
 name = "Zócalo"
-visible = true
+visible = false
 x = 0.0
 y = 0.82
 w = 1.0
@@ -132,7 +334,7 @@ color = "#FFE066"
 align = "start"
 valign = "center"
 shrink_to_fit = true
-outline = 0.14
+outline = 0.10223776
 outline_color = "#000000"
 shadow = true
 box_color = "#00000000"
@@ -181,7 +383,7 @@ refresh_s = 600
 [[graphics.layers]]
 id = 5
 name = "QR"
-visible = true
+visible = false
 x = 0.03
 y = 0.55
 w = 0.22
@@ -191,6 +393,7 @@ tipo = "qr"
 ecc = "M"
 source = "text"
 text = "{call} {freq}"
+command = ""
 
 [listen]
 cw = false

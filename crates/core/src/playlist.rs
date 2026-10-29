@@ -93,9 +93,9 @@ pub fn bumper_mode(path: &Path) -> Mode {
 
 pub fn link_up(images: &[BlockImage], id: u64, mode_for: impl Fn(&str) -> Mode) -> anyhow::Result<Vec<BlockImage>> {
     let mut groups = groups(images)?;
-    let idx = index_of(&groups, id).ok_or_else(|| anyhow::anyhow!("elegí una imagen normal para linkear"))?;
-    anyhow::ensure!(groups[idx].pre.is_empty() && groups[idx].post.is_empty(), "desligá las cortinas de esta imagen antes de unirla");
-    anyhow::ensure!(idx > 0, "no hay una imagen arriba");
+    let idx = index_of(&groups, id).ok_or_else(|| anyhow::anyhow!("pick a normal image to link"))?;
+    anyhow::ensure!(groups[idx].pre.is_empty() && groups[idx].post.is_empty(), "unlink this image's bumpers before joining it");
+    anyhow::ensure!(idx > 0, "there is no image above");
     let mut image = groups.remove(idx).normal;
     let target = groups[idx - 1].normal.id;
     image.role = ImageRole::Post { of: target };
@@ -108,9 +108,9 @@ pub fn link_up(images: &[BlockImage], id: u64, mode_for: impl Fn(&str) -> Mode) 
 
 pub fn link_down(images: &[BlockImage], id: u64, mode_for: impl Fn(&str) -> Mode) -> anyhow::Result<Vec<BlockImage>> {
     let mut groups = groups(images)?;
-    let idx = index_of(&groups, id).ok_or_else(|| anyhow::anyhow!("elegí una imagen normal para linkear"))?;
-    anyhow::ensure!(groups[idx].pre.is_empty() && groups[idx].post.is_empty(), "desligá las cortinas de esta imagen antes de unirla");
-    anyhow::ensure!(idx + 1 < groups.len(), "no hay una imagen abajo");
+    let idx = index_of(&groups, id).ok_or_else(|| anyhow::anyhow!("pick a normal image to link"))?;
+    anyhow::ensure!(groups[idx].pre.is_empty() && groups[idx].post.is_empty(), "unlink this image's bumpers before joining it");
+    anyhow::ensure!(idx + 1 < groups.len(), "there is no image below");
     let mut image = groups.remove(idx).normal;
     let target = groups[idx].normal.id;
     image.role = ImageRole::Pre { of: target };
@@ -124,7 +124,7 @@ pub fn link_down(images: &[BlockImage], id: u64, mode_for: impl Fn(&str) -> Mode
 pub fn unlink(images: &[BlockImage], id: u64) -> anyhow::Result<Vec<BlockImage>> {
     let mut groups = groups(images)?;
     let Some(idx) = groups.iter().position(|g| g.pre.iter().chain(g.post.iter()).any(|i| i.id == id)) else {
-        anyhow::bail!("esa imagen no es una cortina");
+        anyhow::bail!("that image is not a bumper");
     };
     if let Some(pos) = groups[idx].pre.iter().position(|i| i.id == id) {
         let mut image = groups[idx].pre.remove(pos);
@@ -143,7 +143,7 @@ pub fn unlink(images: &[BlockImage], id: u64) -> anyhow::Result<Vec<BlockImage>>
 /// Moves the whole group (pre + image + post). `to` is the group index after removal.
 pub fn move_group(images: &[BlockImage], normal_id: u64, to: usize) -> anyhow::Result<Vec<BlockImage>> {
     let mut groups = groups(images)?;
-    let from = index_of(&groups, normal_id).ok_or_else(|| anyhow::anyhow!("arrastrá la imagen normal del grupo"))?;
+    let from = index_of(&groups, normal_id).ok_or_else(|| anyhow::anyhow!("drag the group's normal image"))?;
     let group = groups.remove(from);
     let to = to.min(groups.len());
     groups.insert(to, group);
@@ -167,7 +167,7 @@ pub fn move_bumper(images: &[BlockImage], bumper_id: u64, to: usize) -> anyhow::
             return Ok(flatten(&groups));
         }
     }
-    anyhow::bail!("esa imagen no es una cortina")
+    anyhow::bail!("that image is not a bumper")
 }
 
 /// Appends files. `(stored path, file name)`. `-bp` joins the previous normal, `-bn` the next.
@@ -240,7 +240,7 @@ pub fn append_files(existing: &[BlockImage], files: &[(String, String)], mut all
             pre.push(fresh[i].0.clone());
             i += 1;
         }
-        anyhow::ensure!(i < fresh.len() && matches!(fresh[i].1, Mark::Normal), "el lote de imágenes no se pudo agrupar");
+        anyhow::ensure!(i < fresh.len() && matches!(fresh[i].1, Mark::Normal), "the image batch could not be grouped");
         let normal = fresh[i].0.clone();
         i += 1;
         let mut post = Vec::new();
@@ -280,7 +280,7 @@ fn is_picture(name: &str) -> bool {
 /// `block01` is the next occurrence at or after `now`, counting empty ones. `block02` alone
 /// fills the second and leaves the first alone.
 pub fn import_program(project: &mut Project, program_id: u64, root: &Path, base: Option<&Path>, now: DateTime<Utc>) -> anyhow::Result<ImportReport> {
-    anyhow::ensure!(project.program(program_id).is_some(), "ese programa no está en el canal");
+    anyhow::ensure!(project.program(program_id).is_some(), "that program is not in the channel");
     let mut dirs = Vec::new();
     for entry in std::fs::read_dir(root).map_err(|e| anyhow::anyhow!("{}: {e}", root.display()))? {
         let entry = entry?;
@@ -297,7 +297,7 @@ pub fn import_program(project: &mut Project, program_id: u64, root: &Path, base:
     let mut report = ImportReport { filled: Vec::new(), skipped: Vec::new(), warnings: Vec::new() };
     for (n, path, name) in dirs {
         let Some(date) = dates.get((n as usize).saturating_sub(1)).copied() else {
-            report.skipped.push(format!("{name}: el programa no tiene una ocurrencia {n}"));
+            report.skipped.push(format!("{name}: the program has no occurrence {n}"));
             continue;
         };
         let mut files = Vec::new();
@@ -313,7 +313,7 @@ pub fn import_program(project: &mut Project, program_id: u64, root: &Path, base:
         }
         files.sort_by(|a, b| natural_cmp(&a.1, &b.1));
         if files.is_empty() {
-            report.skipped.push(format!("{name}: no tiene imágenes"));
+            report.skipped.push(format!("{name}: has no images"));
             continue;
         }
         let stored: Vec<(String, String)> = files.iter().map(|(p, name)| (relativize(base, p), name.clone())).collect();
@@ -398,7 +398,7 @@ mod tests {
         assert!(matches!(up[1].role, ImageRole::Post { of: 1 }));
         assert_eq!(up[1].mode, Some(Mode::Robot12));
         let err = link_up(&up, 1, mode).unwrap_err().to_string();
-        assert!(err.contains("desligá"), "{err}");
+        assert!(err.contains("unlink"), "{err}");
         let down = link_down(&images, 2, mode).unwrap();
         assert!(matches!(down[1].role, ImageRole::Pre { of: 3 }));
         let free = unlink(&down, 2).unwrap();
@@ -473,14 +473,9 @@ mod tests {
         days[0] = true;
         days[1] = true;
         let mut project = Project::default();
-        project.programs.push(Program {
-            id: 1,
-            name: "Noticias".into(),
-            weekdays: days,
-            start: "14:00".into(),
-            end: "14:30".into(),
-            ..Program::default()
-        });
+        let mut news = Program { id: 1, name: "Noticias".into(), weekdays: days, ..Program::default() };
+        news.every_day("14:00", "14:30", 6);
+        project.programs.push(news);
         // Monday 2026-10-26 15:00Z is after 14:00, so the next Monday occurrence is Nov 2,
         // and the second is Nov 3? Weekdays are Mon and Tue. From Monday 15:00 the next
         // start >= now is Tuesday Oct 27, then Monday Nov 2.

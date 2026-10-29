@@ -8,7 +8,7 @@ mod render;
 mod text;
 
 pub use fonts::FontBook;
-pub use render::{ImageCache, RenderInput, qr_module_px, render};
+pub use render::{ImageCache, RenderInput, paint_layers, qr_module_px, render};
 
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +44,7 @@ impl Serialize for Rgba {
 impl<'de> Deserialize<'de> for Rgba {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Rgba, D::Error> {
         let s = String::deserialize(d)?;
-        Rgba::from_hex(&s).ok_or_else(|| serde::de::Error::custom(format!("color inválido: {s}")))
+        Rgba::from_hex(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid color: {s}")))
     }
 }
 
@@ -218,6 +218,11 @@ impl Default for QrLayer {
 }
 
 impl Graphics {
+    /// No layers and the default black cover. A step like this does not change the picture under it.
+    pub fn is_plain(&self) -> bool {
+        self.layers.is_empty() && self.background == Rgba::BLACK && self.fit == Fit::Cover
+    }
+
     pub fn next_layer_id(&self) -> u64 {
         self.layers.iter().map(|l| l.id).max().unwrap_or(0) + 1
     }

@@ -44,7 +44,7 @@ component NumberField inherits Field {
 }
 
 export component EditorWindow inherits Window {
-    title: @tr("Channel graphics — {}", root.mode-name);
+    title: root.level-name == "" ? @tr("Graphics") : root.level-name + " — " + root.mode-name;
     icon: @image-url("../assets/icon.png");
     preferred-width: 1280px;
     preferred-height: 800px;
@@ -56,6 +56,10 @@ export component EditorWindow inherits Window {
     in property <int> canvas-w: 320;
     in property <int> canvas-h: 256;
     in property <string> mode-name;
+    in property <string> level-name;
+    in property <[string]> base-names;
+    in property <int> base-index;
+    callback base-selected(int);
     // Canvas order: bottom → top.
     in property <[LayerItem]> layers;
     // -1 = the program picture (base).
@@ -162,10 +166,17 @@ export component EditorWindow inherits Window {
                 }
             }
             ComboBox {
-                width: 240px;
+                width: 180px;
                 model: root.program-names;
                 current-index: root.preview-index;
                 selected => { root.preview-selected(self.current-index); }
+            }
+            Text { text: @tr("Base picture"); font-size: 12px; color: Theme.text-dim; vertical-alignment: center; }
+            ComboBox {
+                width: 160px;
+                model: root.base-names;
+                current-index: root.base-index;
+                selected => { root.base-selected(self.current-index); }
             }
         }
 
@@ -257,7 +268,7 @@ export component EditorWindow inherits Window {
                                     color: Theme.text;
                                 }
                                 Text {
-                                    text: @tr("the program that goes on air");
+                                    text: @tr("the picture under the graphics");
                                     font-size: 11px;
                                     color: Theme.text-faint;
                                 }
@@ -299,10 +310,10 @@ export component EditorWindow inherits Window {
                     border-color: Theme.border-strong;
                 }
                 for l[i] in root.layers : Rectangle {
-                    x: canvas.ix + l.x * canvas.iw;
-                    y: canvas.iy + l.y * canvas.ih;
-                    width: l.w * canvas.iw;
-                    height: l.h * canvas.ih;
+                    x: canvas.ix + l.sel-x * canvas.iw;
+                    y: canvas.iy + l.sel-y * canvas.ih;
+                    width: max(1px, l.sel-w * canvas.iw);
+                    height: max(1px, l.sel-h * canvas.ih);
                     border-width: i == root.selected ? 2px : 1px;
                     border-color: i == root.selected ? Theme.accent : l.visible ? #ffffff28 : transparent;
                 }
@@ -322,10 +333,10 @@ export component EditorWindow inherits Window {
                 }
                 if root.selected >= 0 && root.selected < root.layers.length : Rectangle {
                     property <LayerItem> s: root.layers[root.selected];
-                    x: canvas.ix + self.s.x * canvas.iw;
-                    y: canvas.iy + self.s.y * canvas.ih;
-                    width: self.s.w * canvas.iw;
-                    height: self.s.h * canvas.ih;
+                    x: canvas.ix + self.s.sel-x * canvas.iw;
+                    y: canvas.iy + self.s.sel-y * canvas.ih;
+                    width: max(1px, self.s.sel-w * canvas.iw);
+                    height: max(1px, self.s.sel-h * canvas.ih);
                     for c in [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }] : Rectangle {
                         x: parent.width * c.x - 5px;
                         y: parent.height * c.y - 5px;
@@ -412,7 +423,7 @@ export component EditorWindow inherits Window {
                         for cur in root.current : VerticalLayout {
                             spacing: 10px;
                             PanelTitle {
-                                text: cur.is-qr ? "QR" : cur.is-text ? "TEXTO" : "IMAGEN";
+                                text: cur.is-qr ? @tr("QR") : cur.is-text ? @tr("TEXT") : @tr("IMAGE");
                             }
                             Field {
                                 label: @tr("Layer name");

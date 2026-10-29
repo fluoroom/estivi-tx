@@ -69,7 +69,7 @@ where
     // chrono reports bad user formats as fmt::Error; never panic on them.
     let mut s = String::new();
     if write!(s, "{}", t.format(fmt)).is_err() {
-        return format!("{{formato inválido: {fmt}}}");
+        return format!("{{invalid format: {fmt}}}");
     }
     s
 }
@@ -192,8 +192,8 @@ pub fn fetch(src: &ApiSource) -> anyhow::Result<String> {
 pub fn fetch_for_tx(src: &ApiSource) -> anyhow::Result<String> {
     let value = fetch_raw(src)?;
     let n = value.chars().count();
-    anyhow::ensure!(n <= MAX_VALUE_CHARS, "la respuesta tiene {n} caracteres (máximo {MAX_VALUE_CHARS})");
-    anyhow::ensure!(!value.trim().is_empty(), "respuesta vacía");
+    anyhow::ensure!(n <= MAX_VALUE_CHARS, "the reply has {n} characters (maximum {MAX_VALUE_CHARS})");
+    anyhow::ensure!(!value.trim().is_empty(), "empty reply");
     Ok(value)
 }
 
@@ -325,7 +325,7 @@ mod tests {
         assert_eq!(expand("{{literal}} {nope} {utc:%d/%m}", &c, None), "{literal} {nope} 23/10");
         assert_eq!(expand("T: {api}°", &c, Some("21.5")), "T: 21.5°");
         assert_eq!(expand("unterminated {call", &c, None), "unterminated {call");
-        assert!(expand("{utc:%Q}", &c, None).contains("inválido"));
+        assert!(expand("{utc:%Q}", &c, None).contains("invalid format"));
     }
 
     #[test]

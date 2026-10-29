@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use image::RgbaImage;
 
 use crate::dynamic::{ApiCache, DataCtx, expand};
-use crate::graphics::{FontBook, ImageCache, QrLayer, RenderInput, render};
+use crate::graphics::{FontBook, Graphics, ImageCache, QrLayer, RenderInput, paint_layers, render};
 use crate::project::{Project, resolve};
 use crate::shell;
 
@@ -56,29 +56,72 @@ impl Composer {
     }
 
     /// `image` is a path stored in the project (relative or absolute).
+    /// Channel graphics only. The on-air path uses `frame_chain`.
     pub fn frame_image(&mut self, project: &Project, dir: Option<&Path>, image: Option<&str>, mode: crate::modes::Mode, ctx: &DataCtx) -> RgbaImage {
+        self.frame_chain(project, dir, image, None, None, None, mode, ctx)
+    }
+
+    /// Picture, then block layers, then program layers, then channel layers.
+    /// Each step is painted on the bitmap the previous step left.
+    pub fn frame_chain(
+        &mut self,
+        project: &Project,
+        dir: Option<&Path>,
+        image: Option<&str>,
+        baked: Option<&RgbaImage>,
+        block: Option<&Graphics>,
+        program: Option<&Graphics>,
+        mode: crate::modes::Mode,
+        ctx: &DataCtx,
+    ) -> RgbaImage {
+        let block_g = block.cloned().unwrap_or_default();
+        let program_g = program.cloned().unwrap_or_default();
+        let channel = project.graphics.clone();
+        let mut base = if !block_g.is_plain() {
+            block_g.clone()
+        } else if !program_g.is_plain() {
+            program_g.clone()
+        } else {
+            channel.clone()
+        };
+        base.layers.clear();
         let spec = mode.spec();
         let program_path = image.filter(|p| !p.trim().is_empty()).map(|p| resolve(dir, p));
-        let qr = self.qr_payloads(project, ctx);
+        let levels = [block_g, program_g, channel];
+        let maps: Vec<HashMap<u64, String>> = levels.iter().map(|g| self.qr_map(g, ctx)).collect();
         let api = &self.api;
-        render(
+        let mut canvas = render(
             &RenderInput {
                 width: spec.width,
                 height: spec.height,
-                graphics: &project.graphics,
+                graphics: &base,
                 program: program_path.as_deref(),
                 resolve: &|stored| resolve(dir, stored),
                 text_of: &|tl| expand(&tl.text, ctx, tl.api.as_ref().and_then(|a| api.value(a)).as_deref()),
-                qr_of: &|id, _| qr.get(&id).cloned(),
+                qr_of: &|_, _| None,
                 fonts: &self.fonts,
+                baked,
             },
             &mut self.cache,
-        )
+        );
+        for (g, qr) in levels.iter().zip(maps.iter()) {
+            let api = &self.api;
+            paint_layers(
+                &mut canvas,
+                g,
+                &|stored| resolve(dir, stored),
+                &|tl| expand(&tl.text, ctx, tl.api.as_ref().and_then(|a| api.value(a)).as_deref()),
+                &|id, _| qr.get(&id).cloned(),
+                &self.fonts,
+                &mut self.cache,
+            );
+        }
+        canvas
     }
 
-    fn qr_payloads(&mut self, project: &Project, ctx: &DataCtx) -> HashMap<u64, String> {
+    fn qr_map(&mut self, graphics: &Graphics, ctx: &DataCtx) -> HashMap<u64, String> {
         let mut out = HashMap::new();
-        for layer in &project.graphics.layers {
+        for layer in &graphics.layers {
             let crate::graphics::LayerKind::Qr(qr) = &layer.kind else { continue };
             if !layer.visible {
                 continue;
@@ -87,7 +130,7 @@ impl Composer {
                 Some(text) if !text.trim().is_empty() => {
                     out.insert(layer.id, text);
                 }
-                Some(_) => log::info!("QR {}: payload vacío, la capa no se dibuja", layer.name),
+                Some(_) => log::info!("QR {}: empty payload, the layer is not drawn", layer.name),
                 None => {}
             }
         }
@@ -101,7 +144,7 @@ impl Composer {
                 match self.command(&line) {
                     Ok(s) => Some(s),
                     Err(e) => {
-                        log::warn!("QR comando: {e}");
+                        log::warn!("QR command: {e}");
                         None
                     }
                 }
@@ -124,7 +167,7 @@ impl Composer {
 
     fn command(&mut self, line: &str) -> Result<String, String> {
         if line.trim().is_empty() {
-            return Err("comando vacío".into());
+            return Err("empty command".into());
         }
         if let Some((at, cached)) = self.commands.get(line) {
             if at.elapsed() < Duration::from_secs(30) {

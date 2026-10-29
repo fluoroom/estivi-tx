@@ -63,7 +63,7 @@ impl FontBook {
             }
             match std::fs::read(&path).map_err(anyhow::Error::from).and_then(|d| Ok(FontArc::try_from_vec(d)?)) {
                 Ok(font) => self.faces.push(Face { family, bold, font }),
-                Err(e) => log::warn!("fuente {} ignorada: {e}", path.display()),
+                Err(e) => log::warn!("font {} ignored: {e}", path.display()),
             }
         }
     }

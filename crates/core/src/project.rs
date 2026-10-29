@@ -1,12 +1,13 @@
 //! The channel file (`*.estivi`, TOML, `format = 2`).
 //!
-//! A project is one channel: one frequency, one interval, one offset. A program is the
-//! repeating rule (name, weekdays, hours, welcome and goodbye). A block is one calendar
-//! occurrence and owns the pictures. Machine settings stay in `config`.
+//! A project is one channel: one frequency and one offset. A program repeats by weekday.
+//! Each weekday keeps its own hours and image interval. A common block is one date and
+//! keeps its own hours and interval. A program block owns the pictures for that date.
+//! Machine settings stay in `config`.
 
 use std::path::{Component, Path, PathBuf};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ax25::LineSet;
@@ -50,9 +51,6 @@ pub struct Project {
     pub tx: TxSettings,
     /// 0 = do not retune the radio.
     pub freq_hz: u64,
-    /// Minutes between transmission starts, for the whole channel. 0 = one start per block.
-    #[serde(default = "default_interval")]
-    pub interval_min: u32,
     pub ax25: Ax25Config,
     pub programs: Vec<Program>,
     pub blocks: Vec<Block>,
@@ -70,7 +68,6 @@ impl Default for Project {
             station: Station::default(),
             tx: TxSettings::default(),
             freq_hz: 0,
-            interval_min: default_interval(),
             ax25: Ax25Config::default(),
             programs: Vec::new(),
             blocks: Vec::new(),
@@ -162,6 +159,29 @@ pub struct Still {
     pub mode: Option<Mode>,
 }
 
+/// Hours and image interval of one weekday. Monday is index 0.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DayHours {
+    pub start: String,
+    pub end: String,
+    /// Minutes between picture starts. 0 = one start.
+    #[serde(default = "default_interval")]
+    pub interval_min: u32,
+}
+
+impl Default for DayHours {
+    fn default() -> Self {
+        DayHours { start: String::new(), end: String::new(), interval_min: default_interval() }
+    }
+}
+
+impl DayHours {
+    pub fn ready(&self) -> bool {
+        parse_hhmm(&self.start).is_some() && parse_hhmm(&self.end).is_some()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Program {
@@ -170,8 +190,8 @@ pub struct Program {
     pub enabled: bool,
     /// Monday first. All false: the program exists and occupies no time.
     pub weekdays: [bool; 7],
-    pub start: String,
-    pub end: String,
+    /// Hours and interval of each weekday, Monday first. A day that is off keeps its hours.
+    pub days: [DayHours; 7],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub welcome: Option<Still>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,6 +200,12 @@ pub struct Program {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ends: Option<DateTime<Utc>>,
     pub hue: u16,
+    /// Painted after the block's graphics and before the channel's.
+    #[serde(default)]
+    pub graphics: Graphics,
+    /// Absent = the channel's SSTV mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<Mode>,
 }
 
 impl Default for Program {
@@ -189,19 +215,29 @@ impl Default for Program {
             name: String::new(),
             enabled: true,
             weekdays: [false; 7],
-            start: String::new(),
-            end: String::new(),
+            days: std::array::from_fn(|_| DayHours::default()),
             welcome: None,
             bye: None,
             ends: None,
             hue: 210,
+            graphics: Graphics::default(),
+            mode: None,
         }
     }
 }
 
 impl Program {
+    /// The same window on every weekday. Callers that still mean "all week" use this.
+    pub fn every_day(&mut self, start: &str, end: &str, interval_min: u32) {
+        for day in &mut self.days {
+            day.start = start.to_string();
+            day.end = end.to_string();
+            day.interval_min = interval_min;
+        }
+    }
+
     pub fn scheduled(&self) -> bool {
-        self.weekdays.iter().any(|d| *d) && parse_hhmm(&self.start).is_some() && parse_hhmm(&self.end).is_some()
+        self.weekdays.iter().enumerate().any(|(i, on)| *on && self.days[i].ready())
     }
 }
 
@@ -223,6 +259,15 @@ pub struct Block {
     pub end: String,
     pub enabled: bool,
     pub images: Vec<BlockImage>,
+    /// Used by a common block. A program block is rewritten from the program on save.
+    #[serde(default = "default_interval")]
+    pub interval_min: u32,
+    /// Painted on the picture before the program's graphics and the channel's.
+    #[serde(default)]
+    pub graphics: Graphics,
+    /// Absent = the program's mode, or the channel's when the block has no program.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<Mode>,
 }
 
 impl Default for Block {
@@ -236,6 +281,9 @@ impl Default for Block {
             end: String::new(),
             enabled: true,
             images: Vec::new(),
+            interval_min: default_interval(),
+            graphics: Graphics::default(),
+            mode: None,
         }
     }
 }
@@ -481,6 +529,8 @@ impl Project {
         let value: toml::Value = toml::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
         explain_reject(&value)?;
         let mut p: Project = toml::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+        adopt_channel_interval(&value, &mut p);
+        adopt_weekday_hours(&value, &mut p);
         p.normalize().map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
         Ok(p)
     }
@@ -490,11 +540,28 @@ impl Project {
         for p in &mut self.programs {
             p.hue %= 360;
         }
+        let intervals: Vec<(u64, [u32; 7])> = self
+            .programs
+            .iter()
+            .map(|p| {
+                let mut n = [0; 7];
+                for (i, day) in p.days.iter().enumerate() {
+                    n[i] = day.interval_min;
+                }
+                (p.id, n)
+            })
+            .collect();
+        for b in &mut self.blocks {
+            let Some(pid) = b.program else { continue };
+            let Some((_, days)) = intervals.iter().find(|(id, _)| *id == pid) else { continue };
+            let wd = b.date.weekday().num_days_from_monday() as usize;
+            b.interval_min = days[wd];
+        }
         for b in &self.blocks {
             check_images(&b.images)?;
         }
-        // A program occurrence with no pictures is not a stored block.
-        self.blocks.retain(|b| b.program.is_none() || b.has_pictures());
+        // A program occurrence with nothing of its own is not a stored block.
+        self.blocks.retain(|b| b.program.is_none() || b.has_pictures() || !b.graphics.layers.is_empty() || b.mode.is_some());
         Ok(())
     }
 
@@ -502,6 +569,17 @@ impl Project {
         let mut copy = self.clone();
         copy.normalize()?;
         write_atomic(path, &toml::to_string_pretty(&copy)?)
+    }
+
+    pub fn all_api_sources(&self) -> Vec<crate::graphics::ApiSource> {
+        let mut sources: Vec<_> = self.graphics.api_sources().cloned().collect();
+        for program in &self.programs {
+            sources.extend(program.graphics.api_sources().cloned());
+        }
+        for block in &self.blocks {
+            sources.extend(block.graphics.api_sources().cloned());
+        }
+        sources
     }
 
     pub fn next_id(&self) -> u64 {
@@ -559,13 +637,26 @@ impl Project {
     pub fn mode_or(&self, mode: Option<Mode>) -> Mode {
         mode.unwrap_or(self.tx.mode)
     }
+
+    /// A picture's own mode, else the block's, else the program's, else the channel's.
+    pub fn picture_mode(&self, image: Option<Mode>, block_id: Option<u64>, program_id: Option<u64>) -> Mode {
+        image
+            .or_else(|| block_id.and_then(|id| self.block(id)).and_then(|b| b.mode))
+            .or_else(|| program_id.and_then(|id| self.program(id)).and_then(|p| p.mode))
+            .unwrap_or(self.tx.mode)
+    }
+
+    /// A program still: its own mode, else the program's, else the channel's.
+    pub fn still_mode(&self, still: Option<Mode>, program_id: Option<u64>) -> Mode {
+        still.or_else(|| program_id.and_then(|id| self.program(id)).and_then(|p| p.mode)).unwrap_or(self.tx.mode)
+    }
 }
 
 /// The bumper invariant. Editing functions and `load` both refuse a list that breaks it.
 pub fn check_images(images: &[BlockImage]) -> anyhow::Result<()> {
     let mut seen = std::collections::HashSet::new();
     for im in images {
-        anyhow::ensure!(im.id != 0 && seen.insert(im.id), "cada imagen necesita un id propio distinto de cero");
+        anyhow::ensure!(im.id != 0 && seen.insert(im.id), "each image needs its own id, and not zero");
     }
     let normals: std::collections::HashSet<u64> = images.iter().filter(|i| matches!(i.role, ImageRole::Normal)).map(|i| i.id).collect();
     let mut i = 0;
@@ -573,9 +664,9 @@ pub fn check_images(images: &[BlockImage]) -> anyhow::Result<()> {
         let mut pre_of = None;
         while i < images.len() {
             if let ImageRole::Pre { of } = images[i].role {
-                anyhow::ensure!(normals.contains(&of), "una cortina tiene que apuntar a una imagen normal de la misma lista");
+                anyhow::ensure!(normals.contains(&of), "a bumper has to point at a normal image in the same list");
                 if let Some(prev) = pre_of {
-                    anyhow::ensure!(prev == of, "las precortinas de dos imágenes quedaron mezcladas");
+                    anyhow::ensure!(prev == of, "pre-bumpers of two images got mixed");
                 }
                 pre_of = Some(of);
                 i += 1;
@@ -583,15 +674,15 @@ pub fn check_images(images: &[BlockImage]) -> anyhow::Result<()> {
                 break;
             }
         }
-        anyhow::ensure!(i < images.len() && matches!(images[i].role, ImageRole::Normal), "una cortina quedó suelta o entre dos imágenes normales");
+        anyhow::ensure!(i < images.len() && matches!(images[i].role, ImageRole::Normal), "a bumper was left loose, or between two normal images");
         let normal = images[i].id;
         if let Some(of) = pre_of {
-            anyhow::ensure!(of == normal, "las precortinas tienen que ir inmediatamente arriba de su imagen");
+            anyhow::ensure!(of == normal, "pre-bumpers have to sit immediately above their image");
         }
         i += 1;
         while i < images.len() {
             if let ImageRole::Post { of } = images[i].role {
-                anyhow::ensure!(of == normal, "las postcortinas tienen que ir inmediatamente abajo de su imagen");
+                anyhow::ensure!(of == normal, "post-bumpers have to sit immediately below their image");
                 i += 1;
             } else {
                 break;
@@ -601,31 +692,87 @@ pub fn check_images(images: &[BlockImage]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Files written when the interval belonged to the channel copy that number onto
+/// every program and common block that does not already name its own.
+fn adopt_channel_interval(raw: &toml::Value, project: &mut Project) {
+    let Some(table) = raw.as_table() else { return };
+    let Some(root) = table.get("interval_min").and_then(toml::Value::as_integer) else { return };
+    let root = u32::try_from(root.max(0)).unwrap_or(u32::MAX);
+    let programs = table.get("programs").and_then(toml::Value::as_array);
+    for (i, program) in project.programs.iter_mut().enumerate() {
+        let own = programs.and_then(|a| a.get(i)).and_then(toml::Value::as_table);
+        let named = own.is_some_and(|t| t.contains_key("interval_min") || t.contains_key("days"));
+        if !named {
+            for day in &mut program.days {
+                day.interval_min = root;
+            }
+        }
+    }
+    let blocks = table.get("blocks").and_then(toml::Value::as_array);
+    for (i, block) in project.blocks.iter_mut().enumerate() {
+        if block.program.is_some() {
+            continue;
+        }
+        let own = blocks.and_then(|a| a.get(i)).and_then(toml::Value::as_table).is_some_and(|t| t.contains_key("interval_min"));
+        if !own {
+            block.interval_min = root;
+        }
+    }
+}
+
+/// A program that still stores one `start`, `end` and `interval_min` copies them onto every weekday.
+fn adopt_weekday_hours(raw: &toml::Value, project: &mut Project) {
+    let Some(programs) = raw.get("programs").and_then(toml::Value::as_array) else { return };
+    for (i, program) in project.programs.iter_mut().enumerate() {
+        let Some(table) = programs.get(i).and_then(toml::Value::as_table) else { continue };
+        if table.contains_key("days") {
+            continue;
+        }
+        let start = table.get("start").and_then(toml::Value::as_str).unwrap_or("");
+        let end = table.get("end").and_then(toml::Value::as_str).unwrap_or("");
+        let interval = table.get("interval_min").and_then(toml::Value::as_integer);
+        if start.is_empty() && end.is_empty() && interval.is_none() {
+            continue;
+        }
+        for day in &mut program.days {
+            if !start.is_empty() {
+                day.start = start.to_string();
+            }
+            if !end.is_empty() {
+                day.end = end.to_string();
+            }
+            if let Some(n) = interval {
+                day.interval_min = u32::try_from(n.max(0)).unwrap_or(u32::MAX);
+            }
+        }
+    }
+}
+
 fn explain_reject(v: &toml::Value) -> anyhow::Result<()> {
     let format = v.get("format").and_then(toml::Value::as_integer).unwrap_or(0);
     if format > i64::from(FORMAT) {
-        anyhow::bail!("este proyecto es de una versión más nueva de Estivi (format = {format})");
+        anyhow::bail!("this project is from a newer version of Estivi (format = {format})");
     }
     if format != i64::from(FORMAT) {
-        anyhow::bail!("este archivo es de una versión anterior de Estivi (format = {format}) y no se convierte");
+        anyhow::bail!("this file is from an older version of Estivi (format = {format}) and is not converted");
     }
     if v.get("rotation").is_some() {
-        anyhow::bail!("este archivo tiene la forma anterior de Estivi (rotación) y no se convierte");
+        anyhow::bail!("this file has the old Estivi shape (rotation) and is not converted");
     }
     if v.get("tx").and_then(|t| t.get("fsk_id")).is_some() {
-        anyhow::bail!("este archivo tiene la forma anterior de Estivi (FSK ID) y no se convierte");
+        anyhow::bail!("this file has the old Estivi shape (FSK ID) and is not converted");
     }
     if v.get("grid").and_then(|g| g.get("slots")).is_some() {
-        anyhow::bail!("este archivo tiene la forma anterior de Estivi (bloques en la grilla semanal) y no se convierte");
+        anyhow::bail!("this file has the old Estivi shape (blocks on the weekly grid) and is not converted");
     }
     if v.get("listen").and_then(|l| l.get("triggers")).is_some() {
-        anyhow::bail!("este archivo tiene la forma anterior de Estivi (disparadores) y no se convierte");
+        anyhow::bail!("this file has the old Estivi shape (triggers) and is not converted");
     }
     if let Some(programs) = v.get("programs").and_then(toml::Value::as_array) {
         for p in programs {
-            for key in ["path", "slots", "images", "rotation", "activations", "cw_text", "mode"] {
+            for key in ["path", "slots", "images", "rotation", "activations", "cw_text"] {
                 if p.get(key).is_some() {
-                    anyhow::bail!("este archivo tiene la forma anterior de Estivi (programa con «{key}») y no se convierte");
+                    anyhow::bail!("this file has the old Estivi shape (program with \"{key}\") and is not converted");
                 }
             }
         }
@@ -634,7 +781,7 @@ fn explain_reject(v: &toml::Value) -> anyhow::Result<()> {
         for b in blocks {
             for key in ["freq_hz", "every_min", "days"] {
                 if b.get(key).is_some() {
-                    anyhow::bail!("este archivo tiene la forma anterior de Estivi (bloque con «{key}») y no se convierte");
+                    anyhow::bail!("this file has the old Estivi shape (block with \"{key}\") and is not converted");
                 }
             }
         }
@@ -709,18 +856,17 @@ mod tests {
         let mut p = Project::default();
         p.station.call = "LU1ABC".into();
         p.freq_hz = 145_825_000;
-        p.interval_min = 6;
         p.ax25.info = true;
-        p.programs.push(Program {
+        let mut news = Program {
             id: 1,
             name: "Noticias".into(),
             weekdays: [true, true, true, true, true, false, false],
-            start: "14:00".into(),
-            end: "14:30".into(),
             welcome: Some(Still { path: "hola.png".into(), mode: Some(Mode::Robot36) }),
             hue: 200,
             ..Program::default()
-        });
+        };
+        news.every_day("14:00", "14:30", 6);
+        p.programs.push(news);
         p.blocks.push(Block {
             id: 2,
             program: Some(1),
@@ -757,10 +903,83 @@ mod tests {
         assert_eq!(p.programs.len(), 2);
         assert!(p.programs[0].welcome.is_some());
         assert!(p.programs[1].bye.is_some());
-        assert_eq!(p.blocks.len(), 1);
-        assert!(p.blocks[0].program.is_none());
+        assert_eq!(p.blocks.len(), 3);
+        assert!(p.blocks.iter().any(|b| b.program.is_none() && b.name == "Noche en 80 m" && b.interval_min == 14));
+        assert!(p.blocks.iter().any(|b| b.program == Some(1) && b.has_pictures()));
         assert_eq!(p.activations.len(), 2);
         assert!(p.graphics.layers.iter().any(|l| matches!(l.kind, crate::graphics::LayerKind::Qr(_))));
+        assert_eq!(p.programs[0].days[0].interval_min, 10);
+        assert_eq!(p.programs[0].days[0].start, "12:00");
+        assert_eq!(p.programs[0].days[4].end, "15:00");
+        assert_eq!(p.programs[1].days[5].interval_min, 5);
+        assert_eq!(p.programs[1].days[5].start, "23:45");
+    }
+
+    #[test]
+    fn a_channel_interval_is_copied_until_each_block_names_its_own() {
+        let dir = std::env::temp_dir().join(format!("estivi-interval-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("c.estivi");
+        let text = "\
+format = 2
+interval_min = 10
+[[programs]]
+id = 1
+name = \"Noticias\"
+[[programs]]
+id = 2
+name = \"Cierre\"
+interval_min = 3
+[[blocks]]
+id = 4
+date = \"2026-10-27\"
+name = \"Noche\"
+start = \"21:00\"
+end = \"22:00\"
+";
+        std::fs::write(&path, text).unwrap();
+        let p = Project::load(&path).unwrap();
+        assert_eq!(p.programs[0].days[0].interval_min, 10);
+        assert_eq!(p.programs[1].days[0].interval_min, 3);
+        assert_eq!(p.blocks[0].interval_min, 10);
+        p.save(&path).unwrap();
+        let saved: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.get("interval_min").is_none(), "the channel no longer stores one interval");
+        assert!(saved["programs"][0].get("interval_min").is_none());
+        assert_eq!(saved["programs"][0]["days"][0]["interval_min"].as_integer(), Some(10));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn one_pair_of_hours_fills_every_weekday_and_a_day_can_differ() {
+        let dir = std::env::temp_dir().join(format!("estivi-days-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("c.estivi");
+        let legacy = "\
+format = 2
+[[programs]]
+id = 1
+name = \"Noticias\"
+weekdays = [true, false, false, false, false, true, false]
+start = \"14:00\"
+end = \"15:00\"
+interval_min = 8
+";
+        std::fs::write(&path, legacy).unwrap();
+        let mut p = Project::load(&path).unwrap();
+        assert!(p.programs[0].days.iter().all(|d| d.start == "14:00" && d.end == "15:00" && d.interval_min == 8));
+        p.programs[0].days[5].start = "22:00".into();
+        p.programs[0].days[5].end = "22:30".into();
+        p.programs[0].days[5].interval_min = 4;
+        p.save(&path).unwrap();
+        let back = Project::load(&path).unwrap();
+        assert_eq!(back.programs[0].days[0].start, "14:00");
+        assert_eq!(back.programs[0].days[5].start, "22:00");
+        assert_eq!(back.programs[0].days[5].interval_min, 4);
+        let saved: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved["programs"][0].get("start").is_none());
+        assert!(saved["programs"][0].get("interval_min").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -775,11 +994,24 @@ mod tests {
     }
 
     #[test]
+    fn picture_mode_follows_the_cascade() {
+        let mut p = Project::default();
+        p.tx.mode = Mode::MartinM1;
+        p.programs.push(Program { id: 1, mode: Some(Mode::ScottieS1), ..Program::default() });
+        p.blocks.push(Block { id: 2, program: Some(1), mode: Some(Mode::Robot12), ..Block::default() });
+        assert_eq!(p.picture_mode(None, None, None), Mode::MartinM1);
+        assert_eq!(p.picture_mode(None, None, Some(1)), Mode::ScottieS1);
+        assert_eq!(p.picture_mode(None, Some(2), Some(1)), Mode::Robot12);
+        assert_eq!(p.picture_mode(Some(Mode::Pd120), Some(2), Some(1)), Mode::Pd120);
+        assert_eq!(p.still_mode(None, Some(1)), Mode::ScottieS1);
+        assert_eq!(p.still_mode(Some(Mode::RobotBw8), Some(1)), Mode::RobotBw8);
+    }
+
+    #[test]
     fn partial_file_keeps_the_channel_defaults() {
         let p: Project = toml::from_str("format = 2\nname = \"x\"\n[tx]\nmode = \"PD120\"\n").unwrap();
         assert_eq!(p.tx.mode, Mode::Pd120);
         assert_eq!(p.tx.cw_wpm, 20.0);
-        assert_eq!(p.interval_min, 6);
         assert_eq!(p.ax25.next_count, 8);
         assert!(p.ax25.by_count);
         assert!(!p.tx.vox_preamble);
@@ -793,19 +1025,19 @@ mod tests {
         let text = "format = 1\nname = \"viejo\"\n[[programs]]\nid = 1\npath = \"a.png\"\n";
         std::fs::write(&path, text).unwrap();
         let err = Project::load(&path).unwrap_err().to_string();
-        assert!(err.contains("no se convierte"), "{err}");
+        assert!(err.contains("is not converted"), "{err}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
 
         let newer = "format = 3\nname = \"x\"\n";
         std::fs::write(&path, newer).unwrap();
         let err = Project::load(&path).unwrap_err().to_string();
-        assert!(err.contains("más nueva"), "{err}");
+        assert!(err.contains("newer version"), "{err}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), newer);
 
         let disguised = "format = 2\n[[programs]]\nid = 1\npath = \"a.png\"\n[[blocks]]\nid = 2\nfreq_hz = 1\n";
         std::fs::write(&path, disguised).unwrap();
         let err = Project::load(&path).unwrap_err().to_string();
-        assert!(err.contains("no se convierte"), "{err}");
+        assert!(err.contains("is not converted"), "{err}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), disguised);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -813,7 +1045,7 @@ mod tests {
     #[test]
     fn slots_and_fsk_are_the_old_shape() {
         let err = Project::load_str("format = 2\n[grid]\nslots = []\n");
-        assert!(err.contains("no se convierte"), "{err}");
+        assert!(err.contains("is not converted"), "{err}");
         let err = Project::load_str("format = 2\n[tx]\nfsk_id = false\n");
         assert!(err.contains("FSK"), "{err}");
     }

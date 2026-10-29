@@ -97,13 +97,30 @@ pub enum SerialLine {
     Both,
 }
 
+/// How one serial handshake line keys the radio. `Off` leaves it released.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineLevel {
+    #[default]
+    Off,
+    Positive,
+    Negative,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PttConfig {
     pub method: PttMethod,
     pub port: String,
+    /// RTS while transmitting. `Positive` is high on key, `Negative` is high at rest.
+    pub rts: LineLevel,
+    /// DTR, independent of RTS.
+    pub dtr: LineLevel,
+    /// Old files named one line. Not written anymore.
+    #[serde(default, skip_serializing)]
     pub line: SerialLine,
-    /// Active-low interfaces.
+    /// Old files used one polarity for every line. Not written anymore.
+    #[serde(default, skip_serializing)]
     pub invert: bool,
     /// Wait after keying before audio starts.
     pub lead_ms: u32,
@@ -118,6 +135,8 @@ impl Default for PttConfig {
         PttConfig {
             method: PttMethod::Vox,
             port: String::new(),
+            rts: LineLevel::Positive,
+            dtr: LineLevel::Off,
             line: SerialLine::Rts,
             invert: false,
             lead_ms: 300,
@@ -235,8 +254,10 @@ pub struct UiConfig {
     pub gpu_render: bool,
     /// Start with the grid on air (unattended stations, after a power cut).
     pub autostart: bool,
-    /// Light chrome instead of the default dark one.
+    /// Light chrome instead of the default dark one. Kept in step with `theme`.
     pub light: bool,
+    /// `gray`, `light`, `lavender`, `pastel`, `subte`, `subte-light`. Empty follows `light`.
+    pub theme: String,
     /// `"en"` / `"es"`. Empty = not chosen yet; first boot picks the system language.
     pub lang: String,
 }
@@ -258,10 +279,27 @@ impl Config {
 
     pub fn load(path: &Path) -> anyhow::Result<Config> {
         match std::fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display())),
+            Ok(text) => Self::parse(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
             Err(e) => Err(anyhow::anyhow!("{}: {e}", path.display())),
         }
+    }
+
+    fn parse(text: &str) -> Result<Config, toml::de::Error> {
+        let mut cfg: Config = toml::from_str(text)?;
+        let raw: toml::Value = toml::from_str(text)?;
+        if let Some(ptt) = raw.get("ptt").and_then(toml::Value::as_table) {
+            let legacy = !ptt.contains_key("rts") && !ptt.contains_key("dtr") && (ptt.contains_key("line") || ptt.contains_key("invert"));
+            if legacy {
+                let level = if cfg.ptt.invert { LineLevel::Negative } else { LineLevel::Positive };
+                match cfg.ptt.line {
+                    SerialLine::Rts => { cfg.ptt.rts = level; cfg.ptt.dtr = LineLevel::Off; }
+                    SerialLine::Dtr => { cfg.ptt.rts = LineLevel::Off; cfg.ptt.dtr = level; }
+                    SerialLine::Both => { cfg.ptt.rts = level; cfg.ptt.dtr = level; }
+                }
+            }
+        }
+        Ok(cfg)
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -301,7 +339,11 @@ mod tests {
         c.ptt.port = "/dev/ttyUSB0".into();
         c.ui.lang = "es".into();
         let s = toml::to_string_pretty(&c).unwrap();
-        assert_eq!(toml::from_str::<Config>(&s).unwrap(), c);
+        assert_eq!(Config::parse(&s).unwrap(), c);
+        let old = "method = \"serial\"\nport = \"/dev/ttyUSB0\"\nline = \"dtr\"\ninvert = true\n";
+        let migrated = Config::parse(&format!("[ptt]\n{old}")).unwrap();
+        assert_eq!(migrated.ptt.rts, LineLevel::Off);
+        assert_eq!(migrated.ptt.dtr, LineLevel::Negative);
     }
 
     #[test]

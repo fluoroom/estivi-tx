@@ -82,6 +82,8 @@ struct Tone {
     wpm: f32,
     tone: f32,
     skip_us: i64,
+    program_id: Option<u64>,
+    block_id: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -104,14 +106,14 @@ pub struct Clip {
 }
 
 pub fn plan(project: &Project, req: &ExportRequest) -> anyhow::Result<Vec<Clip>> {
-    anyhow::ensure!(req.end > req.start, "el rango está vacío");
-    anyhow::ensure!(SAMPLE_RATES.contains(&req.rate), "frecuencia de muestreo no admitida");
+    anyhow::ensure!(req.end > req.start, "the range is empty");
+    anyhow::ensure!(SAMPLE_RATES.contains(&req.rate), "sample rate is not supported");
     if let Shape::Every(secs) = req.shape {
-        anyhow::ensure!(secs > 0, "el trozo tiene que durar al menos un segundo");
+        anyhow::ensure!(secs > 0, "a piece has to last at least one second");
     }
     let spans = audible(project, req);
     let grouped = match req.shape {
-        Shape::Whole => vec![group(&spans, "entero")],
+        Shape::Whole => vec![group(&spans, "whole")],
         Shape::TxSilence => group_runs(&spans, true),
         Shape::Pieces => piece_runs(&spans),
         Shape::Every(secs) => slice_every(&spans, i64::from(secs) * 1_000_000),
@@ -156,6 +158,8 @@ fn audible(project: &Project, req: &ExportRequest) -> Vec<Span> {
                             wpm: turn.cw_wpm,
                             tone: turn.cw_tone,
                             skip_us: (s - at).num_microseconds().unwrap_or(0),
+                            program_id: turn.program_id,
+                            block_id: turn.block_id,
                         }),
                         block_key: Some(block_key.clone()),
                         block_name: occ.name.clone(),
@@ -579,10 +583,12 @@ fn segments(project: &Project, dir: Option<&Path>, composer: &mut Composer, tone
     if let Some(ready) = air::piece_segments(&tone.piece, &tone.call, tone.wpm, tone.tone) {
         return Ok(ready);
     }
-    let mode = tone.piece.mode.unwrap_or(project.tx.mode);
+    let mode = project.picture_mode(tone.piece.mode, tone.block_id, tone.program_id);
     let live = crate::compose::LiveText::default();
     let ctx = crate::compose::data_ctx(project, Utc::now(), 1, mode, &live, project.freq_hz, "", "");
-    let frame = composer.frame_image(project, dir, Some(&tone.piece.path), mode, &ctx);
+    let block = tone.block_id.and_then(|id| project.block(id)).map(|b| b.graphics.clone());
+    let program = tone.program_id.and_then(|id| project.program(id)).map(|p| p.graphics.clone());
+    let frame = composer.frame_chain(project, dir, Some(&tone.piece.path), None, block.as_ref(), program.as_ref(), mode, &ctx);
     let scan = ScanImage::new(mode, &image::DynamicImage::ImageRgba8(frame).to_rgb8(), project.tx.color_range)?;
     let mut segs = Vec::new();
     for line in 0..mode.spec().tx_lines {
@@ -603,21 +609,15 @@ mod tests {
 
     fn project() -> Project {
         let mut p = Project::default();
-        p.interval_min = 6;
         p.tx.min_pause_s = 0;
         p.tx.cw_id = false;
         p.tx.cw_preamble = false;
         p.tx.mode = Mode::Robot12;
         let mut days = [false; 7];
         days[0] = true;
-        p.programs.push(Program {
-            id: 1,
-            name: "Noticias".into(),
-            weekdays: days,
-            start: "14:00".into(),
-            end: "14:30".into(),
-            ..Program::default()
-        });
+        let mut news = Program { id: 1, name: "Noticias".into(), weekdays: days, ..Program::default() };
+        news.every_day("14:00", "14:30", 6);
+        p.programs.push(news);
         p.blocks.push(Block {
             id: 4,
             program: Some(1),
@@ -647,7 +647,7 @@ mod tests {
         }
         let whole = plan(&p, &req(Shape::Whole, "2026-10-26 14:00:00", "2026-10-26 14:30:00")).unwrap();
         assert_eq!(whole.len(), 1);
-        assert!(whole[0].name.contains("entero.flac"), "{}", whole[0].name);
+        assert!(whole[0].name.contains("whole.flac"), "{}", whole[0].name);
         assert!(whole[0].name.contains('Z'), "{}", whole[0].name);
 
         let split = plan(&p, &req(Shape::TxSilence, "2026-10-26 14:00:00", "2026-10-26 14:30:00")).unwrap();

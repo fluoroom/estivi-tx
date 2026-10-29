@@ -1,6 +1,6 @@
 import { ComboBox, CheckBox, LineEdit, SpinBox, TextEdit, ScrollView, Palette } from "std-widgets.slint";
-import { Theme, ToolButton, Field, PanelTitle, Pill } from "theme.slint";
-import { CardItem, PicItem, StepItem } from "types.slint";
+import { Theme, ToolButton, Field, PanelTitle, Pill, BoundCombo } from "theme.slint";
+import { CardItem, PicItem, StepItem, TxItem, TickItem, ActionItem } from "types.slint";
 
 component DayColumn inherits Rectangle {
     in property <int> cell;
@@ -12,6 +12,7 @@ component DayColumn inherits Rectangle {
     callback open-card(int);
     callback edge(int, bool, int);
     callback create-at(int, int);
+    callback clear();
     background: root.today ? Theme.accent.transparentize(0.9) : Theme.panel;
     border-width: 1px;
     border-color: Theme.border;
@@ -23,11 +24,13 @@ component DayColumn inherits Rectangle {
         PanelTitle {
             text: root.heading;
             height: 18px;
+            overflow: elide;
         }
         Rectangle {
             vertical-stretch: 1;
             bg := TouchArea {
                 mouse-cursor: pointer;
+                clicked => { root.clear(); }
                 pointer-event(e) => {
                     if e.kind == PointerEventKind.down {
                         root.press-minute = min(1439, max(0, round(self.mouse-y / self.height * 1440)));
@@ -43,8 +46,8 @@ component DayColumn inherits Rectangle {
                 visible: card.cell == root.cell;
                 border-radius: Theme.radius;
                 background: rgb(card.r, card.g, card.b).transparentize(1 - card.opacity);
-                border-width: 1px;
-                border-color: Theme.border-strong;
+                border-width: card.selected ? 2px : 1px;
+                border-color: card.selected ? #ffe14a : Theme.border-strong;
                 clip: true;
                 Text {
                     x: 4px;
@@ -106,26 +109,16 @@ export component MainWindow inherits Window {
     in-out property <int> side: 0;
     in-out property <string> block-title;
     in-out property <bool> has-block;
-    in-out property <bool> is-program;
+    in-out property <bool> inherited;
+    in-out property <bool> ghost;
     in-out property <[PicItem]> pics;
     in-out property <[StepItem]> steps;
     in-out property <string> tx-total;
     in-out property <bool> block-on: true;
-    in-out property <bool> program-on: true;
     in-out property <string> form-name;
     in-out property <string> form-start;
     in-out property <string> form-end;
-    in-out property <string> form-ends;
-    in-out property <string> form-welcome;
-    in-out property <string> form-bye;
-    in-out property <int> form-hue: 210;
-    in-out property <bool> wd0;
-    in-out property <bool> wd1;
-    in-out property <bool> wd2;
-    in-out property <bool> wd3;
-    in-out property <bool> wd4;
-    in-out property <bool> wd5;
-    in-out property <bool> wd6;
+    in-out property <string> form-when;
     in-out property <string> channel-name;
     in-out property <string> call-text;
     in-out property <string> op-text;
@@ -158,7 +151,6 @@ export component MainWindow inherits Window {
     in-out property <int> instant-pre-mode;
     in-out property <int> instant-post-mode;
     in-out property <string> act-list;
-    in-out property <string> program-list;
     in-out property <string> ptt-note;
     in-out property <int> ptt-index: 1;
     in-out property <string> ptt-port;
@@ -177,6 +169,27 @@ export component MainWindow inherits Window {
     in-out property <string> listen-text;
     in-out property <image> on-air-image;
     in-out property <bool> has-image;
+    in-out property <image> next-image;
+    in-out property <bool> has-next;
+    in-out property <string> next-caption;
+    in-out property <string> last-log;
+    in-out property <[string]> themes;
+    in-out property <int> theme-index;
+    in-out property <string> day-hint;
+    in-out property <int> pic-mode;
+    in-out property <int> block-mode;
+    in-out property <[string]> mode-choices;
+    in-out property <[TxItem]> clips;
+    in-out property <[TickItem]> ticks;
+    in-out property <int> rts-index: 1;
+    in-out property <int> dtr-index;
+    in-out property <float> playhead: -1;
+    in-out property <[string]> act-names;
+    in-out property <int> act-index;
+    in-out property <[ActionItem]> actions;
+    in-out property <[string]> action-kinds;
+    in-out property <[string]> action-labels;
+    in-out property <[string]> carriers;
 
     in-out property <int> dialog: 0;
     in-out property <string> dialog-title;
@@ -188,6 +201,7 @@ export component MainWindow inherits Window {
     in-out property <string> dlg-date;
     in-out property <string> dlg-start;
     in-out property <string> dlg-end;
+    in-out property <int> dlg-interval: 6;
     in-out property <string> dlg-horizon;
     in-out property <string> exp-from;
     in-out property <string> exp-to;
@@ -206,7 +220,18 @@ export component MainWindow inherits Window {
     callback save-project();
     callback save-as();
     callback open-editor();
+    callback open-block-graphics();
+    callback undo();
+    callback set-theme(int);
+    callback clear-selection();
+    callback pick-clip(int);
+    callback act-select(int);
+    callback act-add(int);
+    callback act-drop(int);
+    callback act-edit(int, string, string);
+    callback act-num(int, string, int);
     callback open-modes();
+    callback open-programs(bool);
     callback set-light(bool);
     callback set-agenda(bool);
     callback stop();
@@ -240,6 +265,7 @@ export component MainWindow inherits Window {
         HorizontalLayout {
             height: 36px;
             spacing: 6px;
+            alignment: center;
             Text {
                 text: "Estivi";
                 font-size: 16px;
@@ -259,60 +285,96 @@ export component MainWindow inherits Window {
             ToolButton { text: @tr("New"); clicked => { root.new-project(); } }
             ToolButton { text: @tr("Open"); clicked => { root.open-project(); } }
             ToolButton { text: @tr("Save"); primary: root.dirty; clicked => { root.save-project(); } }
+            ToolButton { text: @tr("Undo"); enabled: root.dirty; clicked => { root.undo(); } }
             ToolButton { text: @tr("Graphics"); clicked => { root.open-editor(); } }
+            ToolButton { text: @tr("Programs"); clicked => { root.open-programs(false); } }
             ToolButton { text: @tr("Modes"); clicked => { root.open-modes(); } }
-            ToolButton {
-                text: Theme.light ? @tr("Dark") : @tr("Light");
-                clicked => {
-                    root.set-light(!Theme.light);
-                    root.sync-palette();
-                }
+            ComboBox {
+                model: root.themes;
+                current-index: root.theme-index;
+                selected => { root.theme-index = self.current-index; root.set-theme(self.current-index); }
             }
         }
 
         HorizontalLayout {
             spacing: 8px;
-            height: 64px;
+            height: 168px;
             Rectangle {
-                vertical-stretch: 1;
-                background: Theme.panel;
+                width: 250px;
+                background: #000000;
                 border-radius: Theme.radius;
                 border-width: 1px;
                 border-color: root.busy ? Theme.on-air : Theme.border;
-                HorizontalLayout {
+                clip: true;
+                if root.has-image : Image {
+                    source: root.on-air-image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                }
+                Text {
+                    x: 8px;
+                    y: 6px;
+                    text: @tr("Live");
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: root.busy ? Theme.on-air : #ffffffcc;
+                }
+            }
+            Rectangle {
+                width: 250px;
+                background: #000000;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+                if root.has-next : Image {
+                    source: root.next-image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                }
+                VerticalLayout {
+                    alignment: start;
+                    padding: 6px;
+                    Text { text: @tr("Next"); font-size: 11px; font-weight: 700; color: #ffffffcc; }
+                    Text { text: root.next-caption; font-size: 11px; color: #ffffff; overflow: elide; }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.panel;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.border;
+                VerticalLayout {
                     padding: 8px;
-                    spacing: 10px;
-                    if root.has-image : Image {
-                        source: root.on-air-image;
-                        width: 72px;
-                        height: 48px;
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        Text { text: @tr("On air"); font-size: 11px; color: Theme.text-faint; }
-                        Text { text: root.on-air; font-size: 16px; font-weight: 700; color: root.busy ? Theme.on-air : Theme.text; }
-                    }
-                    Rectangle { width: 1px; background: Theme.border; }
-                    VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 1;
-                        Text { text: @tr("Next"); font-size: 11px; color: Theme.text-faint; }
-                        Text { text: root.next-up; font-size: 14px; color: Theme.text; overflow: elide; }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 4px;
-                        Text { text: root.clock-note; font-size: 11px; color: Theme.text-dim; }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            CheckBox {
-                                text: @tr("Grid on air");
-                                checked: root.agenda;
-                                toggled => { root.set-agenda(self.checked); }
-                            }
-                            ToolButton { text: @tr("Stop"); danger: true; enabled: root.busy; clicked => { root.stop(); } }
+                    spacing: 4px;
+                    alignment: start;
+                    Text { text: root.on-air; font-size: 15px; font-weight: 700; color: root.busy ? Theme.on-air : Theme.text; overflow: elide; }
+                    Text { text: root.next-up; font-size: 12px; color: Theme.text-dim; overflow: elide; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        Text { text: root.clock-note; font-size: 12px; color: Theme.text; vertical-alignment: center; }
+                        ComboBox {
+                            model: [@tr("UTC"), @tr("Local")];
+                            current-index: root.tz-index;
+                            selected => { root.tz-index = self.current-index; root.set-num("tz", self.current-index); }
                         }
                     }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        ToolButton {
+                            text: root.agenda ? @tr("Stop grid") : @tr("Start grid");
+                            primary: !root.agenda;
+                            danger: root.agenda;
+                            clicked => { root.set-agenda(!root.agenda); }
+                        }
+                        ToolButton { text: @tr("Cut"); danger: true; enabled: root.busy; clicked => { root.stop(); } }
+                    }
+                    Text { text: root.last-log; font-size: 11px; color: Theme.text-faint; overflow: elide; }
                 }
             }
         }
@@ -320,12 +382,15 @@ export component MainWindow inherits Window {
         HorizontalLayout {
             spacing: 8px;
             vertical-stretch: 1;
+            min-height: 0px;
 
             VerticalLayout {
                 horizontal-stretch: 1;
+                min-height: 0px;
                 spacing: 6px;
                 HorizontalLayout {
                     spacing: 6px;
+                    alignment: center;
                     ToolButton { text: @tr("Month"); active: root.zoom == 0; clicked => { root.set-zoom(0); } }
                     ToolButton { text: @tr("Week"); active: root.zoom == 1; clicked => { root.set-zoom(1); } }
                     ToolButton { text: @tr("Day"); active: root.zoom == 2; clicked => { root.set-zoom(2); } }
@@ -336,19 +401,29 @@ export component MainWindow inherits Window {
                         font-weight: 600;
                         color: Theme.text;
                         vertical-alignment: center;
-                        horizontal-stretch: 1;
                     }
                     ToolButton { text: "›"; clicked => { root.nav(1); } }
                     ToolButton { text: @tr("Today"); clicked => { root.nav(0); } }
+                    Rectangle { horizontal-stretch: 1; }
                 }
-                if root.zoom == 0 : VerticalLayout {
+                // One column width for every week. A HorizontalLayout per week
+                // sizes each day from its heading, so the borders do not meet.
+                if root.zoom == 0 : month := Rectangle {
                     vertical-stretch: 1;
-                    spacing: 2px;
-                    for week in 6 : HorizontalLayout {
-                        vertical-stretch: 1;
-                        spacing: 2px;
+                    clip: true;
+                    property <length> gap: 2px;
+                    property <length> col-w: max(0px, (month.width - 6 * month.gap) / 7);
+                    property <length> row-h: max(0px, (month.height - 5 * month.gap) / 6);
+                    for week in 6 : Rectangle {
+                        x: 0px;
+                        y: week * (month.row-h + month.gap);
+                        width: month.width;
+                        height: week == 5 ? max(0px, month.height - self.y) : month.row-h;
                         for col in 7 : DayColumn {
-                            horizontal-stretch: 1;
+                            x: col * (month.col-w + month.gap);
+                            y: 0px;
+                            width: col == 6 ? max(0px, parent.width - self.x) : month.col-w;
+                            height: parent.height;
                             cell: week * 7 + col;
                             timed: false;
                             today: week * 7 + col == root.today-cell;
@@ -358,6 +433,7 @@ export component MainWindow inherits Window {
                             open-card(i) => { root.open-card(i); }
                             edge(i, end, m) => { root.edge(i, end, m); }
                             create-at(c, m) => { root.create-at(c, m); }
+                            clear => { root.clear-selection(); }
                         }
                     }
                 }
@@ -366,6 +442,8 @@ export component MainWindow inherits Window {
                     spacing: 2px;
                     for col in root.columns : DayColumn {
                         horizontal-stretch: 1;
+                        min-width: 0px;
+                        preferred-width: 0px;
                         cell: col;
                         timed: true;
                         today: col == root.today-cell;
@@ -375,12 +453,15 @@ export component MainWindow inherits Window {
                         open-card(i) => { root.open-card(i); }
                         edge(i, end, m) => { root.edge(i, end, m); }
                         create-at(c, m) => { root.create-at(c, m); }
+                        clear => { root.clear-selection(); }
                     }
                 }
             }
 
             Rectangle {
                 width: 400px;
+                vertical-stretch: 1;
+                min-height: 0px;
                 background: Theme.panel;
                 border-radius: Theme.radius;
                 border-width: 1px;
@@ -398,12 +479,14 @@ export component MainWindow inherits Window {
                     }
                     ScrollView {
                         vertical-stretch: 1;
+                        min-height: 0px;
                         VerticalLayout {
+                            alignment: start;
                             spacing: 8px;
                             if root.side == 0 : VerticalLayout {
                                 spacing: 8px;
                                 if !root.has-block : Text {
-                                    text: @tr("Double-click an empty hour to create a block, or click a card.");
+                                    text: @tr("Double-click an empty hour for a common block, or click a card. A program's days and hours are set in Programs.");
                                     color: Theme.text-dim;
                                     wrap: word-wrap;
                                     font-size: 13px;
@@ -411,11 +494,11 @@ export component MainWindow inherits Window {
                                 if root.has-block : VerticalLayout {
                                     spacing: 8px;
                                     Text { text: root.block-title; font-size: 15px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
-                                    Field {
+                                    if !root.inherited : Field {
                                         label: @tr("Name");
                                         LineEdit { text: root.form-name; edited(v) => { root.form-name = v; root.set-field("name", v); } }
                                     }
-                                    HorizontalLayout {
+                                    if !root.inherited : HorizontalLayout {
                                         spacing: 8px;
                                         Field {
                                             label: @tr("Start");
@@ -426,86 +509,80 @@ export component MainWindow inherits Window {
                                             LineEdit { text: root.form-end; edited(v) => { root.form-end = v; root.set-field("end", v); } }
                                         }
                                     }
-                                    CheckBox { text: @tr("This day"); checked: root.block-on; toggled => { root.set-field("enabled", self.checked ? "1" : "0"); } }
-                                    if root.is-program : CheckBox { text: @tr("Program enabled"); checked: root.program-on; toggled => { root.set-field("program-on", self.checked ? "1" : "0"); } }
-                                    if root.is-program : VerticalLayout {
-                                        spacing: 6px;
-                                        PanelTitle { text: @tr("Weekdays"); }
-                                        HorizontalLayout {
-                                            spacing: 4px;
-                                            CheckBox { text: @tr("Mo"); checked: root.wd0; toggled => { root.set-field("wd", self.checked ? "0:1" : "0:0"); } }
-                                            CheckBox { text: @tr("Tu"); checked: root.wd1; toggled => { root.set-field("wd", self.checked ? "1:1" : "1:0"); } }
-                                            CheckBox { text: @tr("We"); checked: root.wd2; toggled => { root.set-field("wd", self.checked ? "2:1" : "2:0"); } }
-                                            CheckBox { text: @tr("Th"); checked: root.wd3; toggled => { root.set-field("wd", self.checked ? "3:1" : "3:0"); } }
-                                            CheckBox { text: @tr("Fr"); checked: root.wd4; toggled => { root.set-field("wd", self.checked ? "4:1" : "4:0"); } }
-                                            CheckBox { text: @tr("Sa"); checked: root.wd5; toggled => { root.set-field("wd", self.checked ? "5:1" : "5:0"); } }
-                                            CheckBox { text: @tr("Su"); checked: root.wd6; toggled => { root.set-field("wd", self.checked ? "6:1" : "6:0"); } }
-                                        }
-                                        HorizontalLayout {
-                                            spacing: 8px;
-                                            Field {
-                                                label: @tr("Hue");
-                                                SpinBox { minimum: 0; maximum: 359; value: root.form-hue; edited(v) => { root.form-hue = v; root.set-num("hue", v); } }
-                                            }
-                                            Field {
-                                                label: @tr("Ends (empty = forever)");
-                                                LineEdit { text: root.form-ends; edited(v) => { root.form-ends = v; root.set-field("ends", v); } }
-                                            }
-                                        }
-                                        Text { text: @tr("Welcome") + ": " + root.form-welcome; font-size: 12px; color: Theme.text-dim; }
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                        ToolButton { text: @tr("Set welcome"); clicked => { root.pick("welcome"); } }
-                                        ToolButton { text: @tr("Mode"); clicked => { root.set-field("welcome-mode", ""); } }
-                                        ToolButton { text: @tr("Clear"); clicked => { root.set-field("welcome", ""); } }
-                                        }
-                                        Text { text: @tr("Bye") + ": " + root.form-bye; font-size: 12px; color: Theme.text-dim; }
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                        ToolButton { text: @tr("Set bye"); clicked => { root.pick("bye"); } }
-                                        ToolButton { text: @tr("Mode"); clicked => { root.set-field("bye-mode", ""); } }
-                                        ToolButton { text: @tr("Clear"); clicked => { root.set-field("bye", ""); } }
-                                        }
-                                        ToolButton { text: @tr("Delete program"); danger: true; clicked => { root.set-field("delete-program", ""); } }
+                                    if !root.inherited : Field {
+                                        label: @tr("Image interval (minutes)");
+                                        SpinBox { minimum: 0; maximum: 180; value: root.interval; edited(v) => { root.interval = v; root.set-num("interval", v); } }
                                     }
-                                    if !root.is-program : ToolButton { text: @tr("Delete block"); danger: true; clicked => { root.set-field("delete-block", ""); } }
+                                    if root.inherited : Text { text: root.form-when; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
+                                    if root.ghost : Text {
+                                        text: @tr("Predicted from the program. It is saved once it has a picture, its own graphics, or its own SSTV mode.");
+                                        font-size: 12px;
+                                        color: Theme.text-dim;
+                                        wrap: word-wrap;
+                                    }
+                                    if root.inherited : ToolButton { text: @tr("Programs"); clicked => { root.open-programs(true); } }
+                                    CheckBox { text: @tr("Transmit this date"); checked: root.block-on; toggled => { root.set-field("enabled", self.checked ? "1" : "0"); } }
+                                    Text { text: root.day-hint; font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
+                                    ToolButton { text: @tr("Graphics"); clicked => { root.open-block-graphics(); } }
+                                    Field {
+                                        label: @tr("SSTV mode");
+                                        BoundCombo {
+                                            model: root.mode-choices;
+                                            index: root.block-mode;
+                                            selected(i) => { root.set-num("block-mode", i); }
+                                        }
+                                    }
+                                    if !root.inherited : ToolButton { text: @tr("Delete block"); danger: true; clicked => { root.set-field("delete-block", ""); } }
                                     PanelTitle { text: @tr("Pictures"); }
                                     HorizontalLayout {
                                         spacing: 4px;
                                         ToolButton { text: @tr("Add"); clicked => { root.pick("images"); } }
-                                        ToolButton { text: @tr("Import folder"); clicked => { root.pick("folder"); } }
+                                        if root.inherited : ToolButton { text: @tr("Import folder"); clicked => { root.pick("folder"); } }
                                         ToolButton { text: @tr("Link up"); clicked => { root.pic("link-up", -1); } }
                                         ToolButton { text: @tr("Link down"); clicked => { root.pic("link-down", -1); } }
                                         ToolButton { text: @tr("Unlink"); clicked => { root.pic("unlink", -1); } }
                                     }
                                     for pic in root.pics : Rectangle {
-                                        height: 28px;
-                                        background: pic.role == 0 ? Theme.panel-raised : transparent;
+                                        height: 26px;
+                                        background: pic.selected ? Theme.accent.transparentize(0.75) : pic.role == 4 ? Theme.panel-raised : transparent;
                                         border-radius: Theme.radius;
+                                        border-width: pic.selected ? 1px : 0px;
+                                        border-color: Theme.accent;
                                         HorizontalLayout {
-                                            padding-left: pic.role == 0 ? 6px : 18px;
+                                            padding-left: pic.ghost && pic.group >= 0 ? 18px : 6px;
                                             padding-right: 4px;
                                             spacing: 4px;
                                             Text {
                                                 text: pic.label;
                                                 font-size: 12px;
-                                                color: pic.on ? Theme.text : Theme.text-faint;
+                                                color: pic.ghost ? Theme.text-faint : pic.on ? Theme.text : Theme.text-faint;
                                                 vertical-alignment: center;
                                                 horizontal-stretch: 1;
                                                 overflow: elide;
                                             }
-                                            Text { text: pic.detail; font-size: 11px; color: Theme.text-dim; vertical-alignment: center; }
-                                            TouchArea {
-                                                property <length> y0;
-                                                property <bool> armed;
-                                                pointer-event(e) => {
-                                                    if e.kind == PointerEventKind.down { self.y0 = self.mouse-y; self.armed = true; root.pic("select", pic.id); }
-                                                    if e.kind == PointerEventKind.up && self.armed {
-                                                        root.pic("nudge", round((self.mouse-y - self.y0) / 28px));
-                                                        self.armed = false;
+                                            Text { text: pic.detail; font-size: 11px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+                                        }
+                                        if !pic.ghost : TouchArea {
+                                            width: 100%;
+                                            height: 100%;
+                                            property <length> y0;
+                                            property <bool> armed;
+                                            pointer-event(e) => {
+                                                if e.kind == PointerEventKind.down { self.y0 = self.mouse-y; self.armed = true; }
+                                                if e.kind == PointerEventKind.up && self.armed {
+                                                    self.armed = false;
+                                                    if self.mouse-y - self.y0 < 8px && self.y0 - self.mouse-y < 8px {
+                                                        root.pic("select", pic.id);
+                                                    } else {
+                                                        root.pic("nudge", round((self.mouse-y - self.y0) / 26px));
                                                     }
                                                 }
                                             }
+                                        }
+                                        if pic.ghost && pic.group >= 0 : TouchArea {
+                                            width: 100%;
+                                            height: 100%;
+                                            clicked => { root.pic("select", pic.group); }
                                         }
                                     }
                                     HorizontalLayout {
@@ -513,15 +590,16 @@ export component MainWindow inherits Window {
                                         ToolButton { text: @tr("Up"); clicked => { root.pic("up", -1); } }
                                         ToolButton { text: @tr("Down"); clicked => { root.pic("down", -1); } }
                                         ToolButton { text: @tr("On/off"); clicked => { root.pic("toggle", -1); } }
-                                        ToolButton { text: @tr("Mode"); clicked => { root.pic("mode", -1); } }
                                         ToolButton { text: @tr("Remove"); clicked => { root.pic("remove", -1); } }
                                     }
-                                    PanelTitle { text: @tr("One transmission"); }
-                                    for step in root.steps : HorizontalLayout {
-                                        Text { text: step.label; font-size: 12px; color: step.dim ? Theme.text-faint : Theme.text; horizontal-stretch: 1; }
-                                        Text { text: step.time; font-size: 12px; font-family: Theme.mono; color: Theme.text-dim; }
+                                    Field {
+                                        label: @tr("Picture mode");
+                                        BoundCombo {
+                                            model: root.mode-choices;
+                                            index: root.pic-mode;
+                                            selected(i) => { root.pic("mode", i); }
+                                        }
                                     }
-                                    Text { text: root.tx-total; font-size: 12px; font-weight: 600; color: Theme.text; }
                                 }
                             }
                             if root.side == 1 : VerticalLayout {
@@ -547,15 +625,62 @@ export component MainWindow inherits Window {
                             }
                             if root.side == 2 : VerticalLayout {
                                 spacing: 8px;
-                                Text { text: @tr("Activations are not on the grid. Triggers are OR. Pause does not cut a transmission already on the air."); color: Theme.text-dim; font-size: 12px; wrap: word-wrap; }
-                                Text { text: root.act-list; font-size: 12px; color: Theme.text; wrap: word-wrap; }
+                                Text { text: @tr("A matching DTMF or CW code runs the actions. Triggers are OR. Pause waits for the current transmission to finish."); color: Theme.text-dim; font-size: 12px; wrap: word-wrap; }
+                                Field {
+                                    label: @tr("Activation");
+                                    ComboBox { model: root.act-names; current-index: root.act-index; selected => { root.act-index = self.current-index; root.act-select(self.current-index); } }
+                                }
                                 HorizontalLayout {
                                     spacing: 6px;
-                                    ToolButton { text: @tr("New activation"); clicked => { root.edit-activation(-1); } }
-                                    ToolButton { text: @tr("Edit"); clicked => { root.edit-activation(0); } }
-                                    ToolButton { text: "‹"; clicked => { root.pic("act", -1); } }
-                                    ToolButton { text: "›"; clicked => { root.pic("act", 1); } }
+                                    ToolButton { text: @tr("New"); clicked => { root.edit-activation(-1); } }
                                     ToolButton { text: @tr("Remove"); clicked => { root.pic("act-remove", 0); } }
+                                }
+                                CheckBox { text: @tr("Enabled"); checked: root.act-on; toggled => { root.act-on = self.checked; root.act-edit(-1, "on", self.checked ? "1" : "0"); } }
+                                Field { label: @tr("Name"); LineEdit { text: root.act-name; edited(v) => { root.act-name = v; root.act-edit(-1, "name", v); } } }
+                                Field { label: @tr("Hears"); ComboBox { model: [@tr("DTMF"), @tr("CW")]; current-index: root.act-source; selected => { root.act-source = self.current-index; root.act-edit(-1, "source", self.current-index == 0 ? "dtmf" : "cw"); } } }
+                                Field { label: @tr("Code"); LineEdit { text: root.act-code; edited(v) => { root.act-code = v; root.act-edit(-1, "code", v); } } }
+                                PanelTitle { text: @tr("Actions"); }
+                                for act[i] in root.actions : Rectangle {
+                                    background: Theme.panel-raised;
+                                    border-radius: Theme.radius;
+                                    VerticalLayout {
+                                        padding: 6px;
+                                        spacing: 4px;
+                                        HorizontalLayout {
+                                            Text { text: root.action-labels[act.kind]; font-size: 12px; font-weight: 600; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                            ToolButton { text: @tr("Remove"); clicked => { root.act-drop(i); } }
+                                        }
+                                        if act.kind == 0 || act.kind == 1 || act.kind == 5 : Field {
+                                            label: act.kind == 5 ? @tr("Comment") : @tr("Text");
+                                            LineEdit { text: act.text; edited(v) => { root.act-edit(i, "text", v); } }
+                                        }
+                                        if act.kind == 0 : HorizontalLayout {
+                                            spacing: 6px;
+                                            Field { label: @tr("WPM"); SpinBox { minimum: 5; maximum: 40; value: act.wpm; edited(v) => { root.act-num(i, "wpm", v); } } }
+                                            Field { label: @tr("Hz"); SpinBox { minimum: 200; maximum: 2000; value: act.tone; edited(v) => { root.act-num(i, "tone", v); } } }
+                                        }
+                                        if act.kind == 2 || act.kind == 8 : HorizontalLayout {
+                                            spacing: 6px;
+                                            Text { text: act.path; font-size: 11px; color: Theme.text-dim; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                            ToolButton { text: @tr("Picture"); clicked => { root.act-edit(i, "pick", ""); } }
+                                        }
+                                        if act.kind == 2 : Field {
+                                            label: @tr("Mode");
+                                            ComboBox { model: root.modes; current-index: act.mode; selected => { root.act-num(i, "mode", self.current-index); } }
+                                        }
+                                        if act.kind == 6 || act.kind == 7 : Field {
+                                            label: act.kind == 6 ? @tr("Command") : @tr("URL");
+                                            LineEdit { text: act.kind == 6 ? act.text : act.url; edited(v) => { root.act-edit(i, act.kind == 6 ? "text" : "url", v); } }
+                                        }
+                                        if act.kind == 6 || act.kind == 7 : Field {
+                                            label: @tr("Send the answer as");
+                                            ComboBox { model: root.carriers; current-index: act.via; selected => { root.act-num(i, "via", self.current-index); } }
+                                        }
+                                    }
+                                }
+                                Field {
+                                    label: @tr("Add an action");
+                                    ComboBox { model: root.action-kinds; current-index: 0; selected => { if self.current-index > 0 { root.act-add(self.current-index - 1); self.current-index = 0; } } }
                                 }
                             }
                             if root.side == 3 : VerticalLayout {
@@ -566,11 +691,7 @@ export component MainWindow inherits Window {
                                 Field { label: @tr("QTH"); LineEdit { text: root.qth-text; edited(v) => { root.qth-text = v; root.set-field("qth", v); } } }
                                 Field { label: @tr("Locator"); LineEdit { text: root.loc-text; edited(v) => { root.loc-text = v; root.set-field("loc", v); } } }
                                 Field { label: @tr("Frequency (MHz, 0 = do not retune)"); LineEdit { text: root.freq-text; edited(v) => { root.freq-text = v; root.set-field("freq", v); } } }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Field { label: @tr("Interval (minutes)"); SpinBox { minimum: 0; maximum: 180; value: root.interval; edited(v) => { root.interval = v; root.set-num("interval", v); } } }
-                                    Field { label: @tr("Offset (seconds)"); SpinBox { minimum: 0; maximum: 3600; value: root.offset-s; edited(v) => { root.offset-s = v; root.set-num("offset", v); } } }
-                                }
+                                Field { label: @tr("Offset (seconds)"); SpinBox { minimum: 0; maximum: 3600; value: root.offset-s; edited(v) => { root.offset-s = v; root.set-num("offset", v); } } }
                                 Field { label: @tr("Mode"); ComboBox { model: root.modes; current-index: root.mode-index; selected => { root.mode-index = self.current-index; root.set-num("mode", self.current-index); } } }
                                 Field { label: @tr("Minimum pause (seconds)"); SpinBox { minimum: 0; maximum: 600; value: root.pause-s; edited(v) => { root.pause-s = v; root.set-num("pause", v); } } }
                                 CheckBox { text: @tr("VOX preamble"); checked: root.vox; toggled => { root.set-field("vox", self.checked ? "1" : "0"); } }
@@ -585,15 +706,8 @@ export component MainWindow inherits Window {
                                     Field { label: @tr("or hours"); SpinBox { minimum: 1; maximum: 48; value: root.next-hours; edited(v) => { root.next-hours = v; root.set-num("next-hours", v); } } }
                                 }
                                 CheckBox { text: @tr("One upcoming block per program"); checked: root.dedupe; toggled => { root.set-field("dedupe", self.checked ? "1" : "0"); } }
-                                Field { label: @tr("Grid timezone"); ComboBox { model: [@tr("UTC"), @tr("Local")]; current-index: root.tz-index; selected => { root.tz-index = self.current-index; root.set-num("tz", self.current-index); } } }
-                                Text { text: root.program-list; font-size: 12px; color: Theme.text; wrap: word-wrap; }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    ToolButton { text: @tr("New program"); clicked => { root.set-field("new-program", ""); } }
-                                    ToolButton { text: "‹"; clicked => { root.pic("prog", -1); } }
-                                    ToolButton { text: "›"; clicked => { root.pic("prog", 1); } }
-                                    ToolButton { text: @tr("Edit"); clicked => { root.pic("prog-edit", 0); } }
-                                }
+                                ToolButton { text: @tr("Graphics"); clicked => { root.open-editor(); } }
+                                ToolButton { text: @tr("Programs"); clicked => { root.open-programs(false); } }
                                 ToolButton { text: @tr("Export audio"); clicked => { root.set-field("export", ""); } }
                             }
                             if root.side == 4 : VerticalLayout {
@@ -601,6 +715,11 @@ export component MainWindow inherits Window {
                                 Text { text: root.ptt-note; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
                                 Field { label: @tr("PTT"); ComboBox { model: [@tr("None"), @tr("VOX"), @tr("Serial"), @tr("CAT")]; current-index: root.ptt-index; selected => { root.ptt-index = self.current-index; root.set-num("ptt", self.current-index); } } }
                                 Field { label: @tr("Serial port"); LineEdit { text: root.ptt-port; edited(v) => { root.ptt-port = v; root.set-field("port", v); } } }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Field { label: "RTS"; ComboBox { model: [@tr("Off"), "+", "−"]; current-index: root.rts-index; selected => { root.rts-index = self.current-index; root.set-num("rts", self.current-index); } } }
+                                    Field { label: "DTR"; ComboBox { model: [@tr("Off"), "+", "−"]; current-index: root.dtr-index; selected => { root.dtr-index = self.current-index; root.set-num("dtr", self.current-index); } } }
+                                }
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Field { label: @tr("Lead (ms)"); SpinBox { minimum: 0; maximum: 5000; value: root.lead-ms; edited(v) => { root.lead-ms = v; root.set-num("lead", v); } } }
@@ -618,6 +737,7 @@ export component MainWindow inherits Window {
                                 Field { label: @tr("NTP server"); LineEdit { text: root.ntp-server; edited(v) => { root.ntp-server = v; root.set-field("ntp-server", v); } } }
                                 Field { label: @tr("Every (hours)"); SpinBox { minimum: 1; maximum: 48; value: root.ntp-hours; edited(v) => { root.ntp-hours = v; root.set-num("ntp-hours", v); } } }
                             }
+                            Rectangle { height: 28px; }
                         }
                     }
                 }
@@ -625,11 +745,57 @@ export component MainWindow inherits Window {
         }
 
         Text { text: root.note; font-size: 12px; color: Theme.text-dim; overflow: elide; height: 16px; }
-        HorizontalLayout {
-            spacing: 12px;
-            height: 36px;
-            Text { text: root.listen-text; font-size: 11px; color: Theme.text-dim; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-            Text { text: root.log-text; font-size: 11px; color: Theme.text-faint; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        Text { text: root.listen-text; font-size: 11px; color: Theme.text-dim; overflow: elide; height: 16px; }
+        if root.clips.length > 0 : Rectangle {
+            height: 92px;
+            background: Theme.panel;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+            clip: true;
+            for clip in root.clips : Rectangle {
+                x: parent.width * clip.x;
+                y: 4px;
+                width: max(2px, parent.width * clip.w);
+                height: 56px;
+                background: clip.selected ? Theme.accent.transparentize(0.4) : Theme.panel-raised;
+                border-radius: 4px;
+                border-width: clip.selected ? 2px : 1px;
+                border-color: clip.selected ? #ffe14a : Theme.border-strong;
+                clip: true;
+                if clip.has-thumb : Image {
+                    source: clip.thumb;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: cover;
+                    opacity: 0.85;
+                }
+                Text {
+                    x: 4px;
+                    y: 4px;
+                    text: clip.label;
+                    font-size: 11px;
+                    color: Theme.text;
+                    overflow: elide;
+                    width: parent.width - 8px;
+                }
+                TouchArea { clicked => { root.pick-clip(clip.id); } }
+            }
+            for tick in root.ticks : Text {
+                y: parent.height - 18px;
+                x: tick.x <= 0.02 ? 4px : (tick.x >= 0.98 ? parent.width - self.width - 4px : parent.width * tick.x - self.width / 2);
+                text: tick.label;
+                font-size: 10px;
+                font-family: Theme.mono;
+                color: Theme.text-dim;
+            }
+            if root.playhead >= 0 && root.playhead <= 1 : Rectangle {
+                x: parent.width * root.playhead - 1px;
+                y: 0px;
+                width: 2px;
+                height: parent.height - 18px;
+                background: #ffe14a;
+            }
         }
     }
 
@@ -662,6 +828,7 @@ export component MainWindow inherits Window {
                                 Field { label: @tr("Start"); LineEdit { text: root.dlg-start; edited(v) => { root.dlg-start = v; } } }
                                 Field { label: @tr("End"); LineEdit { text: root.dlg-end; edited(v) => { root.dlg-end = v; } } }
                             }
+                            Field { label: @tr("Image interval (minutes)"); SpinBox { minimum: 0; maximum: 180; value: root.dlg-interval; edited(v) => { root.dlg-interval = v; root.set-num("dlg-interval", v); } } }
                         }
                         if root.dialog == 3 : Field { label: @tr("Also keep empty days until"); LineEdit { text: root.dlg-horizon; edited(v) => { root.dlg-horizon = v; } } }
                         if root.dialog == 4 : VerticalLayout {

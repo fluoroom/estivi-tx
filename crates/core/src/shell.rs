@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 pub fn capture(line: &str, timeout: Duration) -> anyhow::Result<String> {
     let line = line.trim();
-    anyhow::ensure!(!line.is_empty(), "comando vacío");
+    anyhow::ensure!(!line.is_empty(), "empty command");
     let mut cmd = if cfg!(windows) {
         let mut c = Command::new("cmd");
         c.args(["/C", line]);
@@ -17,7 +17,7 @@ pub fn capture(line: &str, timeout: Duration) -> anyhow::Result<String> {
         c
     };
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = cmd.spawn().map_err(|e| anyhow::anyhow!("no se pudo ejecutar: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| anyhow::anyhow!("could not run: {e}"))?;
     let start = Instant::now();
     loop {
         match child.try_wait() {
@@ -26,13 +26,13 @@ pub fn capture(line: &str, timeout: Duration) -> anyhow::Result<String> {
                 if let Some(mut stdout) = child.stdout.take() {
                     stdout.read_to_string(&mut out).ok();
                 }
-                anyhow::ensure!(status.success(), "el comando terminó con error");
+                anyhow::ensure!(status.success(), "the command exited with an error");
                 return Ok(out);
             }
             Ok(None) if start.elapsed() > timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
-                anyhow::bail!("el comando superó los {} s", timeout.as_secs());
+                anyhow::bail!("the command exceeded {} s", timeout.as_secs());
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(30)),
             Err(e) => anyhow::bail!("{e}"),

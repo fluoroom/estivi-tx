@@ -1,24 +1,25 @@
 // Flat utility chrome. `light` is set from Equipo → General and follows every window.
 
-import { Palette } from "std-widgets.slint";
+import { ComboBox, Palette } from "std-widgets.slint";
 import "../../core/assets/fonts/NotoSansMono-Bold.ttf";
 
 export global Theme {
     in-out property <bool> light: false;
-    out property <color> bg: light ? #eef0f2 : #111315;
-    out property <color> panel: light ? #ffffff : #181b1e;
-    out property <color> panel-raised: light ? #f4f5f6 : #1e2226;
-    out property <color> field: light ? #ffffff : #111315;
-    out property <color> border: light ? #d5d8dc : #2a2f35;
-    out property <color> border-strong: light ? #b8bdc3 : #3a4149;
-    out property <color> text: light ? #1a1d21 : #e6e8eb;
-    out property <color> text-dim: light ? #5c636b : #8b929a;
-    out property <color> text-faint: light ? #8b929a : #5c636b;
-    out property <color> accent: Palette.accent-background;
-    out property <color> on-air: #dc2626;
-    out property <color> ready: #16a34a;
-    out property <color> paused: #d97706;
-    out property <color> danger: #dc2626;
+    in-out property <color> bg: #141414;
+    in-out property <color> panel: #1c1c1c;
+    in-out property <color> panel-raised: #262626;
+    in-out property <color> field: #141414;
+    in-out property <color> border: #333333;
+    in-out property <color> border-strong: #4a4a4a;
+    in-out property <color> text: #ececec;
+    in-out property <color> text-dim: #9a9a9a;
+    in-out property <color> text-faint: #6e6e6e;
+    in-out property <color> accent: #d4d4d4;
+    in-out property <color> on-accent: #141414;
+    in-out property <color> on-air: #dc2626;
+    in-out property <color> ready: #16a34a;
+    in-out property <color> paused: #d97706;
+    in-out property <color> danger: #dc2626;
     out property <length> radius: 3px;
     out property <length> gap: 8px;
     out property <string> mono: "Noto Sans Mono";
@@ -104,7 +105,7 @@ export component ToolButton inherits Rectangle {
         }
         if root.text != "" : Text {
             text: root.text;
-            color: root.enabled ? Theme.text : Theme.text-faint;
+            color: !root.enabled ? Theme.text-faint : root.primary ? Theme.on-accent : root.danger ? #ffffff : Theme.text;
             font-size: 12px;
             font-weight: (root.primary || root.danger) ? 600 : 400;
             vertical-alignment: center;
@@ -115,6 +116,20 @@ export component ToolButton inherits Rectangle {
         mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
     }
+}
+
+// A combo whose shown row follows `index` after the user has picked once.
+// Choosing an item assigns ComboBox.current-index and drops the binding.
+export component BoundCombo inherits VerticalLayout {
+    in property <[string]> model;
+    in property <int> index;
+    callback selected(int);
+    box := ComboBox {
+        model: root.model;
+        current-index: root.index;
+        selected => { root.selected(self.current-index); }
+    }
+    changed index => { box.current-index = root.index; }
 }
 
 export component Field inherits VerticalLayout {

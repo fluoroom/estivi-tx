@@ -58,6 +58,9 @@ pub struct OnAir {
     pub total_ms: f64,
     pub elapsed_ms: f64,
     pub picture: f64,
+    /// Milliseconds into the turn audio when the picture scan starts, and how long it lasts.
+    pub scan_at: f64,
+    pub scan_ms: f64,
     pub image: Option<Arc<RgbaImage>>,
     pub done: bool,
 }
@@ -453,7 +456,7 @@ impl Worker {
     }
 
     fn tick(&mut self) {
-        let sources: Vec<_> = self.project.graphics.api_sources().cloned().collect();
+        let sources = self.project.all_api_sources();
         self.composer.api.refresh_due(&sources);
         self.poll_clock();
         if self.holder.is_none() {
@@ -471,14 +474,14 @@ impl Worker {
                 match due(self.now(), &turn, None, self.project.tx.min_pause_s) {
                     air::Due::Wait => {}
                     air::Due::Skip => {
-                        log::info!("turno de las {} salteado", turn.at.format("%H:%M:%S"));
+                        log::info!("turn at {} skipped", turn.at.format("%H:%M:%S"));
                         self.cursor = turn.at + TimeDelta::seconds(1);
                         self.next = None;
                     }
                     air::Due::Go => {
                         self.cursor = turn.at + TimeDelta::seconds(1);
                         self.next = None;
-                        self.play_turn(turn, "grilla", true);
+                        self.play_turn(turn, "grid", true);
                     }
                 }
             }
@@ -545,7 +548,7 @@ impl Worker {
             }
         }
         if let Err(e) = self.config.save(&self.config_path) {
-            log::error!("no se pudo guardar el reloj: {e}");
+            log::error!("could not save the clock: {e}");
         }
     }
 
@@ -571,7 +574,8 @@ impl Worker {
                 return;
             }
         };
-        self.show_on_air(&turn.name, origin, turn.mode, serial, started, total, preview);
+        let (scan_at, scan_ms) = air::image_window(&turn.pieces);
+        self.show_on_air(&turn.name, origin, turn.mode, serial, started, total, preview, scan_at, scan_ms);
         let outcome = self.guarded(freq, release, |w| w.play_audio(&segs, release));
         self.finish_log(&turn.name, turn.mode, serial, started, freq, origin, turn.block_id, turn.program_id, &outcome);
         self.holder = None;
@@ -611,7 +615,9 @@ impl Worker {
         };
         let ctx = data_ctx(&self.project, self.now(), self.serial + 1, mode, &live, turn.freq_hz, &self.last_cw, &self.last_dtmf);
         let dir = self.dir();
-        self.composer.frame_image(&self.project, dir.as_deref(), Some(&piece.path), mode, &ctx)
+        let block = turn.block_id.and_then(|id| self.project.block(id)).map(|b| b.graphics.clone());
+        let program = turn.program_id.and_then(|id| self.project.program(id)).map(|p| p.graphics.clone());
+        self.composer.frame_chain(&self.project, dir.as_deref(), Some(&piece.path), None, block.as_ref(), program.as_ref(), mode, &ctx)
     }
 
     fn run_job(&mut self, job: ActJob) {
@@ -635,7 +641,7 @@ impl Worker {
                         let serial = w.serial + 1;
                         let started = w.now();
                         let total = segs.iter().map(|s| s.ms).sum();
-                        w.show_on_air(&name, &format!("activacion {name}"), Mode::MartinM1, serial, started, total, None);
+                        w.show_on_air(&name, &format!("activacion {name}"), Mode::MartinM1, serial, started, total, None, 0.0, 0.0);
                         let outcome = w.play_audio(&segs, None)?;
                         w.finish_log(&name, Mode::MartinM1, serial, started, freq, &format!("activacion {name}"), None, None, &Ok(outcome));
                         if !matches!(outcome, Outcome::Completed) {
@@ -643,7 +649,7 @@ impl Worker {
                         }
                     }
                     Err(e) => {
-                        log::warn!("activación {name}: {e}");
+                        log::warn!("activation {name}: {e}");
                         let t = w.now();
                         w.write_log(&name, Mode::MartinM1, &e, freq, &format!("activacion {name}"), None, None, false, t);
                     }
@@ -696,13 +702,13 @@ impl Worker {
             }
             Action::Image { path, mode } => {
                 if path.trim().is_empty() {
-                    return Err("imagen vacía".into());
+                    return Err("empty image".into());
                 }
                 self.sstv(path, self.project.mode_or(*mode), None).map_err(|e| e.to_string())?
             }
             Action::Random { paths, mode } => {
                 if paths.is_empty() {
-                    return Err("el grupo de imágenes está vacío".into());
+                    return Err("the image pool is empty".into());
                 }
                 let path = paths[self.pick as usize % paths.len()].clone();
                 self.pick = self.pick.wrapping_add(1);
@@ -758,11 +764,11 @@ impl Worker {
         Ok(segs)
     }
 
-    fn show_on_air(&mut self, name: &str, origin: &str, mode: Mode, serial: u64, started: DateTime<Utc>, total_ms: f64, image: Option<RgbaImage>) {
+    fn show_on_air(&mut self, name: &str, origin: &str, mode: Mode, serial: u64, started: DateTime<Utc>, total_ms: f64, image: Option<RgbaImage>, scan_at: f64, scan_ms: f64) {
         let image = image.map(Arc::new);
         let (name, origin) = (name.to_string(), origin.to_string());
         self.set_status(|s| {
-            s.on_air = Some(OnAir { program: name, origin, mode, serial, started, total_ms, elapsed_ms: 0.0, picture: 0.0, image, done: false });
+            s.on_air = Some(OnAir { program: name, origin, mode, serial, started, total_ms, elapsed_ms: 0.0, picture: 0.0, scan_at, scan_ms, image, done: false });
             s.on_air_rev += 1;
             s.error = None;
             s.busy = true;
@@ -778,7 +784,7 @@ impl Worker {
         let result = self.guarded_inner(freq, release, body);
         if let Some(p) = self.ptt.as_mut() {
             if let Err(e) = p.key(false) {
-                log::error!("no se pudo soltar el PTT: {e}");
+                log::error!("could not release PTT: {e}");
                 self.ptt = None;
             }
         }
@@ -790,7 +796,7 @@ impl Worker {
     fn guarded_inner(&mut self, freq: u64, release: Option<DateTime<Utc>>, body: impl FnOnce(&mut Self) -> anyhow::Result<Outcome>) -> anyhow::Result<Outcome> {
         if self.config.ptt.method == PttMethod::Cat && self.config.cat.set_freq && freq > 0 {
             if let Err(e) = ptt::set_frequency(&self.config.cat, freq) {
-                log::warn!("no se pudo cambiar la frecuencia: {e}");
+                log::warn!("could not change the frequency: {e}");
             }
         }
         self.ptt.as_mut().expect("ensure_ptt").key(true)?;
@@ -914,8 +920,8 @@ impl Worker {
     fn finish_log(&mut self, name: &str, mode: Mode, serial: u64, started: DateTime<Utc>, freq: u64, origin: &str, block: Option<u64>, program: Option<u64>, outcome: &anyhow::Result<Outcome>) {
         let (result, cut) = match outcome {
             Ok(Outcome::Completed) => ("OK".to_string(), false),
-            Ok(Outcome::Cancelled) => ("Cortada".to_string(), false),
-            Ok(Outcome::Cut) => ("Cortada".to_string(), true),
+            Ok(Outcome::Cancelled) => ("Cut".to_string(), false),
+            Ok(Outcome::Cut) => ("Cut".to_string(), true),
             Err(e) => (format!("{}: {e:#}", self.tr("Error", "Error")), false),
         };
         self.write_log(name, mode, &result, freq, origin, block, program, cut, started);
@@ -948,7 +954,7 @@ impl Worker {
             cut,
         };
         if let Err(e) = aslog::append(&self.log_path(), &entry) {
-            log::error!("registro: {e}");
+            log::error!("log: {e}");
         }
         self.serial = entry.serial;
         self.log.push(entry);

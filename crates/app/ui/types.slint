@@ -11,6 +11,7 @@ export struct CardItem {
     b: int,
     opacity: float,
     empty: bool,
+    selected: bool,
 }
 
 export struct PicItem {
@@ -18,8 +19,12 @@ export struct PicItem {
     label: string,
     detail: string,
     on: bool,
-    // 0 normal, 1 pre bumper, 2 post bumper
+    // 0 normal, 1 pre bumper, 2 post bumper, 3 ghost, 4 this transmission's total
     role: int,
+    ghost: bool,
+    // Image this ghost belongs to. -1 when it does not travel with a picture.
+    group: int,
+    selected: bool,
 }
 
 export struct StepItem {
@@ -132,4 +137,38 @@ export struct LayerItem {
     qr-text: string,
     qr-command: string,
     qr-warn: string,
+    // Visible pixels of an image layer. Other layers copy x/y/w/h.
+    sel-x: float,
+    sel-y: float,
+    sel-w: float,
+    sel-h: float,
+}
+
+export struct TxItem {
+    x: float,
+    w: float,
+    label: string,
+    id: int,
+    selected: bool,
+    thumb: image,
+    has-thumb: bool,
+}
+
+export struct TickItem {
+    x: float,
+    label: string,
+}
+
+export struct ActionItem {
+    kind: int,
+    text: string,
+    wpm: int,
+    tone: int,
+    path: string,
+    mode: int,
+    via: int,
+    url: string,
+    json: string,
+    comment: string,
+    paths: string,
 }

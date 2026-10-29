@@ -9,7 +9,7 @@ use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
 use estivi_core::air::{Row, RowKind};
 use estivi_core::graphics::{Layer, LayerKind, Rgba, qr_module_px};
 use estivi_core::modes::Mode;
-use estivi_core::project::{BlockImage, ImageRole};
+use estivi_core::project::{BlockImage, GridTz, ImageRole};
 
 use crate::i18n;
 
@@ -53,9 +53,12 @@ pub fn duration(ms: f64) -> String {
     if s >= 60 { format!("{sign}{}:{:02}", s / 60, s % 60) } else { format!("{sign}{s} s") }
 }
 
-pub fn clock_line(offset_ms: i64, error: &str) -> String {
+pub fn clock_line(offset_ms: i64, error: &str, tz: GridTz) -> String {
     let now = Utc::now() + chrono::TimeDelta::milliseconds(offset_ms);
-    let stamp = now.format("%H:%M:%S");
+    let stamp = match tz {
+        GridTz::Utc => now.format("%H:%M:%S UTC").to_string(),
+        GridTz::Local => now.with_timezone(&chrono::Local).format("%H:%M:%S").to_string(),
+    };
     if error.is_empty() {
         i18n::t(&format!("{stamp}  offset {offset_ms} ms"), &format!("{stamp}  desfase {offset_ms} ms"))
     } else {
@@ -63,7 +66,14 @@ pub fn clock_line(offset_ms: i64, error: &str) -> String {
     }
 }
 
-pub fn when(t: DateTime<Utc>, offset_ms: i64) -> String {
+pub fn clock_hm(t: DateTime<Utc>, tz: GridTz) -> String {
+    match tz {
+        GridTz::Utc => t.format("%H:%M").to_string(),
+        GridTz::Local => t.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+    }
+}
+
+pub fn when(t: DateTime<Utc>, offset_ms: i64, tz: GridTz) -> String {
     let now = Utc::now() + chrono::TimeDelta::milliseconds(offset_ms);
     let secs = (t - now).num_seconds();
     if secs >= 0 && secs < 48 * 3600 {
@@ -72,8 +82,75 @@ pub fn when(t: DateTime<Utc>, offset_ms: i64) -> String {
         let s = secs % 60;
         if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m:02}:{s:02}") }
     } else {
-        t.format("%Y-%m-%d %H:%M").to_string()
+        match tz {
+            GridTz::Utc => t.format("%Y-%m-%d %H:%M UTC").to_string(),
+            GridTz::Local => t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string(),
+        }
     }
+}
+
+/// Keep the lines already sent and black out the rest, so Live shows the scan as it goes out.
+pub fn reveal(src: &RgbaImage, progress: f32) -> RgbaImage {
+    let mut out = src.clone();
+    let h = out.height();
+    let w = out.width();
+    let cut = (progress.clamp(0.0, 1.0) * h as f32).round() as u32;
+    let black = image::Rgba([0, 0, 0, 255]);
+    for y in cut..h {
+        for x in 0..w {
+            out.put_pixel(x, y, black);
+        }
+    }
+    out
+}
+
+/// A stand-in picture so graphics can be judged on something other than black.
+pub fn test_picture(kind: i32, w: u32, h: u32) -> RgbaImage {
+    let mut img = RgbaImage::new(w.max(1), h.max(1));
+    let (w, h) = (img.width(), img.height());
+    match kind {
+        1 => {
+            let bars: [[u8; 3]; 8] = [
+                [192, 192, 192], [192, 192, 0], [0, 192, 192], [0, 192, 0], [192, 0, 192], [192, 0, 0], [0, 0, 192], [0, 0, 0],
+            ];
+            for (x, y, p) in img.enumerate_pixels_mut() {
+                let i = (x as usize * bars.len() / w as usize).min(bars.len() - 1);
+                let c = bars[i];
+                *p = image::Rgba([c[0], c[1], c[2], 255]);
+                let _ = y;
+            }
+        }
+        2 => {
+            for (x, y, p) in img.enumerate_pixels_mut() {
+                let line = x % 16 == 0 || y % 16 == 0 || x + 1 == w || y + 1 == h || x == w / 2 || y == h / 2;
+                *p = if line { image::Rgba([255, 255, 255, 255]) } else { image::Rgba([24, 24, 24, 255]) };
+            }
+        }
+        _ => {
+            for (x, y, p) in img.enumerate_pixels_mut() {
+                let v = (x as u32 * 255 / w.max(1)) as u8;
+                *p = image::Rgba([v, v, v, 255]);
+                let _ = y;
+            }
+        }
+    }
+    img
+}
+
+/// The rectangle that should hug a keep-aspect image, in canvas fractions.
+pub fn selector(layer: &Layer, canvas: (u32, u32), px: Option<(u32, u32)>) -> (f32, f32, f32, f32) {
+    let (x, y, w, h) = (layer.x, layer.y, layer.w.max(0.0), layer.h.max(0.0));
+    let Some((iw, ih)) = px.filter(|(iw, ih)| *iw > 0 && *ih > 0) else { return (x, y, w, h) };
+    let LayerKind::Image(img) = &layer.kind else { return (x, y, w, h) };
+    if !img.keep_aspect || canvas.0 == 0 || canvas.1 == 0 || w == 0.0 || h == 0.0 {
+        return (x, y, w, h);
+    }
+    let box_w = w * canvas.0 as f32;
+    let box_h = h * canvas.1 as f32;
+    let scale = (box_w / iw as f32).min(box_h / ih as f32);
+    let dw = iw as f32 * scale;
+    let dh = ih as f32 * scale;
+    (x + (box_w - dw) * 0.5 / canvas.0 as f32, y + (box_h - dh) * 0.5 / canvas.1 as f32, dw / canvas.0 as f32, dh / canvas.1 as f32)
 }
 
 pub fn row_label(row: &Row) -> String {
@@ -191,6 +268,11 @@ pub fn layer_item(layer: &Layer, fonts: &[String], canvas: (u32, u32)) -> crate:
             }
         }
     }
+    let (sx, sy, sw, sh) = selector(layer, canvas, None);
+    item.sel_x = sx;
+    item.sel_y = sy;
+    item.sel_w = sw;
+    item.sel_h = sh;
     item
 }
 

@@ -42,11 +42,11 @@ fn write_wav(path: &str, samples: &[f32]) -> anyhow::Result<()> {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    anyhow::ensure!(args.len() >= 3, "uso: render <proyecto.estivi> <cuadro.png> [audio.wav] [programa] [modo]");
+    anyhow::ensure!(args.len() >= 3, "usage: render <project.estivi> <frame.png> [audio.wav] [program] [mode]");
     let project_path = PathBuf::from(&args[1]);
     let mut project = Project::load(&project_path)?;
     if let Some(m) = args.get(5) {
-        project.tx.mode = Mode::from_short(m).with_context(|| format!("modo desconocido: {m}"))?;
+        project.tx.mode = Mode::from_short(m).with_context(|| format!("unknown mode: {m}"))?;
     }
     let dir = project_path.parent();
     let index: usize = args.get(4).map(|s| s.parse()).transpose()?.unwrap_or(0);

@@ -69,6 +69,8 @@ pub struct Occurrence {
     pub program_enabled: bool,
     pub empty: bool,
     pub images: Vec<BlockImage>,
+    /// Minutes between picture starts. 0 = one start. A program occurrence uses the program's number.
+    pub interval_min: u32,
 }
 
 impl Occurrence {
@@ -80,8 +82,8 @@ impl Occurrence {
         range_label(&self.start_hm, &self.end_hm)
     }
 
-    pub fn turns(&self, interval_min: u32, offset_s: u32) -> Vec<DateTime<Utc>> {
-        turn_times(self.start, self.end, interval_min, offset_s)
+    pub fn turns(&self, offset_s: u32) -> Vec<DateTime<Utc>> {
+        turn_times(self.start, self.end, self.interval_min, offset_s)
     }
 
     fn same_as(&self, other: &Occurrence) -> bool {
@@ -128,7 +130,7 @@ pub struct Card {
     pub block_id: i64,
 }
 
-const COMMON_RGB: [u8; 3] = [108, 114, 122];
+const COMMON_RGB: [u8; 3] = [90, 90, 90];
 
 pub fn future_limit(today: NaiveDate) -> NaiveDate {
     today + TimeDelta::days(365 * 3)
@@ -234,13 +236,13 @@ pub fn days_left(program: &Program, tz: GridTz, today: NaiveDate, offset_s: u32)
 
 fn last_air_day(program: &Program, tz: GridTz, ends: DateTime<Utc>, offset_s: u32) -> Option<NaiveDate> {
     let end_day = grid_date(tz, ends);
-    let (s, e) = window_minutes(&program.start, &program.end)?;
     for back in 0..8 {
         let day = end_day - TimeDelta::days(back);
         let wd = day.weekday().num_days_from_monday() as usize;
         if !program.weekdays.get(wd).copied().unwrap_or(false) {
             continue;
         }
+        let Some((s, e)) = day_window(program, wd) else { continue };
         let Some((start, _)) = bounds(tz, day, s, e) else { continue };
         if start + TimeDelta::seconds(i64::from(offset_s)) < ends {
             return Some(day);
@@ -249,17 +251,18 @@ fn last_air_day(program: &Program, tz: GridTz, ends: DateTime<Utc>, offset_s: u3
     None
 }
 
-fn hours_of(program: &Program) -> Option<(u32, u32)> {
-    program.scheduled().then(|| window_minutes(&program.start, &program.end)).flatten()
+fn day_window(program: &Program, weekday: usize) -> Option<(u32, u32)> {
+    let day = program.days.get(weekday)?;
+    window_minutes(&day.start, &day.end)
 }
 
-/// The weekday is selected, the window exists, and the keyed start is still before `ends`.
+/// The weekday is selected, that day's window exists, and the keyed start is still before `ends`.
 fn on_mask(program: &Program, tz: GridTz, day: NaiveDate, offset_s: u32) -> bool {
     let wd = day.weekday().num_days_from_monday() as usize;
     if !program.weekdays.get(wd).copied().unwrap_or(false) {
         return false;
     }
-    let Some((s, e)) = window_minutes(&program.start, &program.end) else { return false };
+    let Some((s, e)) = day_window(program, wd) else { return false };
     let Some((start, _)) = bounds(tz, day, s, e) else { return false };
     match program.ends {
         Some(ends) => start + TimeDelta::seconds(i64::from(offset_s)) < ends,
@@ -304,10 +307,11 @@ fn program_occurrence(project: &Project, program: &Program, day: NaiveDate, toda
     if !masked && stored.is_none() {
         return None;
     }
-    let (s, e) = window_minutes(&program.start, &program.end)?;
+    let wd = day.weekday().num_days_from_monday() as usize;
+    let (s, e) = day_window(program, wd)?;
     let (start, end) = bounds(tz, day, s, e)?;
     if !masked {
-        // A stored block whose weekday was unchecked. It still inherits the program's hours,
+        // A stored block whose weekday was unchecked. It still uses that day's hours,
         // but only while that start is inside the program's end date.
         let keyed = start + TimeDelta::seconds(i64::from(offset));
         if program.ends.is_some_and(|ends| keyed >= ends) {
@@ -315,6 +319,7 @@ fn program_occurrence(project: &Project, program: &Program, day: NaiveDate, toda
         }
     }
     let images = stored.map(|b| b.images.clone()).unwrap_or_default();
+    let hours = &program.days[wd];
     Some(Occurrence {
         program_id: Some(program.id),
         block_id: stored.map(|b| b.id),
@@ -322,14 +327,15 @@ fn program_occurrence(project: &Project, program: &Program, day: NaiveDate, toda
         date: day,
         start,
         end,
-        start_hm: program.start.clone(),
-        end_hm: program.end.clone(),
+        start_hm: hours.start.clone(),
+        end_hm: hours.end.clone(),
         weekdays: Some(program.weekdays),
         hue: Some(program.hue),
         block_enabled: stored.map(|b| b.enabled).unwrap_or(true),
         program_enabled: program.enabled,
         empty: stored.map(|b| !b.has_pictures()).unwrap_or(true),
         images,
+        interval_min: hours.interval_min,
     })
 }
 
@@ -351,6 +357,7 @@ fn common_occurrence(project: &Project, block: &Block) -> Option<Occurrence> {
         program_enabled: true,
         empty: !block.has_pictures(),
         images: block.images.clone(),
+        interval_min: block.interval_min,
     })
 }
 
@@ -360,26 +367,34 @@ pub fn program_conflict(project: &Project, candidate: &Program, ignore: Option<u
     if !candidate.scheduled() || !alive(candidate, tz, today, offset) {
         return None;
     }
-    let mine = hours_of(candidate)?;
     for other in &project.programs {
         if Some(other.id) == ignore || !other.scheduled() || !alive(other, tz, today, offset) {
             continue;
         }
-        let Some(theirs) = hours_of(other) else { continue };
-        if !ranges_overlap(mine, theirs) {
-            continue;
-        }
-        if let Some(date) = shared_day(candidate, other, tz, today, offset) {
-            return Some(Conflict { name: other.name.clone(), date, range: range_label(&other.start, &other.end) });
+        for wd in 0..7 {
+            if !candidate.weekdays[wd] || !other.weekdays[wd] {
+                continue;
+            }
+            let Some(mine) = day_window(candidate, wd) else { continue };
+            let Some(theirs) = day_window(other, wd) else { continue };
+            if !ranges_overlap(mine, theirs) {
+                continue;
+            }
+            if let Some(date) = shared_day(candidate, other, wd, tz, today, offset) {
+                let day = &other.days[wd];
+                return Some(Conflict { name: other.name.clone(), date, range: range_label(&day.start, &day.end) });
+            }
         }
     }
     for block in &project.blocks {
         if block.program.is_some() {
             continue;
         }
+        let wd = block.date.weekday().num_days_from_monday() as usize;
         if !on_mask(candidate, tz, block.date, offset) {
             continue;
         }
+        let Some(mine) = day_window(candidate, wd) else { continue };
         let Some(theirs) = window_minutes(&block.start, &block.end) else { continue };
         if ranges_overlap(mine, theirs) {
             return Some(conflict_common(block));
@@ -394,24 +409,30 @@ pub fn program_conflict(project: &Project, candidate: &Program, ignore: Option<u
         if on_mask(other, tz, block.date, offset) || !alive(other, tz, today, offset) {
             continue;
         }
+        let wd = block.date.weekday().num_days_from_monday() as usize;
         if !on_mask(candidate, tz, block.date, offset) {
             continue;
         }
-        let Some(theirs) = hours_of(other) else { continue };
+        let Some(mine) = day_window(candidate, wd) else { continue };
+        let Some(theirs) = day_window(other, wd) else { continue };
         if ranges_overlap(mine, theirs) {
-            return Some(Conflict { name: other.name.clone(), date: block.date, range: range_label(&other.start, &other.end) });
+            let day = &other.days[wd];
+            return Some(Conflict { name: other.name.clone(), date: block.date, range: range_label(&day.start, &day.end) });
         }
     }
     None
 }
 
-fn shared_day(a: &Program, b: &Program, tz: GridTz, today: NaiveDate, offset: u32) -> Option<NaiveDate> {
+fn shared_day(a: &Program, b: &Program, weekday: usize, tz: GridTz, today: NaiveDate, offset: u32) -> Option<NaiveDate> {
     let limit = match (witness_limit(a, tz, today, offset), witness_limit(b, tz, today, offset)) {
         (Some(x), Some(y)) => x.min(y),
         _ => return None,
     };
     for back in 0..8 {
         let day = limit - TimeDelta::days(back);
+        if day.weekday().num_days_from_monday() as usize != weekday {
+            continue;
+        }
         if on_mask(a, tz, day, offset) && on_mask(b, tz, day, offset) {
             return Some(day);
         }
@@ -446,12 +467,14 @@ pub fn span_conflict(
         if Some(program.id) == ignore_program || !alive(program, tz, today, offset) {
             continue;
         }
+        let wd = date.weekday().num_days_from_monday() as usize;
         if !on_mask(program, tz, date, offset) {
             continue;
         }
-        let Some(theirs) = hours_of(program) else { continue };
+        let Some(theirs) = day_window(program, wd) else { continue };
         if ranges_overlap(mine, theirs) {
-            return Some(Conflict { name: program.name.clone(), date, range: range_label(&program.start, &program.end) });
+            let day = &program.days[wd];
+            return Some(Conflict { name: program.name.clone(), date, range: range_label(&day.start, &day.end) });
         }
     }
     for block in &project.blocks {
@@ -466,9 +489,11 @@ pub fn span_conflict(
             if on_mask(program, tz, block.date, offset) || !alive(program, tz, today, offset) || block.date != date {
                 continue;
             }
-            let Some(theirs) = hours_of(program) else { continue };
+            let wd = date.weekday().num_days_from_monday() as usize;
+            let Some(theirs) = day_window(program, wd) else { continue };
             if ranges_overlap(mine, theirs) {
-                return Some(Conflict { name: program.name.clone(), date, range: range_label(&program.start, &program.end) });
+                let day = &program.days[wd];
+                return Some(Conflict { name: program.name.clone(), date, range: range_label(&day.start, &day.end) });
             }
         } else if block.date == date {
             let Some(theirs) = window_minutes(&block.start, &block.end) else { continue };
@@ -493,17 +518,12 @@ pub fn can_place_common(project: &Project, date: NaiveDate, start_hm: &str, end_
 }
 
 pub fn can_place_program(project: &Project, date: NaiveDate, start_hm: &str, end_hm: &str, today: NaiveDate) -> Result<(), Conflict> {
+    let wd = date.weekday().num_days_from_monday() as usize;
     let mut weekdays = [false; 7];
-    weekdays[date.weekday().num_days_from_monday() as usize] = true;
-    let candidate = Program {
-        id: 0,
-        name: String::new(),
-        enabled: true,
-        weekdays,
-        start: start_hm.into(),
-        end: end_hm.into(),
-        ..Program::default()
-    };
+    weekdays[wd] = true;
+    let mut candidate = Program { id: 0, name: String::new(), enabled: true, weekdays, ..Program::default() };
+    candidate.days[wd].start = start_hm.into();
+    candidate.days[wd].end = end_hm.into();
     match program_conflict(project, &candidate, None, today) {
         Some(c) => Err(c),
         None => Ok(()),
@@ -534,11 +554,21 @@ pub fn set_weekday(
     }
     if on {
         let mut next = project.program(id).unwrap().clone();
+        if !next.days[day].ready() {
+            let from_on = (0..7).find(|&i| i != day && next.weekdays[i] && next.days[i].ready());
+            let from_any = (0..7).find(|&i| i != day && next.days[i].ready());
+            if let Some(src) = from_on.or(from_any) {
+                next.days[day] = next.days[src].clone();
+            }
+        }
         next.weekdays[day] = true;
         if let Some(c) = program_conflict(project, &next, Some(id), today) {
             return Err(EditError::Conflict(c));
         }
-        project.program_mut(id).unwrap().weekdays[day] = true;
+        let copied = next.days[day].clone();
+        let program = project.program_mut(id).unwrap();
+        program.days[day] = copied;
+        program.weekdays[day] = true;
         return Ok(());
     }
     let Some(choice) = choice else { return Err(EditError::NeedChoice) };
@@ -599,7 +629,8 @@ fn stored_ids(project: &Project, id: u64, day: Option<usize>, now: DateTime<Utc>
 }
 
 fn start_of(tz: GridTz, program: &Program, date: NaiveDate) -> Option<DateTime<Utc>> {
-    let (s, e) = window_minutes(&program.start, &program.end)?;
+    let wd = date.weekday().num_days_from_monday() as usize;
+    let (s, e) = day_window(program, wd)?;
     bounds(tz, date, s, e).map(|(start, _)| start)
 }
 
@@ -609,10 +640,13 @@ fn convert_ids(project: &mut Project, id: u64, ids: &[u64]) {
         if block.program != Some(id) || !ids.contains(&block.id) {
             continue;
         }
+        let wd = block.date.weekday().num_days_from_monday() as usize;
+        let hours = &program.days[wd];
         block.program = None;
         block.name = program.name.clone();
-        block.start = program.start.clone();
-        block.end = program.end.clone();
+        block.start = hours.start.clone();
+        block.end = hours.end.clone();
+        block.interval_min = hours.interval_min;
         block.enabled = block.enabled && program.enabled;
     }
 }
@@ -626,9 +660,10 @@ fn materialise_empty(project: &mut Project, id: u64, day: Option<usize>, now: Da
     let mut date = start_day;
     while date <= until {
         let wd = date.weekday().num_days_from_monday() as usize;
-        let wanted = day.is_none_or(|d| d == wd) && program.weekdays.get(wd).copied().unwrap_or(false);
+        let hours = &program.days[wd];
+        let wanted = day.is_none_or(|d| d == wd) && program.weekdays.get(wd).copied().unwrap_or(false) && hours.ready();
         let starts = start_of(tz, &program, date).is_some_and(|s| s >= now);
-        let already = project.blocks.iter().any(|b| b.date == date && b.program.is_none() && b.start == program.start && b.end == program.end);
+        let already = project.blocks.iter().any(|b| b.date == date && b.program.is_none() && b.start == hours.start && b.end == hours.end);
         let open = wanted && starts && !already && project.program_block(id, date).is_none();
         if open {
             let id_new = project.next_id();
@@ -637,10 +672,12 @@ fn materialise_empty(project: &mut Project, id: u64, day: Option<usize>, now: Da
                 program: None,
                 date,
                 name: program.name.clone(),
-                start: program.start.clone(),
-                end: program.end.clone(),
+                start: hours.start.clone(),
+                end: hours.end.clone(),
+                interval_min: hours.interval_min,
                 enabled: program.enabled,
                 images: Vec::new(),
+                ..Block::default()
             });
         }
         date += TimeDelta::days(1);
@@ -740,9 +777,13 @@ pub fn cards(project: &Project, zoom: Zoom, anchor: NaiveDate, today: NaiveDate)
     let mut stacks: std::collections::HashMap<NaiveDate, i32> = std::collections::HashMap::new();
     for occ in occ {
         let (opacity, gray) = look(&occ);
-        let rgb = match occ.hue {
-            Some(h) if !gray => hue_rgb(h),
-            _ => COMMON_RGB,
+        let rgb = if gray {
+            [140, 140, 140]
+        } else {
+            match occ.hue {
+                Some(h) => hue_rgb(h),
+                None => COMMON_RGB,
+            }
         };
         let base = Card {
             name: occ.name.clone(),
@@ -780,9 +821,8 @@ pub fn cards(project: &Project, zoom: Zoom, anchor: NaiveDate, today: NaiveDate)
 }
 
 fn look(occ: &Occurrence) -> (f32, bool) {
-    let gray = !occ.program_enabled;
-    let off = !occ.block_enabled || !occ.program_enabled;
-    let opacity = if occ.empty { 0.32 } else if off { 0.58 } else { 1.0 };
+    let gray = !occ.program_enabled || !occ.block_enabled;
+    let opacity = if occ.empty { 0.32 } else if gray { 0.55 } else { 1.0 };
     (opacity, gray)
 }
 
@@ -838,7 +878,9 @@ mod tests {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
     }
     fn program(id: u64, name: &str, days: [bool; 7], start: &str, end: &str) -> Program {
-        Program { id, name: name.into(), weekdays: days, start: start.into(), end: end.into(), ..Program::default() }
+        let mut p = Program { id, name: name.into(), weekdays: days, ..Program::default() };
+        p.every_day(start, end, 6);
+        p
     }
 
     #[test]
@@ -868,6 +910,68 @@ mod tests {
         let end = utc("2026-10-28T00:10:00Z");
         let times: Vec<_> = turn_times(start, end, 10, 0).into_iter().map(|t| t.to_rfc3339()).collect();
         assert_eq!(times, ["2026-10-27T23:50:00+00:00", "2026-10-28T00:00:00+00:00"]);
+    }
+
+    #[test]
+    fn each_program_and_common_block_keeps_its_own_interval() {
+        let mut news = program(1, "Noticias", [true, false, false, false, false, false, false], "14:00", "14:30");
+        for day in &mut news.days {
+            day.interval_min = 10;
+        }
+        let mut p = channel(vec![news], vec![]);
+        let monday = day(2026, 10, 26);
+        let tuesday = day(2026, 10, 27);
+        p.blocks.push(Block {
+            id: 8,
+            name: "Especial".into(),
+            date: tuesday,
+            start: "14:00".into(),
+            end: "14:30".into(),
+            interval_min: 6,
+            ..Block::default()
+        });
+        let mon = occurrences(&p, monday, tuesday, monday);
+        let times: Vec<_> = mon[0].turns(0).into_iter().map(|t| t.format("%H:%M").to_string()).collect();
+        assert_eq!(times, ["14:00", "14:10", "14:20"]);
+        let common = occurrences(&p, tuesday, tuesday + TimeDelta::days(1), monday);
+        let times: Vec<_> = common[0].turns(0).into_iter().map(|t| t.format("%H:%M").to_string()).collect();
+        assert_eq!(times, ["14:00", "14:06", "14:12", "14:18", "14:24"]);
+    }
+
+    #[test]
+    fn weekdays_keep_their_own_hours_and_enabling_one_copies_them() {
+        let mut news = Program { id: 1, name: "Noticias".into(), weekdays: [true, false, false, false, false, false, false], ..Program::default() };
+        news.days[0].start = "14:00".into();
+        news.days[0].end = "14:30".into();
+        news.days[0].interval_min = 6;
+        news.days[1].start = "18:00".into();
+        news.days[1].end = "18:20".into();
+        news.days[1].interval_min = 10;
+        news.weekdays[1] = true;
+        let p = channel(vec![news], vec![]);
+        let monday = day(2026, 10, 26);
+        let tuesday = day(2026, 10, 27);
+        let mon = occurrences(&p, monday, tuesday, monday);
+        assert_eq!(mon[0].start_hm, "14:00");
+        assert_eq!(mon[0].turns(0).len(), 5);
+        let tue = occurrences(&p, tuesday, tuesday + TimeDelta::days(1), monday);
+        assert_eq!(tue[0].start_hm, "18:00");
+        assert_eq!(tue[0].end_hm, "18:20");
+        let times: Vec<_> = tue[0].turns(0).into_iter().map(|t| t.format("%H:%M").to_string()).collect();
+        assert_eq!(times, ["18:00", "18:10"]);
+        assert!(can_place_common(&p, tuesday, "14:00", "14:30", monday).is_ok(), "Tuesday morning is free");
+        assert!(can_place_common(&p, tuesday, "18:00", "18:10", monday).is_err());
+
+        let mut lone = Program { id: 1, name: "Solo".into(), weekdays: [true, false, false, false, false, false, false], ..Program::default() };
+        lone.days[0].start = "09:00".into();
+        lone.days[0].end = "09:30".into();
+        lone.days[0].interval_min = 8;
+        let mut q = channel(vec![lone], vec![]);
+        set_weekday(&mut q, 1, 2, true, None, utc("2026-10-26T00:00:00Z"), monday).unwrap();
+        assert!(q.programs[0].weekdays[2]);
+        assert_eq!(q.programs[0].days[2].start, "09:00");
+        assert_eq!(q.programs[0].days[2].interval_min, 8);
+        assert_eq!(q.programs[0].days[0].start, "09:00");
     }
 
     #[test]
@@ -983,6 +1087,9 @@ mod tests {
         let mut days = [false; 7];
         days[0] = true;
         let mut p = channel(vec![program(1, "Noticias", days, "14:00", "14:30")], vec![]);
+        for day in &mut p.programs[0].days {
+            day.interval_min = 12;
+        }
         let today = day(2026, 10, 26);
         let now = utc("2026-10-26T12:00:00Z");
         p.blocks.push(Block {
@@ -1007,6 +1114,7 @@ mod tests {
         assert_eq!(past.program, Some(1), "past blocks stay on the program");
         let converted = p.blocks.iter().find(|b| b.date == today).unwrap();
         assert!(converted.program.is_none());
+        assert_eq!(converted.interval_min, 12, "a common block keeps the interval it had as a program");
         assert_eq!(converted.start, "14:00");
         assert!(converted.images.iter().any(|i| matches!(i.role, ImageRole::Normal)));
     }

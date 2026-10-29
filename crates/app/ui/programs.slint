@@ -1,0 +1,232 @@
+import { CheckBox, LineEdit, SpinBox, ScrollView, Palette } from "std-widgets.slint";
+import { Theme, ToolButton, Field, PanelTitle, BoundCombo } from "theme.slint";
+
+export component ProgramsWindow inherits Window {
+    title: @tr("Programs");
+    preferred-width: 780px;
+    preferred-height: 680px;
+    background: Theme.bg;
+
+    in-out property <[string]> names;
+    in-out property <int> selected: -1;
+    in-out property <bool> has-program;
+    in-out property <string> pname;
+    in-out property <bool> enabled: true;
+    in-out property <int> hue: 210;
+    in-out property <[string]> modes;
+    in-out property <int> mode-index;
+    in-out property <string> ends;
+    in-out property <string> welcome;
+    in-out property <string> bye;
+    in-out property <bool> on0;
+    in-out property <bool> on1;
+    in-out property <bool> on2;
+    in-out property <bool> on3;
+    in-out property <bool> on4;
+    in-out property <bool> on5;
+    in-out property <bool> on6;
+    in-out property <string> start0;
+    in-out property <string> start1;
+    in-out property <string> start2;
+    in-out property <string> start3;
+    in-out property <string> start4;
+    in-out property <string> start5;
+    in-out property <string> start6;
+    in-out property <string> end0;
+    in-out property <string> end1;
+    in-out property <string> end2;
+    in-out property <string> end3;
+    in-out property <string> end4;
+    in-out property <string> end5;
+    in-out property <string> end6;
+    in-out property <int> every0: 6;
+    in-out property <int> every1: 6;
+    in-out property <int> every2: 6;
+    in-out property <int> every3: 6;
+    in-out property <int> every4: 6;
+    in-out property <int> every5: 6;
+    in-out property <int> every6: 6;
+
+    callback select(int);
+    callback create();
+    callback remove();
+    callback set-name(string);
+    callback set-enabled(bool);
+    callback set-hue(int);
+    callback set-mode(int);
+    callback set-ends(string);
+    callback toggle-day(int, bool);
+    callback set-start(int, string);
+    callback set-end(int, string);
+    callback set-every(int, int);
+    callback pick-still(bool);
+    callback clear-still(bool);
+    callback mode-still(bool);
+    callback import-folder();
+    callback edit-graphics();
+    public function sync-palette() {
+        Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark;
+    }
+    init => { root.sync-palette(); }
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+        min-height: 0px;
+        Rectangle {
+            width: 220px;
+            vertical-stretch: 1;
+            min-height: 0px;
+            background: Theme.panel;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 6px;
+                PanelTitle { text: @tr("Programs"); }
+                ScrollView {
+                    vertical-stretch: 1;
+                    min-height: 0px;
+                    VerticalLayout {
+                        for name[i] in root.names : Rectangle {
+                            height: 28px;
+                            background: i == root.selected ? Theme.accent.transparentize(0.82) : transparent;
+                            border-radius: Theme.radius;
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                Text {
+                                    text: name;
+                                    font-size: 12px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            TouchArea { clicked => { root.select(i); } }
+                        }
+                    }
+                }
+                ToolButton { text: @tr("New program"); clicked => { root.create(); } }
+            }
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+            min-height: 0px;
+            VerticalLayout {
+                spacing: 8px;
+                if !root.has-program : Text {
+                    text: @tr("No program yet. Create one, then set which days it uses and the hours of each day. The grid draws a card from that schedule.");
+                    color: Theme.text-dim;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
+                if root.has-program : VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: @tr("A day that is on repeats every week and draws a card. The card is a prediction until it has a picture: only then is it saved.");
+                        color: Theme.text-dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    Field {
+                        label: @tr("Name");
+                        LineEdit { text: root.pname; edited(v) => { root.pname = v; root.set-name(v); } }
+                    }
+                    CheckBox { text: @tr("Program enabled"); checked: root.enabled; toggled => { root.enabled = self.checked; root.set-enabled(self.checked); } }
+                    Field {
+                        label: @tr("SSTV mode");
+                        BoundCombo {
+                            model: root.modes;
+                            index: root.mode-index;
+                            selected(i) => { root.set-mode(i); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Field {
+                            label: @tr("Hue");
+                            SpinBox { minimum: 0; maximum: 359; value: root.hue; edited(v) => { root.hue = v; root.set-hue(v); } }
+                        }
+                        Field {
+                            label: @tr("Ends (empty = forever)");
+                            LineEdit { text: root.ends; edited(v) => { root.ends = v; root.set-ends(v); } }
+                        }
+                    }
+                    PanelTitle { text: @tr("Weekdays"); }
+                    GridLayout {
+                        spacing-horizontal: 6px;
+                        spacing-vertical: 4px;
+                        Row {
+                            Text { text: @tr("Day"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
+                            Text { text: @tr("Start"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
+                            Text { text: @tr("End"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
+                            Text { text: @tr("Every"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Monday"); checked: root.on0; toggled => { root.on0 = self.checked; root.toggle-day(0, self.checked); } }
+                            LineEdit { text: root.start0; edited(v) => { root.start0 = v; root.set-start(0, v); } }
+                            LineEdit { text: root.end0; edited(v) => { root.end0 = v; root.set-end(0, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every0; edited(v) => { root.every0 = v; root.set-every(0, v); } }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Tuesday"); checked: root.on1; toggled => { root.on1 = self.checked; root.toggle-day(1, self.checked); } }
+                            LineEdit { text: root.start1; edited(v) => { root.start1 = v; root.set-start(1, v); } }
+                            LineEdit { text: root.end1; edited(v) => { root.end1 = v; root.set-end(1, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every1; edited(v) => { root.every1 = v; root.set-every(1, v); } }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Wednesday"); checked: root.on2; toggled => { root.on2 = self.checked; root.toggle-day(2, self.checked); } }
+                            LineEdit { text: root.start2; edited(v) => { root.start2 = v; root.set-start(2, v); } }
+                            LineEdit { text: root.end2; edited(v) => { root.end2 = v; root.set-end(2, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every2; edited(v) => { root.every2 = v; root.set-every(2, v); } }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Thursday"); checked: root.on3; toggled => { root.on3 = self.checked; root.toggle-day(3, self.checked); } }
+                            LineEdit { text: root.start3; edited(v) => { root.start3 = v; root.set-start(3, v); } }
+                            LineEdit { text: root.end3; edited(v) => { root.end3 = v; root.set-end(3, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every3; edited(v) => { root.every3 = v; root.set-every(3, v); } }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Friday"); checked: root.on4; toggled => { root.on4 = self.checked; root.toggle-day(4, self.checked); } }
+                            LineEdit { text: root.start4; edited(v) => { root.start4 = v; root.set-start(4, v); } }
+                            LineEdit { text: root.end4; edited(v) => { root.end4 = v; root.set-end(4, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every4; edited(v) => { root.every4 = v; root.set-every(4, v); } }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Saturday"); checked: root.on5; toggled => { root.on5 = self.checked; root.toggle-day(5, self.checked); } }
+                            LineEdit { text: root.start5; edited(v) => { root.start5 = v; root.set-start(5, v); } }
+                            LineEdit { text: root.end5; edited(v) => { root.end5 = v; root.set-end(5, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every5; edited(v) => { root.every5 = v; root.set-every(5, v); } }
+                        }
+                        Row {
+                            CheckBox { text: @tr("Sunday"); checked: root.on6; toggled => { root.on6 = self.checked; root.toggle-day(6, self.checked); } }
+                            LineEdit { text: root.start6; edited(v) => { root.start6 = v; root.set-start(6, v); } }
+                            LineEdit { text: root.end6; edited(v) => { root.end6 = v; root.set-end(6, v); } }
+                            SpinBox { minimum: 0; maximum: 180; value: root.every6; edited(v) => { root.every6 = v; root.set-every(6, v); } }
+                        }
+                    }
+                    ToolButton { text: @tr("Graphics"); clicked => { root.edit-graphics(); } }
+                    Text { text: @tr("Welcome") + ": " + root.welcome; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ToolButton { text: @tr("Set welcome"); clicked => { root.pick-still(true); } }
+                        ToolButton { text: @tr("Mode"); clicked => { root.mode-still(true); } }
+                        ToolButton { text: @tr("Clear"); clicked => { root.clear-still(true); } }
+                    }
+                    Text { text: @tr("Bye") + ": " + root.bye; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ToolButton { text: @tr("Set bye"); clicked => { root.pick-still(false); } }
+                        ToolButton { text: @tr("Mode"); clicked => { root.mode-still(false); } }
+                        ToolButton { text: @tr("Clear"); clicked => { root.clear-still(false); } }
+                    }
+                    ToolButton { text: @tr("Import folder"); clicked => { root.import-folder(); } }
+                    ToolButton { text: @tr("Delete program"); danger: true; clicked => { root.remove(); } }
+                }
+            }
+        }
+    }
+}

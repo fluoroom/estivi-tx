@@ -7,8 +7,8 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "Channel graphics — {}"
-msgstr "Gráfica del canal — {}"
+msgid "Graphics"
+msgstr "Gráfica"
 
 msgid "Text"
 msgstr "Texto"
@@ -34,14 +34,14 @@ msgstr "Borrar"
 msgid "Preview with program"
 msgstr "Ver con el programa"
 
-msgid "LAYERS"
-msgstr "CAPAS"
-
 msgid "Base picture"
 msgstr "Imagen base"
 
-msgid "the program that goes on air"
-msgstr "el programa que sale al aire"
+msgid "LAYERS"
+msgstr "CAPAS"
+
+msgid "the picture under the graphics"
+msgstr "la foto debajo de los gráficos"
 
 msgid "{} × {} px · {} · drag to move, corners to resize, arrows to nudge"
 msgstr "{} × {} px · {} · arrastrá para mover, las esquinas para cambiar el tamaño, flechas para ajustar"
@@ -66,6 +66,12 @@ msgstr "Estirar"
 
 msgid "Background color (bars)"
 msgstr "Color de fondo (bandas)"
+
+msgid "TEXT"
+msgstr "TEXTO"
+
+msgid "IMAGE"
+msgstr "IMAGEN"
 
 msgid "Layer name"
 msgstr "Nombre de la capa"
@@ -101,13 +107,13 @@ msgid "Alignment"
 msgstr "Alineación"
 
 msgid "Left"
-msgstr "Izquierdo"
+msgstr "Izquierda"
 
 msgid "Center"
 msgstr "Centro"
 
 msgid "Right"
-msgstr "Derecho"
+msgstr "Derecha"
 
 msgid "Top"
 msgstr "Arriba"
@@ -214,28 +220,34 @@ msgstr "Abrir"
 msgid "Save"
 msgstr "Guardar"
 
-msgid "Graphics"
-msgstr "Gráfica"
+msgid "Undo"
+msgstr "Deshacer"
+
+msgid "Programs"
+msgstr "Programas"
 
 msgid "Modes"
 msgstr "Modos"
 
-msgid "Dark"
-msgstr "Oscuro"
-
-msgid "Light"
-msgstr "Claro"
-
-msgid "On air"
-msgstr "Al aire"
+msgid "Live"
+msgstr "En vivo"
 
 msgid "Next"
 msgstr "Siguiente"
 
-msgid "Grid on air"
-msgstr "Grilla al aire"
+msgid "UTC"
+msgstr "UTC"
 
-msgid "Stop"
+msgid "Local"
+msgstr "Local"
+
+msgid "Stop grid"
+msgstr "Parar"
+
+msgid "Start grid"
+msgstr "Iniciar"
+
+msgid "Cut"
 msgstr "Cortar"
 
 msgid "Month"
@@ -265,8 +277,8 @@ msgstr "Canal"
 msgid "Equipment"
 msgstr "Equipo"
 
-msgid "Double-click an empty hour to create a block, or click a card."
-msgstr "Doble clic en una hora vacía para crear un bloque, o clic en una tarjeta."
+msgid "Double-click an empty hour for a common block, or click a card. A program's days and hours are set in Programs."
+msgstr "Doble clic en una hora vacía para un bloque común, o clic en una tarjeta. Los días y las horas de un programa se configuran en Programas."
 
 msgid "Name"
 msgstr "Nombre"
@@ -277,62 +289,17 @@ msgstr "Comienzo"
 msgid "End"
 msgstr "Fin"
 
-msgid "This day"
-msgstr "Este día"
+msgid "Image interval (minutes)"
+msgstr "Intervalo de imágenes (minutos)"
 
-msgid "Program enabled"
-msgstr "Programa habilitado"
+msgid "Predicted from the program. It is saved once it has a picture, its own graphics, or its own SSTV mode."
+msgstr "Prevista por el programa. Se guarda cuando tiene una imagen, gráficos propios o su propio modo SSTV."
 
-msgid "Weekdays"
-msgstr "Días"
+msgid "Transmit this date"
+msgstr "Transmitir esta fecha"
 
-msgid "Mo"
-msgstr "L"
-
-msgid "Tu"
-msgstr "M"
-
-msgid "We"
-msgstr "X"
-
-msgid "Th"
-msgstr "J"
-
-msgid "Fr"
-msgstr "V"
-
-msgid "Sa"
-msgstr "S"
-
-msgid "Su"
-msgstr "D"
-
-msgid "Hue"
-msgstr "Tono"
-
-msgid "Ends (empty = forever)"
-msgstr "Termina (vacío = para siempre)"
-
-msgid "Welcome"
-msgstr "Bienvenida"
-
-msgid "Set welcome"
-msgstr "Poner bienvenida"
-
-msgid "Mode"
-msgstr "Modo"
-
-msgid "Clear"
-msgstr "Quitar"
-
-msgid "Bye"
-msgstr "Despedida"
-
-msgid "Set bye"
-msgstr "Poner despedida"
-
-msgid "Delete program"
-msgstr "Borrar programa"
+msgid "SSTV mode"
+msgstr "Modo SSTV"
 
 msgid "Delete block"
 msgstr "Borrar bloque"
@@ -367,8 +334,8 @@ msgstr "Activar"
 msgid "Remove"
 msgstr "Quitar"
 
-msgid "One transmission"
-msgstr "Una transmisión"
+msgid "Picture mode"
+msgstr "Modo de la imagen"
 
 msgid "Instant transmission is outside the grid. A block end does not cut it."
 msgstr "La transmisión instantánea está fuera de la grilla. El fin de un bloque no la corta."
@@ -378,6 +345,9 @@ msgstr "Usar la imagen elegida"
 
 msgid "Choose picture"
 msgstr "Elegir imagen"
+
+msgid "Mode"
+msgstr "Modo"
 
 msgid "CW identification"
 msgstr "Identificación CW"
@@ -400,14 +370,47 @@ msgstr "Poner cortina posterior"
 msgid "Transmit"
 msgstr "Transmitir"
 
-msgid "Activations are not on the grid. Triggers are OR. Pause does not cut a transmission already on the air."
-msgstr "Las activaciones no están en la grilla. Los disparadores se suman. La pausa no corta una transmisión que ya está al aire."
+msgid "A matching DTMF or CW code runs the actions. Triggers are OR. Pause waits for the current transmission to finish."
+msgstr "Un código DTMF o CW que coincida corre las acciones. Los disparadores son O. Pausa espera a que termine la transmisión que ya está al aire."
 
-msgid "New activation"
-msgstr "Nueva activación"
+msgid "Activation"
+msgstr "Activación"
 
-msgid "Edit"
-msgstr "Editar"
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgid "Hears"
+msgstr "Escucha"
+
+msgid "DTMF"
+msgstr "DTMF"
+
+msgid "CW"
+msgstr "CW"
+
+msgid "Code"
+msgstr "Código"
+
+msgid "Actions"
+msgstr "Acciones"
+
+msgid "Comment"
+msgstr "Comentario"
+
+msgid "WPM"
+msgstr "PPM"
+
+msgid "Hz"
+msgstr "Hz"
+
+msgid "Picture"
+msgstr "Imagen"
+
+msgid "Send the answer as"
+msgstr "Mandar la respuesta como"
+
+msgid "Add an action"
+msgstr "Agregar una acción"
 
 msgid "Channel name"
 msgstr "Nombre del canal"
@@ -426,9 +429,6 @@ msgstr "Localizador"
 
 msgid "Frequency (MHz, 0 = do not retune)"
 msgstr "Frecuencia (MHz, 0 = no cambiar)"
-
-msgid "Interval (minutes)"
-msgstr "Intervalo (minutos)"
 
 msgid "Offset (seconds)"
 msgstr "Desfase (segundos)"
@@ -463,18 +463,6 @@ msgstr "o horas"
 msgid "One upcoming block per program"
 msgstr "Un próximo bloque por programa"
 
-msgid "Grid timezone"
-msgstr "Huso de la grilla"
-
-msgid "UTC"
-msgstr "UTC"
-
-msgid "Local"
-msgstr "Local"
-
-msgid "New program"
-msgstr "Nuevo programa"
-
 msgid "Export audio"
 msgstr "Exportar audio"
 
@@ -495,6 +483,9 @@ msgstr "CAT"
 
 msgid "Serial port"
 msgstr "Puerto serie"
+
+msgid "Off"
+msgstr "Desactivada"
 
 msgid "Lead (ms)"
 msgstr "Arranque (ms)"
@@ -577,26 +568,77 @@ msgstr "Segundos por trozo"
 msgid "Sample rate"
 msgstr "Frecuencia de muestreo"
 
-msgid "Enabled"
-msgstr "Habilitado"
-
 msgid "Trigger"
 msgstr "Disparador"
-
-msgid "DTMF"
-msgstr "DTMF"
-
-msgid "CW"
-msgstr "CW"
-
-msgid "Code"
-msgstr "Código"
 
 msgid "Actions, one per line"
 msgstr "Acciones, una por línea"
 
 msgid "cw text · dtmf 123 · image path · pause · resume · ax25 comment · command cw|the line · api cw|https://… · random a.png|b.png"
 msgstr "cw texto · dtmf 123 · image ruta · pause · resume · ax25 comentario · command cw|la línea · api cw|https://… · random a.png|b.png"
+
+msgid "New program"
+msgstr "Nuevo programa"
+
+msgid "No program yet. Create one, then set which days it uses and the hours of each day. The grid draws a card from that schedule."
+msgstr "Todavía no hay un programa. Creá uno y después elegí qué días usa y el horario de cada día. La grilla dibuja una tarjeta a partir de ese horario."
+
+msgid "A day that is on repeats every week and draws a card. The card is a prediction until it has a picture: only then is it saved."
+msgstr "Un día prendido se repite cada semana y dibuja una tarjeta. La tarjeta es una predicción hasta que tiene una imagen: recién ahí se guarda."
+
+msgid "Program enabled"
+msgstr "Programa habilitado"
+
+msgid "Hue"
+msgstr "Tono"
+
+msgid "Ends (empty = forever)"
+msgstr "Termina (vacío = para siempre)"
+
+msgid "Weekdays"
+msgstr "Días"
+
+msgid "Every"
+msgstr "Cada"
+
+msgid "Monday"
+msgstr "Lunes"
+
+msgid "Tuesday"
+msgstr "Martes"
+
+msgid "Wednesday"
+msgstr "Miércoles"
+
+msgid "Thursday"
+msgstr "Jueves"
+
+msgid "Friday"
+msgstr "Viernes"
+
+msgid "Saturday"
+msgstr "Sábado"
+
+msgid "Sunday"
+msgstr "Domingo"
+
+msgid "Welcome"
+msgstr "Bienvenida"
+
+msgid "Set welcome"
+msgstr "Poner bienvenida"
+
+msgid "Clear"
+msgstr "Quitar"
+
+msgid "Bye"
+msgstr "Despedida"
+
+msgid "Set bye"
+msgstr "Poner despedida"
+
+msgid "Delete program"
+msgstr "Borrar programa"
 
 msgid "Utils — SSTV cheat sheet"
 msgstr "Utils — machete SSTV"
@@ -609,9 +651,6 @@ msgstr "El modo del proyecto es el predeterminado de una imagen que no tiene uno
 
 msgid "Canvas"
 msgstr "Lienzo"
-
-msgid "Picture"
-msgstr "Imagen"
 
 msgid "M2, M4 and S2 scan in half the time of M1/S1: the canvas stays 320 px, written as 160(320). Robot 36 alternates R-Y/B-Y (4:2:0); Robot 72 sends both chromas on every line (4:2:2). Martin and Scottie send G, B, R in sequence."
 msgstr "M2, M4 y S2 barren en la mitad de tiempo que M1/S1: el lienzo sigue en 320 px, pero se escriben 160(320). Robot 36 alterna R-Y/B-Y (4:2:0); Robot 72 manda ambos croma en cada línea (4:2:2). Martin y Scottie envían G, B, R en secuencia."

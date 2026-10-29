@@ -85,7 +85,7 @@ impl ScanImage {
         let spec = mode.spec();
         anyhow::ensure!(
             img.width() == spec.width && img.height() == spec.height,
-            "la imagen mide {}x{} y {} necesita {}x{}",
+            "the image is {}x{} and {} needs {}x{}",
             img.width(),
             img.height(),
             spec.name,

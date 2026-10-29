@@ -1,6 +1,7 @@
 //! The station window: the grid in the middle, and the panels around it.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -8,9 +9,9 @@ use std::time::Duration;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, TimeDelta, Utc};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use estivi_core::air::{self, timeline};
+use estivi_core::air::{self, PieceKind};
 use estivi_core::compose::Composer;
-use estivi_core::config::{Config, Lang, PttMethod};
+use estivi_core::config::{Config, Lang, LineLevel, PttMethod};
 use estivi_core::dynamic::ApiCache;
 use estivi_core::engine::{Command, Engine, Phase, Status};
 use estivi_core::export::{self, AudioFormat, ExportRequest, Shape};
@@ -25,11 +26,18 @@ use estivi_core::schedule::{self, Card, Keep, Occurrence, Zoom, future_limit, gr
 use crate::editor;
 use crate::i18n;
 use crate::view;
-use crate::{CardItem, Files, MainWindow, ModeCheat, PicItem, StepItem, Theme, UtilsDialog};
+use crate::{ActionItem, CardItem, Files, MainWindow, ModeCheat, PicItem, ProgramsWindow, StepItem, Theme, TickItem, TxItem, UtilsDialog};
 
 pub type Shared = Rc<RefCell<App>>;
 
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+
+fn weekday_name(day: usize, spanish: bool) -> &'static str {
+    let en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    let es = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+    let names = if spanish { &es } else { &en };
+    names.get(day).copied().unwrap_or(names[0])
+}
 
 pub fn bind_files(files: &Files) {
     files.on_has_files(|dt| dt.has_file_paths() || dt.has_plain_text());
@@ -173,8 +181,110 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub fn apply_theme_to(theme: &Theme, light: bool) {
-    theme.set_light(light);
+pub const THEME_IDS: [&str; 6] = ["gray", "light", "lavender", "pastel", "subte", "subte-light"];
+
+pub fn theme_label(id: &str) -> String {
+    match id {
+        "light" => i18n::t("Light", "Claro"),
+        "lavender" => i18n::t("Lavender", "Lavanda"),
+        "pastel" => i18n::t("Pastel", "Pastel"),
+        "subte" => i18n::t("Subte", "Subte"),
+        "subte-light" => i18n::t("Subte light", "Subte claro"),
+        _ => i18n::t("Gray", "Gris"),
+    }
+}
+
+pub fn theme_index(id: &str, light: bool) -> i32 {
+    let id = if THEME_IDS.contains(&id) { id } else if light { "light" } else { "gray" };
+    THEME_IDS.iter().position(|x| *x == id).unwrap_or(0) as i32
+}
+
+fn rgb(hex: u32) -> slint::Color {
+    slint::Color::from_argb_u8(0xff, (hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+}
+
+struct Palette {
+    light: bool,
+    bg: u32,
+    panel: u32,
+    raised: u32,
+    field: u32,
+    border: u32,
+    strong: u32,
+    text: u32,
+    dim: u32,
+    faint: u32,
+    accent: u32,
+    on_accent: u32,
+    on_air: u32,
+    ready: u32,
+    paused: u32,
+    danger: u32,
+}
+
+fn palette(id: &str) -> Palette {
+    match id {
+        "light" => Palette {
+            light: true, bg: 0xf4f4f5, panel: 0xffffff, raised: 0xf3f4f6, field: 0xffffff, border: 0xe4e4e7, strong: 0xd4d4d8,
+            text: 0x18181b, dim: 0x52525b, faint: 0xa1a1aa, accent: 0x2563eb, on_accent: 0xffffff,
+            on_air: 0xdc2626, ready: 0x16a34a, paused: 0xd97706, danger: 0xdc2626,
+        },
+        "lavender" => Palette {
+            light: true, bg: 0xf6f1fb, panel: 0xfffbff, raised: 0xefe6f8, field: 0xfffbff, border: 0xe4d6f0, strong: 0xcdb8e4,
+            text: 0x2a2236, dim: 0x655878, faint: 0x9a8aab, accent: 0x6d4ca8, on_accent: 0xffffff,
+            on_air: 0xc43b5a, ready: 0x2f8f5b, paused: 0xb57a18, danger: 0xc43b5a,
+        },
+        "pastel" => Palette {
+            light: true, bg: 0xf7f1ea, panel: 0xfffaf6, raised: 0xffe8dc, field: 0xfffaf6, border: 0xf0d9cc, strong: 0xe4c3b4,
+            text: 0x3b2f3a, dim: 0x7a6570, faint: 0xb39aa6, accent: 0xff7a90, on_accent: 0x3b1d28,
+            on_air: 0xe23d5b, ready: 0x3aa56b, paused: 0xd0892d, danger: 0xe23d5b,
+        },
+        // Buenos Aires Subte, from idleberg's Subway theme (dark and light).
+        "subte" => Palette {
+            light: false, bg: 0x000000, panel: 0x101010, raised: 0x1c1c1c, field: 0x101010, border: 0x303030, strong: 0x4a4a4e,
+            text: 0xc0c0c0, dim: 0x9a9a9e, faint: 0x79787d, accent: 0x00aedb, on_accent: 0x041820,
+            on_air: 0xee1b2d, ready: 0x008066, paused: 0xfdba31, danger: 0xee1b2d,
+        },
+        "subte-light" => Palette {
+            light: true, bg: 0xffffff, panel: 0xf7f7f7, raised: 0xe0e0e0, field: 0xffffff, border: 0xd2d2d2, strong: 0xb0b0b0,
+            text: 0x303030, dim: 0x5a5a5a, faint: 0x8a8a8a, accent: 0x0467b3, on_accent: 0xffffff,
+            on_air: 0xee1b2d, ready: 0x008066, paused: 0x6c2181, danger: 0xee1b2d,
+        },
+        _ => Palette {
+            light: false, bg: 0x141414, panel: 0x1c1c1c, raised: 0x262626, field: 0x141414, border: 0x333333, strong: 0x4a4a4a,
+            text: 0xececec, dim: 0x9a9a9a, faint: 0x6e6e6e, accent: 0xd4d4d4, on_accent: 0x141414,
+            on_air: 0xdc2626, ready: 0x16a34a, paused: 0xd97706, danger: 0xdc2626,
+        },
+    }
+}
+
+pub fn apply_theme_to(theme: &Theme, id: &str, light_fallback: bool) {
+    let id = if THEME_IDS.contains(&id) { id } else if light_fallback { "light" } else { "gray" };
+    let p = palette(id);
+    theme.set_light(p.light);
+    theme.set_bg(rgb(p.bg));
+    theme.set_panel(rgb(p.panel));
+    theme.set_panel_raised(rgb(p.raised));
+    theme.set_field(rgb(p.field));
+    theme.set_border(rgb(p.border));
+    theme.set_border_strong(rgb(p.strong));
+    theme.set_text(rgb(p.text));
+    theme.set_text_dim(rgb(p.dim));
+    theme.set_text_faint(rgb(p.faint));
+    theme.set_accent(rgb(p.accent));
+    theme.set_on_accent(rgb(p.on_accent));
+    theme.set_on_air(rgb(p.on_air));
+    theme.set_ready(rgb(p.ready));
+    theme.set_paused(rgb(p.paused));
+    theme.set_danger(rgb(p.danger));
+}
+
+/// Which graphics the editor is changing. The picture is painted block, then program, then channel.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GfxTarget {
+    Channel,
+    Program(u64),
+    Block(u64),
 }
 
 pub fn is_image(path: &Path) -> bool {
@@ -214,7 +324,6 @@ enum Pending {
 enum Focus {
     None,
     Card(usize),
-    Program(u64),
 }
 
 struct InstantHold {
@@ -222,8 +331,26 @@ struct InstantHold {
     bye: Option<Still>,
 }
 
+struct NextFrame {
+    key: String,
+    caption: String,
+    frame: image::RgbaImage,
+}
+
+struct NextPick {
+    at: chrono::DateTime<Utc>,
+    path: String,
+    mode: Mode,
+    name: String,
+    block_id: Option<u64>,
+    block: Option<estivi_core::graphics::Graphics>,
+    program: Option<estivi_core::graphics::Graphics>,
+}
+
 pub struct App {
     pub project: Project,
+    /// Last loaded or saved project. Undo copies this back.
+    baseline: Project,
     pub path: Option<PathBuf>,
     pub dirty: bool,
     pub config: Config,
@@ -234,6 +361,7 @@ pub struct App {
     pub editor: Option<crate::editor::Editor>,
     main: slint::Weak<MainWindow>,
     modes: Option<UtilsDialog>,
+    programs: Option<ProgramsWindow>,
     cards: Vec<Card>,
     focus: Focus,
     pic: Option<u64>,
@@ -242,10 +370,20 @@ pub struct App {
     pending: Pending,
     after: After,
     act_at: usize,
-    prog_at: usize,
+    /// Program open in the programs window.
+    prog_id: Option<u64>,
     instant: InstantHold,
     seen_air: u64,
     seen_log: u64,
+    live_full: Option<image::RgbaImage>,
+    next_key: String,
+    thumbs: HashMap<String, slint::Image>,
+    block_span: Option<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)>,
+    mode_sort: (i32, bool),
+    pub gfx_target: GfxTarget,
+    act_pick: Option<usize>,
+    /// Combo callbacks that fire while the UI is being filled are ignored.
+    ui_quiet: bool,
 }
 
 impl App {
@@ -288,24 +426,38 @@ impl App {
         self.engine.send(Command::SetConfig(Box::new(self.config.clone())));
     }
 
+    /// A program occurrence opened only so its graphics could be edited, and left empty.
+    pub fn forget_empty_block(&mut self, id: u64) {
+        let empty = self.project.block(id).is_some_and(|b| b.program.is_some() && !b.has_pictures() && b.mode.is_none() && b.graphics.layers.is_empty() && b.graphics.is_plain());
+        if empty {
+            self.project.blocks.retain(|b| b.id != id);
+            if self.gfx_target == GfxTarget::Block(id) {
+                self.gfx_target = GfxTarget::Channel;
+            }
+            self.changed();
+        }
+    }
+
     pub fn graphics_changed(&mut self, notify: bool) {
         self.dirty = true;
         if notify {
-            self.send_project();
+        self.send_project();
         }
         self.ui().set_dirty(true);
     }
 
     fn changed(&mut self) {
         self.dirty = true;
-        self.send_project();
+            self.send_project();
         self.ui().set_dirty(true);
         self.refresh_cards();
         self.push_block(false);
         self.push_lists();
+        self.push_programs(false);
     }
 
     pub fn loaded(&mut self) {
+        self.baseline = self.project.clone();
         self.dirty = false;
         self.composer.set_project_dir(self.dir().as_deref());
         self.send_project();
@@ -316,6 +468,7 @@ impl App {
         self.refresh_cards();
         self.push_block(true);
         self.push_lists();
+        self.push_programs(true);
         self.ui().set_dirty(false);
         if !self.config.time.prompted {
             self.open_clock();
@@ -342,6 +495,7 @@ impl App {
         ui.set_dialog_alt(alt.into());
         ui.set_dialog_extra(extra.into());
         ui.set_dialog(kind);
+        let _ = ui.show();
     }
 
     fn message(&mut self, body: impl Into<String>) {
@@ -377,8 +531,9 @@ impl App {
             .into()
         };
         ui.set_on_air(on.into());
+        let tz = self.project.grid.timezone;
         let next = match &s.next {
-            Some(n) => format!("{} · {}", n.name, view::when(n.at, s.clock_offset_ms)),
+            Some(n) => format!("{} · {}", n.name, view::when(n.at, s.clock_offset_ms, tz)),
             None => i18n::t("Nothing queued", "Nada en cola"),
         };
         ui.set_next_up(next.into());
@@ -387,23 +542,35 @@ impl App {
         ui.set_busy_reason(s.busy_reason.as_str().into());
         ui.set_instant_ok(!s.busy);
         ui.set_instant_why(s.busy_reason.as_str().into());
-        ui.set_clock_note(view::clock_line(s.clock_offset_ms, &s.clock_error).into());
+        ui.set_clock_note(view::clock_line(s.clock_offset_ms, &s.clock_error, tz).into());
         if let Some(err) = &s.error {
             ui.set_note(err.as_str().into());
         }
         if s.on_air_rev != self.seen_air {
             self.seen_air = s.on_air_rev;
-            if let Some(img) = s.on_air.as_ref().and_then(|a| a.image.as_ref()) {
-                ui.set_on_air_image(view::to_image(img));
-                ui.set_has_image(true);
-            } else {
-                ui.set_has_image(false);
-            }
+            self.live_full = s.on_air.as_ref().and_then(|a| a.image.as_ref().map(|img| (**img).clone()));
         }
+        if let (Some(full), Some(air)) = (self.live_full.clone(), s.on_air.as_ref()) {
+            let progress = if air.scan_ms <= 1.0 { 1.0 } else { ((air.elapsed_ms - air.scan_at) / air.scan_ms).clamp(0.0, 1.0) };
+            ui.set_on_air_image(view::to_image(&view::reveal(&full, progress as f32)));
+            ui.set_has_image(true);
+        } else if s.on_air.is_none() {
+            ui.set_has_image(false);
+        }
+        let now = Utc::now() + TimeDelta::milliseconds(s.clock_offset_ms);
+        let head = self.block_span.and_then(|(start, end)| {
+            if now < start || now > end {
+                return None;
+            }
+            let span = (end - start).num_milliseconds().max(1) as f32;
+            Some((now - start).num_milliseconds().max(0) as f32 / span)
+        });
+        ui.set_playhead(head.unwrap_or(-1.0));
         if s.log_rev != self.seen_log {
             self.seen_log = s.log_rev;
-            let line = s.log.last().map(|e| format!("#{} {} {}", e.serial, e.program, e.result)).unwrap_or_default();
-            ui.set_log_text(line.into());
+            let line = s.log.last().map(|e| format!("#{} {} {}", e.serial, e.program, log_result(&e.result))).unwrap_or_default();
+            ui.set_log_text(line.as_str().into());
+            ui.set_last_log(line.into());
         }
         let listen = format!(
             "CW {}   DTMF {}   {:+.0} dB",
@@ -412,6 +579,7 @@ impl App {
             s.listen.level_db
         );
         ui.set_listen_text(listen.into());
+        self.refresh_next();
     }
 
     fn zoom(&self) -> Zoom {
@@ -489,6 +657,7 @@ impl App {
                     b: i32::from(c.rgb[2]),
                     opacity: c.opacity,
                     empty: c.empty,
+                    selected: matches!(self.focus, Focus::Card(n) if n == i),
                 }
             })
             .collect();
@@ -542,12 +711,9 @@ impl App {
         })
     }
 
-    fn focused_program(&self) -> Option<u64> {
-        match self.focus {
-            Focus::Program(id) => Some(id),
-            Focus::Card(i) => self.cards.get(i).and_then(|c| (c.program_id >= 0).then_some(c.program_id as u64)),
-            Focus::None => None,
-        }
+    /// The program that owns the card on the grid, when the card is one of its occurrences.
+    fn card_program(&self) -> Option<u64> {
+        self.card().and_then(|c| (c.program_id >= 0).then_some(c.program_id as u64))
     }
 
     fn images_now(&self) -> Vec<BlockImage> {
@@ -589,102 +755,364 @@ impl App {
 
     fn push_block(&mut self, texts: bool) {
         let ui = self.ui();
-        let card = self.card().cloned();
-        let program_id = self.focused_program();
-        let is_program = program_id.is_some();
-        ui.set_has_block(card.is_some() || program_id.is_some());
-        ui.set_is_program(is_program);
-        if let Some(id) = program_id {
-            if let Some(p) = self.project.program(id) {
-                ui.set_program_on(p.enabled);
-                ui.set_form_hue(i32::from(p.hue % 360));
-                ui.set_wd0(p.weekdays[0]);
-                ui.set_wd1(p.weekdays[1]);
-                ui.set_wd2(p.weekdays[2]);
-                ui.set_wd3(p.weekdays[3]);
-                ui.set_wd4(p.weekdays[4]);
-                ui.set_wd5(p.weekdays[5]);
-                ui.set_wd6(p.weekdays[6]);
-                if texts {
-                    ui.set_form_ends(p.ends.map(|t| grid_date(self.project.grid.timezone, t - TimeDelta::seconds(1)).format("%Y-%m-%d").to_string()).unwrap_or_default().into());
-                    ui.set_form_welcome(still_label(p.welcome.as_ref()).into());
-                    ui.set_form_bye(still_label(p.bye.as_ref()).into());
-                    if card.is_none() {
-                        ui.set_form_name(p.name.as_str().into());
-                        ui.set_form_start(p.start.as_str().into());
-                        ui.set_form_end(p.end.as_str().into());
-                    }
-                }
-                if card.is_none() {
-                    ui.set_block_title(i18n::t(&format!("{} · off the grid until it has a day and hours", p.name), &format!("{} · fuera de la grilla hasta tener día y horario", p.name)).into());
-                }
-            }
-        }
-        let Some(card) = card else {
+        let Some(card) = self.card().cloned() else {
+            ui.set_has_block(false);
+            ui.set_inherited(false);
+            ui.set_ghost(false);
+            ui.set_form_when("".into());
+            ui.set_block_title("".into());
+            ui.set_day_hint("".into());
             ui.set_pics(ModelRc::new(VecModel::from(Vec::<PicItem>::new())));
             ui.set_steps(ModelRc::new(VecModel::from(Vec::<StepItem>::new())));
             ui.set_tx_total("".into());
-            if program_id.is_none() {
-                ui.set_block_title("".into());
+            ui.set_clips(ModelRc::new(VecModel::from(Vec::<TxItem>::new())));
+            ui.set_ticks(ModelRc::new(VecModel::from(Vec::<TickItem>::new())));
+            self.block_span = None;
+            ui.set_playhead(-1.0);
+            return;
+        };
+        let inherited = card.program_id >= 0;
+        ui.set_has_block(true);
+        ui.set_inherited(inherited);
+        ui.set_ghost(inherited && card.block_id < 0);
+        let wd = card.date.weekday().num_days_from_monday() as usize;
+        let interval = if inherited {
+            self.project.program(card.program_id as u64).map(|p| p.days[wd].interval_min as i32).unwrap_or(6)
+        } else if card.block_id >= 0 {
+            self.project.block(card.block_id as u64).map(|b| b.interval_min as i32).unwrap_or(6)
+        } else {
+            6
+        };
+        ui.set_interval(interval);
+        if inherited {
+            let en_day = weekday_name(wd, false);
+            let es_day = weekday_name(wd, true);
+            let (every_en, every_es) = if interval == 0 {
+                ("one start".to_string(), "un arranque".to_string())
+            } else {
+                (format!("every {interval} min"), format!("cada {interval} min"))
+            };
+            ui.set_form_when(i18n::t(
+                &format!("{en_day} {}–{}, {every_en}. The day and the hours come from the program.", card.start_hm, card.end_hm),
+                &format!("{es_day} {}–{}, {every_es}. El día y el horario vienen del programa.", card.start_hm, card.end_hm),
+            ).into());
+        } else {
+            ui.set_form_when("".into());
+            if texts {
+                ui.set_form_name(card.name.as_str().into());
+                ui.set_form_start(card.start_hm.as_str().into());
+                ui.set_form_end(card.end_hm.as_str().into());
+            }
+        }
+        ui.set_block_title(format!("{}  {}  {}", card.name, card.date.format("%Y-%m-%d"), format!("{}–{}", card.start_hm, card.end_hm)).into());
+        ui.set_day_hint(if inherited {
+            i18n::t("Turns this date off. The other days of the program stay as they are.", "Apaga esta fecha. Los otros días del programa siguen igual.").into()
+        } else {
+            i18n::t("Turns this block off. It stays on the grid, in gray.", "Apaga este bloque. Sigue en la grilla, en gris.").into()
+        });
+        let occ = self.occurrence_of(&card);
+        ui.set_block_on(occ.as_ref().map(|o| o.block_enabled).unwrap_or(true));
+        let (pics, clips, span) = if let Some(occ) = &occ {
+            let turns = air::plan_occurrence(&self.project, occ, self.today(), self.config.ptt.lead_ms, self.config.ptt.tail_ms, self.status.serial, self.now());
+            (self.picture_rows(&turns), self.clip_rows(&turns, occ.start, occ.end), Some((occ.start, occ.end)))
+        } else {
+            (Vec::new(), Vec::new(), None)
+        };
+        let mode = self.pic.and_then(|id| occ.as_ref().and_then(|o| o.images.iter().find(|i| i.id == id))).and_then(|i| i.mode);
+        ui.set_pic_mode(mode.map(|m| view::mode_index(m) + 1).unwrap_or(0));
+        let block_mode = card.block_id.try_into().ok().and_then(|id: u64| self.project.block(id)).and_then(|b| b.mode);
+        self.ui_quiet = true;
+        ui.set_block_mode(block_mode.map(|m| view::mode_index(m) + 1).unwrap_or(0));
+        self.ui_quiet = false;
+        ui.set_pics(ModelRc::new(VecModel::from(pics)));
+        ui.set_clips(ModelRc::new(VecModel::from(clips)));
+        let ticks = occ.as_ref().map(|o| time_ticks(&o.start_hm, &o.end_hm, o.interval_min)).unwrap_or_default();
+        ui.set_ticks(ModelRc::new(VecModel::from(ticks)));
+        ui.set_steps(ModelRc::new(VecModel::from(Vec::<StepItem>::new())));
+        ui.set_tx_total("".into());
+        self.block_span = span;
+    }
+
+    fn picture_rows(&self, turns: &[air::Turn]) -> Vec<PicItem> {
+        let mut pics = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut fixed = false;
+        for turn in turns {
+            if !seen.insert(turn.image_id) {
+                continue;
+            }
+            for piece in &turn.pieces {
+                let is_fixed = matches!(piece.kind, PieceKind::Vox | PieceKind::Cw | PieceKind::Ax25);
+                if is_fixed && fixed {
+                    continue;
+                }
+                let grouped = matches!(piece.kind, PieceKind::Ax25Mode | PieceKind::Vis);
+                if matches!(piece.kind, PieceKind::Image | PieceKind::Bumper) {
+                    pics.push(self.pic_row(piece, turn.airs));
+                } else {
+                    pics.push(PicItem {
+                        id: -1,
+                        label: piece_name(piece.kind).into(),
+                        detail: view::duration(piece.ms).into(),
+                        on: turn.airs,
+                        role: 3,
+                        ghost: true,
+                        group: if grouped { piece.image_id as i32 } else { -1 },
+                        selected: false,
+                    });
+                }
+            }
+            fixed = true;
+            pics.push(PicItem {
+                id: -1,
+                label: i18n::t("This transmission", "Esta transmisión").into(),
+                detail: view::duration(turn.audio_ms()).into(),
+                on: turn.airs,
+                role: 4,
+                ghost: true,
+                group: -1,
+                selected: false,
+            });
+            if let Some(next) = turns.iter().find(|t| t.at > turn.at) {
+                let gap = (next.at - turn.at).num_milliseconds() as f64 - turn.total_ms();
+                if gap > 500.0 {
+                    pics.push(silence_row(gap));
+                }
+            }
+        }
+        pics
+    }
+
+    fn pic_row(&self, piece: &air::Piece, airs: bool) -> PicItem {
+        let id = piece.image_id as u64;
+        let mode = piece.mode.map(|m| m.spec().short).unwrap_or("·");
+        PicItem {
+            id: piece.image_id as i32,
+            label: view::file_name(&piece.path).into(),
+            detail: format!("{mode}  {}", view::duration(piece.ms)).into(),
+            on: airs,
+            role: if piece.kind == PieceKind::Bumper { 1 } else { 0 },
+            ghost: false,
+            group: -1,
+            selected: self.pic == Some(id),
+        }
+    }
+
+    fn clip_rows(&mut self, turns: &[air::Turn], start: chrono::DateTime<Utc>, end: chrono::DateTime<Utc>) -> Vec<TxItem> {
+        let span = (end - start).num_milliseconds().max(1) as f32;
+        turns.iter().map(|turn| {
+            let x = (turn.at - start).num_milliseconds().max(0) as f32 / span;
+            let w = (turn.audio_ms() as f32 / span).clamp(0.01, 1.0);
+            let image = turn.pieces.iter().find(|p| p.kind == PieceKind::Image);
+            let thumb = image.and_then(|p| self.thumb(&p.path));
+            TxItem {
+                x,
+                w: w.min(1.0 - x).max(0.008),
+                label: image.map(|p| view::file_name(&p.path)).unwrap_or_else(|| turn.name.clone()).into(),
+                id: turn.image_id as i32,
+                selected: self.pic == Some(turn.image_id),
+                has_thumb: thumb.is_some(),
+                thumb: thumb.unwrap_or_default(),
+            }
+        }).collect()
+    }
+
+    fn thumb(&mut self, path: &str) -> Option<slint::Image> {
+        if path.trim().is_empty() {
+            return None;
+        }
+        if let Some(img) = self.thumbs.get(path) {
+            return Some(img.clone());
+        }
+        let opened = image::open(self.resolve(path)).ok()?.thumbnail(64, 48).to_rgba8();
+        let img = view::to_image(&opened);
+        self.thumbs.insert(path.to_string(), img.clone());
+        Some(img)
+    }
+
+    fn refresh_next(&mut self) {
+        let Some(found) = self.upcoming_frame() else {
+            let ui = self.ui();
+            if !self.next_key.is_empty() || ui.get_has_next() || ui.get_next_caption().is_empty() {
+                self.next_key.clear();
+                ui.set_has_next(false);
+                ui.set_next_caption(i18n::t("Nothing queued", "Nada en cola").into());
             }
             return;
         };
-        if texts {
-            ui.set_form_name(card.name.as_str().into());
-            ui.set_form_start(card.start_hm.as_str().into());
-            ui.set_form_end(card.end_hm.as_str().into());
+        if found.key == self.next_key {
+            return;
         }
-        ui.set_block_title(format!("{}  {}  {}", card.name, card.date.format("%Y-%m-%d"), format!("{}–{}", card.start_hm, card.end_hm)).into());
-        let occ = self.occurrence_of(&card);
-        ui.set_block_on(occ.as_ref().map(|o| o.block_enabled).unwrap_or(true));
-        let pics: Vec<PicItem> = occ
-            .as_ref()
-            .map(|o| {
-                o.images
-                    .iter()
-                    .map(|im| PicItem {
-                        id: im.id as i32,
-                        label: view::file_name(&im.path).into(),
-                        detail: format!("{} · {}", view::role_name(im), im.mode.map(|m| m.spec().short).unwrap_or("·")).into(),
-                        on: im.enabled,
-                        role: match im.role {
-                            ImageRole::Pre { .. } => 1,
-                            ImageRole::Post { .. } => 2,
-                            ImageRole::Normal => 0,
-                        },
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        ui.set_pics(ModelRc::new(VecModel::from(pics)));
-        let (steps, total) = if let Some(occ) = &occ {
-            let turns = air::plan_occurrence(&self.project, occ, self.today(), self.config.ptt.lead_ms, self.config.ptt.tail_ms, self.status.serial, self.now());
-            let rows = timeline(&turns, occ.start, occ.end);
-            let aired: f64 = rows.iter().filter(|r| r.kind == air::RowKind::Total && r.airs).map(|r| r.ms).sum();
-            let steps = rows
-                .iter()
-                .map(|r| StepItem { label: view::row_label(r).into(), time: view::duration(r.ms).into(), dim: !r.airs })
-                .collect();
-            (steps, i18n::t(&format!("On air {}", view::duration(aired)), &format!("Al aire {}", view::duration(aired))))
-        } else {
-            (Vec::new(), String::new())
+        self.next_key = found.key;
+        let ui = self.ui();
+        ui.set_next_caption(found.caption.into());
+        ui.set_next_image(view::to_image(&found.frame));
+        ui.set_has_next(true);
+    }
+
+    /// The next picture that will actually go out: the first future turn, with the
+    /// graphics of that block, its program, and the channel. Editing any of those,
+    /// or moving another block in front, changes the key and redraws the pane.
+    fn upcoming_frame(&mut self) -> Option<NextFrame> {
+        let today = self.today();
+        let now = self.now();
+        let occs = schedule::occurrences(&self.project, today - TimeDelta::days(1), today + TimeDelta::days(14), today);
+        let lead = self.config.ptt.lead_ms;
+        let tail = self.config.ptt.tail_ms;
+        // The earliest future turn, across every block. The first block that is
+        // still open can have its next picture later than a block that starts sooner.
+        let mut best: Option<NextPick> = None;
+        for occ in occs {
+            if !occ.transmits() {
+                continue;
+            }
+            let turns = air::plan_occurrence(&self.project, &occ, today, lead, tail, self.status.serial + 1, now);
+            let Some(turn) = turns.into_iter().find(|t| t.airs && t.at > now) else { continue };
+            if best.as_ref().is_some_and(|b| b.at <= turn.at) {
+                continue;
+            }
+            let Some(image) = turn.pieces.iter().find(|p| p.kind == PieceKind::Image && !p.path.trim().is_empty()) else { continue };
+            let mode = image.mode.unwrap_or_else(|| self.project.picture_mode(None, occ.block_id, occ.program_id));
+            best = Some(NextPick {
+                at: turn.at,
+                path: image.path.clone(),
+                mode,
+                name: occ.name.clone(),
+                block_id: occ.block_id,
+                block: occ.block_id.and_then(|id| self.project.block(id)).map(|b| b.graphics.clone()),
+                program: occ.program_id.and_then(|id| self.project.program(id)).map(|p| p.graphics.clone()),
+            });
+        }
+        let best = best?;
+        let key = format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            best.path,
+            best.mode.name(),
+            best.at,
+            best.block_id.unwrap_or(0),
+            best.block.as_ref().map(gfx_stamp).unwrap_or(0),
+            best.program.as_ref().map(gfx_stamp).unwrap_or(0),
+            gfx_stamp(&self.project.graphics)
+        );
+        let live = estivi_core::compose::LiveText { program: best.name.clone(), block: best.name.clone(), ..Default::default() };
+        let ctx = estivi_core::compose::data_ctx(&self.project, best.at, self.status.serial + 1, best.mode, &live, self.project.freq_hz, &self.status.last_cw, &self.status.last_dtmf);
+        let dir = self.dir();
+        let frame = self.composer.frame_chain(&self.project, dir.as_deref(), Some(&best.path), None, best.block.as_ref(), best.program.as_ref(), best.mode, &ctx);
+        let caption = format!("{}  {}  {}", best.name, view::clock_hm(best.at, self.project.grid.timezone), view::file_name(&best.path));
+        Some(NextFrame { key, caption, frame })
+    }
+
+    fn undo(&mut self) {
+        self.project = self.baseline.clone();
+        self.dirty = false;
+        self.thumbs.clear();
+        self.next_key.clear();
+        self.composer.set_project_dir(self.dir().as_deref());
+        self.send_project();
+        self.push_channel();
+        self.push_equipment();
+        self.refresh_cards();
+        self.push_block(true);
+        self.push_lists();
+        self.push_programs(true);
+        self.ui().set_dirty(false);
+        self.note(i18n::t("Changes discarded.", "Cambios descartados."));
+    }
+
+    fn clear_selection(&mut self) {
+        self.focus = Focus::None;
+        self.pic = None;
+        self.refresh_cards();
+        self.push_block(false);
+    }
+
+    fn prepare_block_graphics(&mut self) -> bool {
+        let Some(card) = self.card().cloned() else {
+            self.note(i18n::t("Pick a block on the grid first.", "Elegí un bloque en la grilla primero."));
+            return false;
         };
-        ui.set_steps(ModelRc::new(VecModel::from(steps)));
-        ui.set_tx_total(total.into());
+        let id = if card.block_id >= 0 {
+            card.block_id as u64
+        } else if card.program_id >= 0 {
+            let id = self.project.ensure_program_block(card.program_id as u64, card.date).id;
+            self.changed();
+            id
+        } else {
+            return false;
+        };
+        self.gfx_target = GfxTarget::Block(id);
+        true
+    }
+
+    fn choose_theme(&mut self, index: i32) {
+        let id = THEME_IDS.get(index.max(0) as usize).copied().unwrap_or("gray");
+        if self.config.ui.theme == id {
+            return;
+        }
+        self.config.ui.theme = id.to_string();
+        self.config.ui.light = palette(id).light;
+        self.paint_theme();
+        self.save_config();
+    }
+
+    fn paint_theme(&self) {
+        let id = self.config.ui.theme.as_str();
+        let light = self.config.ui.light;
+        apply_theme_to(&self.ui().global::<Theme>(), id, light);
+        self.ui().invoke_sync_palette();
+        if let Some(ed) = &self.editor {
+            ed.apply_theme(id, light);
+        }
+        if let Some(win) = &self.programs {
+            apply_theme_to(&win.global::<Theme>(), id, light);
+            win.invoke_sync_palette();
+        }
+        if let Some(win) = &self.modes {
+            apply_theme_to(&win.global::<Theme>(), id, light);
+        }
     }
 
     fn push_lists(&mut self) {
-        let programs: Vec<String> = self.project.programs.iter().map(|p| {
-            if p.scheduled() { p.name.clone() } else { format!("{} · {}", p.name, i18n::t("no schedule", "sin horario")) }
-        }).collect();
         let act: Vec<String> = self.project.activations.iter().enumerate().map(|(i, a)| {
             let mark = if i == self.act_at { "▸ " } else { "  " };
             let code = a.triggers.first().map(|t| t.code.as_str()).unwrap_or("—");
             format!("{mark}{} {}", a.name, code)
         }).collect();
         let ui = self.ui();
-        ui.set_program_list(programs.join("\n").into());
         ui.set_act_list(if act.is_empty() { i18n::t("No activations yet.", "Todavía no hay activaciones.").into() } else { act.join("\n").into() });
+        self.push_activation();
+    }
+
+    fn push_activation(&mut self) {
+        let ui = self.ui();
+        let labels = action_labels();
+        ui.set_action_labels(ModelRc::new(VecModel::from(labels.iter().cloned().collect::<Vec<_>>())));
+        let mut kinds = vec![SharedString::from(i18n::t("Add an action", "Agregar una acción"))];
+        kinds.extend(labels.iter().cloned());
+        ui.set_action_kinds(ModelRc::new(VecModel::from(kinds)));
+        ui.set_carriers(ModelRc::new(VecModel::from(vec![
+            SharedString::from("CW"),
+            SharedString::from("DTMF"),
+            SharedString::from("AX.25"),
+        ])));
+        if self.project.activations.is_empty() {
+            ui.set_act_names(ModelRc::new(VecModel::from(vec![SharedString::from("—")])));
+            ui.set_act_index(0);
+            ui.set_actions(ModelRc::new(VecModel::from(Vec::<ActionItem>::new())));
+            return;
+        }
+        self.act_at = self.act_at.min(self.project.activations.len() - 1);
+        let names: Vec<SharedString> = self.project.activations.iter().map(|a| SharedString::from(a.name.as_str())).collect();
+        ui.set_act_names(ModelRc::new(VecModel::from(names)));
+        ui.set_act_index(self.act_at as i32);
+        let act = &self.project.activations[self.act_at];
+        ui.set_act_on(act.enabled);
+        ui.set_act_name(act.name.as_str().into());
+        let trigger = act.triggers.first();
+        ui.set_act_source(match trigger.map(|t| t.source) { Some(TriggerSource::Cw) => 1, _ => 0 });
+        ui.set_act_code(trigger.map(|t| t.code.as_str()).unwrap_or("").into());
+        let items: Vec<ActionItem> = act.actions.iter().map(action_item).collect();
+        ui.set_actions(ModelRc::new(VecModel::from(items)));
     }
 
     fn push_channel(&mut self) {
@@ -698,10 +1126,14 @@ impl App {
         ui.set_qth_text(p.station.qth.as_str().into());
         ui.set_loc_text(p.station.locator.as_str().into());
         ui.set_freq_text(view::freq(p.freq_hz).into());
-        ui.set_interval(p.interval_min as i32);
         ui.set_offset_s(p.grid.offset_s as i32);
         ui.set_mode_index(view::mode_index(p.tx.mode));
         ui.set_modes(ModelRc::new(VecModel::from(view::mode_names())));
+        let mut choices = vec![SharedString::from(i18n::t("Inherited", "Heredado"))];
+        choices.extend(view::mode_names());
+        ui.set_mode_choices(ModelRc::new(VecModel::from(choices)));
+        ui.set_themes(ModelRc::new(VecModel::from(THEME_IDS.iter().map(|id| SharedString::from(theme_label(id))).collect::<Vec<_>>())));
+        ui.set_theme_index(theme_index(&self.config.ui.theme, self.config.ui.light));
         ui.set_pause_s(p.tx.min_pause_s as i32);
         ui.set_vox(p.tx.vox_preamble);
         ui.set_cw_pre(p.tx.cw_preamble);
@@ -728,6 +1160,10 @@ impl App {
             PttMethod::Cat => 3,
         });
         ui.set_ptt_port(c.ptt.port.as_str().into());
+        self.ui_quiet = true;
+        ui.set_rts_index(level_index(c.ptt.rts));
+        ui.set_dtr_index(level_index(c.ptt.dtr));
+        self.ui_quiet = false;
         ui.set_lead_ms(c.ptt.lead_ms as i32);
         ui.set_tail_ms(c.ptt.tail_ms as i32);
         ui.set_cat_host(c.cat.host.as_str().into());
@@ -747,38 +1183,10 @@ impl App {
 
     fn set_hours(&mut self, start: Option<String>, end: Option<String>) {
         let today = self.today();
-        if let Some(id) = self.focused_program() {
-            let Some(current) = self.project.program(id).cloned() else { return };
-            let mut next = current.clone();
-            if let Some(s) = start {
-                if parse_hhmm(&s).is_none() && !s.trim().is_empty() {
-                    self.note(i18n::t("Use HH:MM.", "Usá HH:MM."));
-                    self.push_block(true);
-                    return;
-                }
-                next.start = s;
-            }
-            if let Some(e) = end {
-                if parse_hhmm(&e).is_none() && !e.trim().is_empty() {
-                    self.note(i18n::t("Use HH:MM.", "Usá HH:MM."));
-                    self.push_block(true);
-                    return;
-                }
-                next.end = e;
-            }
-            if let Some(c) = schedule::program_conflict(&self.project, &next, Some(id), today) {
-                self.message(c.text(self.es()));
-                self.push_block(true);
-                return;
-            }
-            if let Some(p) = self.project.program_mut(id) {
-                p.start = next.start;
-                p.end = next.end;
-            }
-            self.changed();
+        let Some(card) = self.card().cloned() else { return };
+        if card.program_id >= 0 {
             return;
         }
-        let Some(card) = self.card().cloned() else { return };
         if card.block_id < 0 {
             return;
         }
@@ -810,11 +1218,18 @@ impl App {
             return;
         }
         let Some(card) = self.cards.get(index as usize).cloned() else { return };
+        if card.program_id >= 0 {
+            self.note(i18n::t(
+                "These hours belong to the program. Change them in Programs.",
+                "Este horario es del programa. Se cambia en Programas.",
+            ));
+            return;
+        }
         self.focus = Focus::Card(index as usize);
         let hm = format_hhmm(minute as u32);
         if is_end {
             self.set_hours(None, Some(hm));
-        } else {
+                } else {
             self.set_hours(Some(hm), None);
         }
         let _ = card;
@@ -822,8 +1237,9 @@ impl App {
 
     fn open_create(&mut self, cell: i32, minute: i32) {
         let date = self.cell_date(cell);
-        let (start, end) = proposed_window(minute.max(0) as u32, self.project.interval_min);
+        let (start, end) = proposed_window(minute.max(0) as u32, 6);
         let ui = self.ui();
+        ui.set_dlg_interval(6);
         ui.set_dlg_name(i18n::t("New block", "Bloque nuevo").into());
         ui.set_dlg_date(date.format("%Y-%m-%d").to_string().into());
         ui.set_dlg_start(start.into());
@@ -832,18 +1248,18 @@ impl App {
             2,
             &i18n::t("Empty hour", "Hora libre"),
             &i18n::t(
-                "Nothing is created until you choose a common block or a program. A program repeats on this weekday.",
-                "No se crea nada hasta que elijas un bloque común o un programa. Un programa se repite este día de la semana.",
+                "This is one common block, on this date only. It does not repeat. A program's days and hours are set in Programs.",
+                "Este es un bloque común, solo esta fecha. No se repite. Los días y las horas de un programa se definen en Programas.",
             ),
-            &i18n::t("Common block", "Bloque común"),
-            &i18n::t("Program", "Programa"),
+            &i18n::t("Create", "Crear"),
             &i18n::t("Cancel", "Cancelar"),
+            "",
             Pending::Create,
         );
     }
 
     fn confirm_create(&mut self, which: i32) {
-        if which == 2 {
+        if which != 0 {
             self.close_dialog();
             return;
         }
@@ -853,47 +1269,39 @@ impl App {
             Ok(d) => d,
             Err(_) => {
                 self.note(i18n::t("The date is YYYY-MM-DD.", "La fecha es AAAA-MM-DD."));
-                return;
+            return;
             }
         };
         let start = ui.get_dlg_start().to_string();
         let end = ui.get_dlg_end().to_string();
+        let interval = ui.get_dlg_interval().max(0) as u32;
         if parse_hhmm(&start).is_none() || parse_hhmm(&end).is_none() {
             self.note(i18n::t("Use HH:MM.", "Usá HH:MM."));
             return;
         }
         let today = self.today();
         let es = self.es();
-        if which == 0 {
-            if let Err(c) = schedule::can_place_common(&self.project, date, &start, &end, today) {
-                self.message(c.text(es));
-                return;
-            }
-            let id = self.project.next_id();
-            self.project.blocks.push(Block { id, program: None, date, name, start, end, enabled: true, images: Vec::new() });
-        } else {
-            if let Err(c) = schedule::can_place_program(&self.project, date, &start, &end, today) {
-                self.message(c.text(es));
-                return;
-            }
-            let mut weekdays = [false; 7];
-            weekdays[date.weekday().num_days_from_monday() as usize] = true;
-            let id = self.project.next_id();
-            self.project.programs.push(Program { id, name, weekdays, start, end, ..Program::default() });
-            self.focus = Focus::Program(id);
+        if let Err(c) = schedule::can_place_common(&self.project, date, &start, &end, today) {
+            self.message(c.text(es));
+            return;
         }
+        let id = self.project.next_id();
+        self.project.blocks.push(Block { id, program: None, date, name, start, end, enabled: true, interval_min: interval, images: Vec::new(), ..Block::default() });
         self.close_dialog();
         self.changed();
     }
 
-    fn weekday(&mut self, day: usize, on: bool) {
-        let Some(id) = self.focused_program() else { return };
+    fn weekday(&mut self, id: u64, day: usize, on: bool) {
         let today = self.today();
         let now = self.now();
         match schedule::set_weekday(&mut self.project, id, day, on, None, now, today) {
-            Ok(()) => self.changed(),
+            Ok(()) => {
+                self.changed();
+                self.push_programs(true);
+            }
             Err(schedule::EditError::NeedChoice) => {
-                let ui = self.ui();
+                self.push_programs(true);
+        let ui = self.ui();
                 ui.set_dlg_horizon(future_limit(today).format("%Y-%m-%d").to_string().into());
                 self.ask(
                     3,
@@ -910,9 +1318,9 @@ impl App {
             }
             Err(schedule::EditError::Conflict(c)) => {
                 self.message(c.text(self.es()));
-                self.push_block(true);
+                self.push_programs(true);
             }
-            Err(schedule::EditError::Missing) => self.push_block(true),
+            Err(schedule::EditError::Missing) => self.push_programs(true),
         }
     }
 
@@ -936,8 +1344,11 @@ impl App {
                     1 => Keep::KeepFilled,
                     _ => Keep::KeepThrough(horizon.unwrap_or_else(|| future_limit(today))),
                 };
-                if matches!(self.focus, Focus::Program(pid) if pid == id) {
+                if self.card_program() == Some(id) {
                     self.focus = Focus::None;
+                }
+                if self.prog_id == Some(id) {
+                    self.prog_id = None;
                 }
                 schedule::delete_program(&mut self.project, id, keep, now, today)
             }
@@ -948,6 +1359,7 @@ impl App {
             self.message(c.text(self.es()));
         }
         self.changed();
+        self.push_programs(true);
     }
 
     fn horizon(&self) -> Option<NaiveDate> {
@@ -958,7 +1370,7 @@ impl App {
     }
 
     fn open_delete_program(&mut self) {
-        let Some(id) = self.focused_program() else { return };
+        let Some(id) = self.prog_id else { return };
         let today = self.today();
         self.ui().set_dlg_horizon(future_limit(today).format("%Y-%m-%d").to_string().into());
         self.ask(
@@ -1044,26 +1456,105 @@ impl App {
     }
 
     fn open_activation(&mut self, new: bool) {
-        let ui = self.ui();
-        if new {
-            ui.set_act_name("".into());
-            ui.set_act_code("".into());
-            ui.set_act_script("".into());
-            ui.set_act_source(0);
-            ui.set_act_on(true);
-            self.ask(7, &i18n::t("Activation", "Activación"), &i18n::t("It is saved only when you press Save. A trigger without a code is not stored.", "Se guarda solo cuando apretás Guardar. Un disparador sin código no se guarda."), &i18n::t("Save", "Guardar"), &i18n::t("Cancel", "Cancelar"), "", Pending::Activation(None));
+        if !new {
             return;
         }
-        let Some(act) = self.project.activations.get(self.act_at).cloned() else {
-            self.note(i18n::t("There is no activation to edit.", "No hay una activación para editar."));
+        let id = self.project.next_id();
+        let n = self.project.activations.len() + 1;
+        self.project.activations.push(Activation {
+            id,
+            name: format!("{} {n}", i18n::t("Activation", "Activación")),
+            triggers: vec![ActTrigger::default()],
+            ..Activation::default()
+        });
+        self.act_at = self.project.activations.len() - 1;
+        self.ui().set_side(2);
+        self.changed();
+    }
+
+    fn select_activation(&mut self, index: i32) {
+        if self.project.activations.is_empty() {
             return;
+        }
+        self.act_at = (index.max(0) as usize).min(self.project.activations.len() - 1);
+        self.push_activation();
+    }
+
+    fn add_action(&mut self, kind: i32) {
+        let action = match kind {
+            0 => Action::Cw { text: self.project.station.call.clone(), wpm: self.project.tx.cw_wpm, tone_hz: self.project.tx.cw_tone_hz },
+            1 => Action::Dtmf { sequence: String::new() },
+            2 => Action::Image { path: String::new(), mode: None },
+            3 => Action::Pause,
+            4 => Action::Resume,
+            5 => Action::Ax25 { lines: Default::default(), comment: String::new() },
+            6 => Action::Command { command: String::new(), via: Carrier::Cw },
+            7 => Action::Api { url: String::new(), json_path: String::new(), via: Carrier::Cw },
+            8 => Action::Random { paths: Vec::new(), mode: None },
+            _ => return,
         };
-        ui.set_act_name(act.name.as_str().into());
-        ui.set_act_on(act.enabled);
-        ui.set_act_source(if matches!(act.triggers.first().map(|t| t.source), Some(TriggerSource::Cw)) { 1 } else { 0 });
-        ui.set_act_code(act.triggers.first().map(|t| t.code.as_str()).unwrap_or("").into());
-        ui.set_act_script(script_of(&act.actions).into());
-        self.ask(7, &i18n::t("Activation", "Activación"), "", &i18n::t("Save", "Guardar"), &i18n::t("Cancel", "Cancelar"), "", Pending::Activation(Some(act.id)));
+        let Some(act) = self.project.activations.get_mut(self.act_at) else { return };
+        act.actions.push(action);
+        self.changed();
+    }
+
+    fn drop_action(&mut self, index: i32) {
+        let Some(act) = self.project.activations.get_mut(self.act_at) else { return };
+        if (index as usize) < act.actions.len() {
+            act.actions.remove(index as usize);
+            self.changed();
+        }
+    }
+
+    fn edit_activation(&mut self, index: i32, key: &str, value: &str) {
+        if index < 0 {
+            let Some(act) = self.project.activations.get_mut(self.act_at) else { return };
+            match key {
+                "on" => act.enabled = value == "1",
+                "name" => act.name = value.to_string(),
+                "code" => {
+                    if act.triggers.is_empty() {
+                        act.triggers.push(ActTrigger::default());
+                    }
+                    if let Some(t) = act.triggers.first_mut() {
+                        t.code = value.to_string();
+                    }
+                }
+                "source" => {
+                    if act.triggers.is_empty() {
+                        act.triggers.push(ActTrigger::default());
+                    }
+                    if let Some(t) = act.triggers.first_mut() {
+                        t.source = if value == "cw" { TriggerSource::Cw } else { TriggerSource::Dtmf };
+                    }
+                }
+                _ => return,
+            }
+            self.changed();
+            return;
+        }
+        let i = index as usize;
+        let Some(action) = self.project.activations.get_mut(self.act_at).and_then(|a| a.actions.get_mut(i)) else { return };
+        match (key, action) {
+            ("text", Action::Cw { text, .. } | Action::Dtmf { sequence: text } | Action::Ax25 { comment: text, .. } | Action::Command { command: text, .. }) => *text = value.to_string(),
+            ("url", Action::Api { url, .. }) => *url = value.to_string(),
+            ("json", Action::Api { json_path, .. }) => *json_path = value.to_string(),
+            _ => return,
+        }
+        self.changed();
+    }
+
+    fn edit_activation_num(&mut self, index: i32, key: &str, value: i32) {
+        let i = index as usize;
+        let Some(action) = self.project.activations.get_mut(self.act_at).and_then(|a| a.actions.get_mut(i)) else { return };
+        match (key, action) {
+            ("wpm", Action::Cw { wpm, .. }) => *wpm = value as f32,
+            ("tone", Action::Cw { tone_hz, .. }) => *tone_hz = value as f32,
+            ("mode", Action::Image { mode, .. } | Action::Random { mode, .. }) => *mode = Some(view::mode_at(value)),
+            ("via", Action::Command { via, .. } | Action::Api { via, .. }) => *via = carrier_at(value),
+            _ => return,
+        }
+        self.changed();
     }
 
     fn save_activation(&mut self, id: Option<u64>) {
@@ -1089,7 +1580,7 @@ impl App {
                 act.triggers = vec![trigger];
                 act.actions = actions;
             }
-        } else {
+            } else {
             let id = self.project.next_id();
             self.project.activations.push(Activation { id, enabled: ui.get_act_on(), name, triggers: vec![trigger], actions });
             self.act_at = self.project.activations.len().saturating_sub(1);
@@ -1147,7 +1638,7 @@ impl App {
         let enabled: Vec<&BlockImage> = images.iter().filter(|i| matches!(i.role, ImageRole::Normal) && i.enabled).collect();
         let first = enabled.first().map(|i| i.id) == Some(normal_id);
         let last = enabled.last().map(|i| i.id) == Some(normal_id);
-        let program = self.focused_program().and_then(|id| self.project.program(id)).cloned();
+        let program = self.card_program().and_then(|id| self.project.program(id)).cloned();
         self.instant.welcome = if first { program.as_ref().and_then(|p| p.welcome.clone()) } else { None };
         self.instant.bye = if last { program.as_ref().and_then(|p| p.bye.clone()) } else { None };
         let ui = self.ui();
@@ -1167,12 +1658,15 @@ impl App {
 
     fn on_pic(&mut self, cmd: &str, arg: i32) {
         match cmd {
-            "select" => self.pic = Some(arg as u64),
+            "select" => {
+                self.pic = Some(arg as u64);
+                self.push_block(false);
+            }
             "nudge" => self.nudge(arg),
             "up" => self.nudge(-1),
             "down" => self.nudge(1),
             "toggle" => self.toggle_pic(),
-            "mode" => self.cycle_pic_mode(),
+            "mode" => self.set_pic_mode(arg),
             "remove" => self.remove_pic(),
             "link-up" => self.link(true),
             "link-down" => self.link(false),
@@ -1190,21 +1684,6 @@ impl App {
                     self.project.activations.retain(|a| a.id != id);
                     self.act_at = self.act_at.min(self.project.activations.len().saturating_sub(1));
                     self.changed();
-                }
-            }
-            "prog" => {
-                let n = self.project.programs.len();
-                if n > 0 {
-                    self.prog_at = (self.prog_at as i32 + arg).rem_euclid(n as i32) as usize;
-                    self.push_lists();
-                }
-            }
-            "prog-edit" => {
-                if let Some(p) = self.project.programs.get(self.prog_at) {
-                    let id = p.id;
-                    self.focus = Focus::Program(id);
-                    self.ui().set_side(0);
-                    self.push_block(true);
                 }
             }
             _ => {}
@@ -1242,12 +1721,38 @@ impl App {
         self.commit_images(images);
     }
 
-    fn cycle_pic_mode(&mut self) {
+    fn set_block_mode(&mut self, index: i32) {
+        if self.ui_quiet {
+            return;
+        }
+        let mode = if index <= 0 { None } else { Some(view::mode_at(index - 1)) };
+        let Some(card) = self.card().cloned() else { return };
+        let id = if card.block_id >= 0 {
+            card.block_id as u64
+        } else if mode.is_some() && card.program_id >= 0 {
+            self.project.ensure_program_block(card.program_id as u64, card.date).id
+        } else {
+            return;
+        };
+        let Some(block) = self.project.block_mut(id) else { return };
+        if block.mode == mode {
+            return;
+        }
+        block.mode = mode;
+        self.changed();
+        self.refresh_cards();
+        self.push_block(false);
+    }
+
+    fn set_pic_mode(&mut self, index: i32) {
         let Some(id) = self.pic else { return };
         let mut images = self.images_now();
-        if let Some(im) = images.iter_mut().find(|i| i.id == id) {
-            im.mode = next_mode(im.mode);
+        let next = if index <= 0 { None } else { Some(view::mode_at(index - 1)) };
+        let Some(im) = images.iter_mut().find(|i| i.id == id) else { return };
+        if im.mode == next {
+            return;
         }
+        im.mode = next;
         self.commit_images(images);
     }
 
@@ -1313,10 +1818,14 @@ impl App {
     }
 
     fn import_folder(&mut self, path: PathBuf) {
-        let Some(id) = self.focused_program() else {
+        let Some(id) = self.card_program() else {
             self.note(i18n::t("Import fills a program. A common block takes pictures with Add.", "Importar llena un programa. Un bloque común recibe fotos con Agregar."));
             return;
         };
+        self.import_into(id, path);
+    }
+
+    fn import_into(&mut self, id: u64, path: PathBuf) {
         let base = self.dir();
         let now = self.now();
         match playlist::import_program(&mut self.project, id, &path, base.as_deref(), now) {
@@ -1324,7 +1833,7 @@ impl App {
                 let warn = report.warnings.iter().chain(report.skipped.iter()).cloned().collect::<Vec<_>>().join(" · ");
                 self.note(if warn.is_empty() {
                     i18n::t(&format!("{} occurrences filled", report.filled.len()), &format!("{} ocurrencias llenas", report.filled.len()))
-                } else {
+    } else {
                     warn
                 });
                 self.changed();
@@ -1334,16 +1843,17 @@ impl App {
     }
 
     fn set_still(&mut self, welcome: bool, path: Option<PathBuf>) {
-        let Some(id) = self.focused_program() else { return };
+        let Some(id) = self.prog_id else { return };
         let still = path.map(|p| Still { path: self.relativize(&p), mode: Some(self.project.tx.mode) });
         if let Some(p) = self.project.program_mut(id) {
             if welcome { p.welcome = still; } else { p.bye = still; }
         }
         self.changed();
+        self.push_programs(true);
     }
 
     fn cycle_still(&mut self, welcome: bool) {
-        let Some(id) = self.focused_program() else { return };
+        let Some(id) = self.prog_id else { return };
         if let Some(p) = self.project.program_mut(id) {
             let slot = if welcome { &mut p.welcome } else { &mut p.bye };
             if let Some(still) = slot {
@@ -1351,16 +1861,17 @@ impl App {
             }
         }
         self.changed();
+        self.push_programs(true);
     }
 
     fn set_ends(&mut self, text: &str) {
-        let Some(id) = self.focused_program() else { return };
+        let Some(id) = self.prog_id else { return };
         let ends = if text.trim().is_empty() {
             None
         } else {
             let Ok(date) = NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d") else {
                 self.note(i18n::t("The date is YYYY-MM-DD.", "La fecha es AAAA-MM-DD."));
-                self.push_block(true);
+                self.push_programs(true);
                 return;
             };
             let next = date + TimeDelta::days(1);
@@ -1369,6 +1880,7 @@ impl App {
                 Some(t) => Some(t),
                 None => {
                     self.note(i18n::t("That instant does not exist on this clock.", "Ese instante no existe en este reloj."));
+                    self.push_programs(true);
                     return;
                 }
             }
@@ -1377,18 +1889,14 @@ impl App {
             p.ends = ends;
         }
         self.changed();
+        self.push_programs(true);
     }
 
     fn on_field(&mut self, key: &str, value: &str) {
         match key {
             "name" => {
-                if let Some(id) = self.focused_program() {
-                    if let Some(p) = self.project.program_mut(id) {
-                        p.name = value.to_string();
-                    }
-                    self.changed();
-                } else if let Some(card) = self.card().cloned() {
-                    if card.block_id >= 0 {
+                if let Some(card) = self.card().cloned() {
+                    if card.program_id < 0 && card.block_id >= 0 {
                         if let Some(b) = self.project.block_mut(card.block_id as u64) {
                             b.name = value.to_string();
                         }
@@ -1407,32 +1915,6 @@ impl App {
                 }
             }
             "enabled" => self.set_day_enabled(value == "1"),
-            "program-on" => {
-                if let Some(id) = self.focused_program() {
-                    if let Some(p) = self.project.program_mut(id) {
-                        p.enabled = value == "1";
-                    }
-                    self.changed();
-                }
-            }
-            "wd" => {
-                let mut parts = value.split(':');
-                let day: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-                let on = parts.next() == Some("1");
-                if day < 7 {
-                    self.weekday(day, on);
-                }
-            }
-            "ends" => {
-                if value.trim().is_empty() || NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").is_ok() {
-                    self.set_ends(value);
-                }
-            }
-            "welcome" => self.set_still(true, None),
-            "bye" => self.set_still(false, None),
-            "welcome-mode" => self.cycle_still(true),
-            "bye-mode" => self.cycle_still(false),
-            "delete-program" => self.open_delete_program(),
             "delete-block" => {
                 if let Some(card) = self.card().cloned() {
                     if card.program_id < 0 && card.block_id >= 0 {
@@ -1440,16 +1922,6 @@ impl App {
                         self.ask(1, &i18n::t("Delete block", "Borrar bloque"), &i18n::t("This common block will be deleted.", "Este bloque común se va a borrar."), &i18n::t("Delete", "Borrar"), &i18n::t("Cancel", "Cancelar"), "", Pending::DeleteBlock { id });
                     }
                 }
-            }
-            "new-program" => {
-                let id = self.project.next_id();
-                let n = self.project.programs.len() + 1;
-                self.project.programs.push(Program { id, name: format!("{} {n}", i18n::t("Program", "Programa")), ..Program::default() });
-                self.focus = Focus::Program(id);
-                self.prog_at = self.project.programs.len() - 1;
-                self.ui().set_side(0);
-                self.changed();
-                self.note(i18n::t("The program has no days and no hours, so it is not on the grid yet.", "El programa no tiene días ni horario, así que todavía no está en la grilla."));
             }
             "export" => self.open_export(),
             "channel" => { self.project.name = value.to_string(); self.ui().set_project_name(value.into()); self.changed(); }
@@ -1479,28 +1951,46 @@ impl App {
             "audio-in" => { self.config.audio.input = value.to_string(); self.save_config(); }
             "ntp" => { self.config.time.enabled = value == "1"; self.config.time.prompted = true; self.save_config(); }
             "ntp-server" => { self.config.time.server = value.to_string(); self.save_config(); }
-            _ => {}
-        }
+                _ => {}
+            }
     }
 
     fn on_num(&mut self, key: &str, value: i32) {
         match key {
-            "hue" => {
-                if let Some(id) = self.focused_program() {
-                    if let Some(p) = self.project.program_mut(id) {
-                        p.hue = (value.max(0) as u16) % 360;
+            "interval" => {
+                let v = value.max(0) as u32;
+                if let Some(card) = self.card().cloned() {
+                    if card.program_id < 0 && card.block_id >= 0 {
+                        if let Some(b) = self.project.block_mut(card.block_id as u64) {
+                            b.interval_min = v;
+                        }
+                        self.changed();
                     }
-                    self.changed();
                 }
             }
-            "interval" => { self.project.interval_min = value.max(0) as u32; self.changed(); }
+            "dlg-interval" => {
+                let v = value.max(0);
+                self.ui().set_dlg_interval(v);
+                if matches!(self.pending, Pending::Create) {
+                    let start = self.ui().get_dlg_start().to_string();
+                    if let Some(s) = parse_hhmm(&start) {
+                        let (_, end) = proposed_window(s, v as u32);
+                        self.ui().set_dlg_end(end.into());
+                    }
+                }
+            }
             "offset" => { self.project.grid.offset_s = value.max(0) as u32; self.changed(); }
             "mode" => { self.project.tx.mode = view::mode_at(value); self.changed(); }
+            "block-mode" => self.set_block_mode(value),
             "pause" => { self.project.tx.min_pause_s = value.max(0) as u32; self.changed(); }
             "next-count" => { self.project.ax25.next_count = value.max(1) as u32; self.project.ax25.by_count = true; self.changed(); }
             "next-hours" => { self.project.ax25.next_hours = value.max(1) as u32; self.project.ax25.by_count = false; self.changed(); }
             "tz" => {
-                self.project.grid.timezone = if value == 1 { GridTz::Local } else { GridTz::Utc };
+                let tz = if value == 1 { GridTz::Local } else { GridTz::Utc };
+                if self.project.grid.timezone == tz {
+                    return;
+                }
+                self.project.grid.timezone = tz;
                 self.changed();
             }
             "ptt" => {
@@ -1514,6 +2004,16 @@ impl App {
             }
             "lead" => { self.config.ptt.lead_ms = value.max(0) as u32; self.save_config(); }
             "tail" => { self.config.ptt.tail_ms = value.max(0) as u32; self.save_config(); }
+            "rts" => {
+                if self.ui_quiet { return; }
+                self.config.ptt.rts = level_at(value);
+                self.save_config();
+            }
+            "dtr" => {
+                if self.ui_quiet { return; }
+                self.config.ptt.dtr = level_at(value);
+                self.save_config();
+            }
             "cat-port" => { self.config.cat.port = value.clamp(1, 65535) as u16; self.save_config(); }
             "lang" => {
                 self.config.ui.lang = if value == 1 { "es" } else { "en" }.into();
@@ -1524,6 +2024,7 @@ impl App {
                 self.refresh_cards();
                 self.push_block(true);
                 self.push_lists();
+                self.push_programs(true);
             }
             "ntp-hours" => { self.config.time.period_h = value.max(1) as u32; self.save_config(); }
             _ => {}
@@ -1533,7 +2034,7 @@ impl App {
     fn set_day_enabled(&mut self, on: bool) {
         let Some(card) = self.card().cloned() else {
             self.push_block(true);
-            return;
+        return;
         };
         if card.block_id >= 0 {
             if let Some(b) = self.project.block_mut(card.block_id as u64) {
@@ -1683,7 +2184,8 @@ impl App {
     fn write_to(&mut self, path: &Path) {
         let path = ensure_ext(path);
         match self.project.save(&path) {
-            Ok(()) => {
+        Ok(()) => {
+                self.baseline = self.project.clone();
                 self.path = Some(path);
                 self.dirty = false;
                 self.ui().set_dirty(false);
@@ -1735,7 +2237,7 @@ impl App {
         }
     }
 
-    fn open_modes(&mut self) {
+    fn open_modes(&mut self, app: Weak<RefCell<App>>) {
         if self.modes.is_none() {
             let win = match UtilsDialog::new() {
                 Ok(w) => w,
@@ -1744,32 +2246,249 @@ impl App {
                     return;
                 }
             };
-            let items: Vec<ModeCheat> = Mode::ALL.iter().copied().map(|m| {
-                let s = m.spec();
-                let color = match s.family {
-                    estivi_core::modes::Family::RobotBw => i18n::ts("B/W", "B/N"),
-                    _ => i18n::ts("Color", "Color"),
-                };
-                ModeCheat {
-                    name: s.name.into(),
-                    size: format!("{}×{}", s.width, s.height).into(),
-                    color: color.into(),
-                    time: view::duration(s.total_ms()).into(),
-                    vis: format!("0x{:02X}", s.vis).into(),
-                }
-            }).collect();
-            win.set_modes(ModelRc::new(VecModel::from(items)));
             win.on_dismiss({
                 let w = win.as_weak();
                 move || { if let Some(w) = w.upgrade() { let _ = w.hide(); } }
             });
-            apply_theme_to(&win.global::<Theme>(), self.config.ui.light);
+            win.on_sort({
+                let w = app;
+                move |col| with_app(&w, |a| {
+                    if a.mode_sort.0 == col {
+                        a.mode_sort.1 = !a.mode_sort.1;
+                    } else {
+                        a.mode_sort = (col, false);
+                    }
+                    a.fill_modes();
+                })
+            });
+            apply_theme_to(&win.global::<Theme>(), &self.config.ui.theme, self.config.ui.light);
             self.modes = Some(win);
+            self.fill_modes();
         }
         if let Some(win) = &self.modes {
-            apply_theme_to(&win.global::<Theme>(), self.config.ui.light);
+            apply_theme_to(&win.global::<Theme>(), &self.config.ui.theme, self.config.ui.light);
             let _ = win.show();
         }
+    }
+
+    fn fill_modes(&mut self) {
+        let Some(win) = &self.modes else { return };
+        let mut modes: Vec<Mode> = Mode::ALL.to_vec();
+        let (col, desc) = self.mode_sort;
+        modes.sort_by(|a, b| {
+            let (sa, sb) = (a.spec(), b.spec());
+            let (ca, cb) = (family_name(sa.family), family_name(sb.family));
+            let ord = match col {
+                1 => (sa.width, sa.height).cmp(&(sb.width, sb.height)),
+                2 => ca.cmp(&cb),
+                3 => sa.total_ms().total_cmp(&sb.total_ms()),
+                4 => sa.vis.cmp(&sb.vis),
+                _ => sa.name.cmp(sb.name),
+            };
+            if desc { ord.reverse() } else { ord }
+        });
+        let items: Vec<ModeCheat> = modes.into_iter().map(|m| {
+            let s = m.spec();
+            ModeCheat {
+                name: s.name.into(),
+                size: format!("{}×{}", s.width, s.height).into(),
+                color: family_name(s.family).into(),
+                time: view::duration(s.total_ms()).into(),
+                vis: format!("0x{:02X}", s.vis).into(),
+            }
+        }).collect();
+        win.set_modes(ModelRc::new(VecModel::from(items)));
+    }
+
+    fn open_programs(&mut self, from_card: bool, app: Weak<RefCell<App>>) {
+        if from_card {
+            if let Some(id) = self.card_program() {
+                self.prog_id = Some(id);
+            }
+        }
+        if self.programs.is_none() {
+            let win = match ProgramsWindow::new() {
+                Ok(w) => w,
+                Err(e) => {
+                    self.note(e.to_string());
+                    return;
+                }
+            };
+            win.window().on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+            wire_programs(&app, &self.main, &win);
+            apply_theme_to(&win.global::<Theme>(), &self.config.ui.theme, self.config.ui.light);
+            win.invoke_sync_palette();
+            self.programs = Some(win);
+        }
+        if let Some(win) = &self.programs {
+            apply_theme_to(&win.global::<Theme>(), &self.config.ui.theme, self.config.ui.light);
+            win.invoke_sync_palette();
+        }
+        self.push_programs(true);
+        if let Some(win) = &self.programs {
+            let _ = win.show();
+        }
+    }
+
+    fn create_program(&mut self) {
+        let id = self.project.next_id();
+        let n = self.project.programs.len() + 1;
+        self.project.programs.push(Program { id, name: format!("{} {n}", i18n::t("Program", "Programa")), ..Program::default() });
+        self.prog_id = Some(id);
+        self.changed();
+        self.push_programs(true);
+        self.note(i18n::t(
+            "The program has no days and no hours, so it is not on the grid yet.",
+            "El programa no tiene días ni horario, así que todavía no está en la grilla.",
+        ));
+    }
+
+    fn set_program_name(&mut self, value: String) {
+        let Some(id) = self.prog_id else { return };
+        if let Some(p) = self.project.program_mut(id) {
+            p.name = value;
+        }
+        self.changed();
+    }
+
+    fn set_program_enabled(&mut self, on: bool) {
+        let Some(id) = self.prog_id else { return };
+        if let Some(p) = self.project.program_mut(id) {
+            p.enabled = on;
+        }
+        self.changed();
+    }
+
+    fn set_program_hue(&mut self, value: i32) {
+        let Some(id) = self.prog_id else { return };
+        if let Some(p) = self.project.program_mut(id) {
+            p.hue = (value.max(0) as u16) % 360;
+        }
+        self.changed();
+    }
+
+    fn set_program_mode(&mut self, index: i32) {
+        if self.ui_quiet {
+            return;
+        }
+        let mode = if index <= 0 { None } else { Some(view::mode_at(index - 1)) };
+        let Some(id) = self.prog_id else { return };
+        let Some(program) = self.project.program_mut(id) else { return };
+        if program.mode == mode {
+            return;
+        }
+        program.mode = mode;
+        self.changed();
+        self.refresh_cards();
+        self.push_block(false);
+    }
+
+    fn set_program_hours(&mut self, day: usize, end: bool, value: String) {
+        let Some(id) = self.prog_id else { return };
+        if day > 6 {
+            return;
+        }
+        if parse_hhmm(&value).is_none() {
+            self.note(i18n::t("Use HH:MM.", "Usá HH:MM."));
+            self.push_programs(true);
+            return;
+        }
+        let Some(current) = self.project.program(id).cloned() else { return };
+        let mut next = current;
+        if end {
+            next.days[day].end = value;
+        } else {
+            next.days[day].start = value;
+        }
+        if let Some(c) = schedule::program_conflict(&self.project, &next, Some(id), self.today()) {
+            self.message(c.text(self.es()));
+            self.push_programs(true);
+            return;
+        }
+        if let Some(p) = self.project.program_mut(id) {
+            p.days[day].start = next.days[day].start.clone();
+            p.days[day].end = next.days[day].end.clone();
+        }
+        self.changed();
+    }
+
+    fn set_program_interval(&mut self, day: usize, value: i32) {
+        let Some(id) = self.prog_id else { return };
+        if day > 6 {
+            return;
+        }
+        if let Some(p) = self.project.program_mut(id) {
+            p.days[day].interval_min = value.max(0) as u32;
+        }
+        self.changed();
+    }
+
+    fn push_programs(&mut self, texts: bool) {
+        if self.prog_id.is_some_and(|id| self.project.program(id).is_none()) {
+            self.prog_id = None;
+        }
+        if self.prog_id.is_none() {
+            self.prog_id = self.project.programs.first().map(|p| p.id);
+        }
+        let Some(win) = self.programs.take() else { return };
+        let names: Vec<SharedString> = self.project.programs.iter().map(|p| {
+            let label = if p.scheduled() { p.name.clone() } else { format!("{} · {}", p.name, i18n::t("no schedule", "sin horario")) };
+            SharedString::from(label)
+        }).collect();
+        let selected = self.project.programs.iter().position(|p| Some(p.id) == self.prog_id).map(|i| i as i32).unwrap_or(-1);
+        win.set_names(ModelRc::new(VecModel::from(names)));
+        win.set_selected(selected);
+        win.set_has_program(selected >= 0);
+        let program = self.prog_id.and_then(|id| self.project.program(id)).cloned();
+        let Some(p) = program.as_ref() else {
+            self.programs = Some(win);
+            return;
+        };
+        win.set_enabled(p.enabled);
+        win.set_hue(i32::from(p.hue % 360));
+        self.ui_quiet = true;
+        win.set_modes(ModelRc::new(VecModel::from({
+            let mut choices = vec![SharedString::from(i18n::t("Inherited", "Heredado"))];
+            choices.extend(view::mode_names());
+            choices
+        })));
+        win.set_mode_index(p.mode.map(|m| view::mode_index(m) + 1).unwrap_or(0));
+        self.ui_quiet = false;
+        win.set_on0(p.weekdays[0]);
+        win.set_on1(p.weekdays[1]);
+        win.set_on2(p.weekdays[2]);
+        win.set_on3(p.weekdays[3]);
+        win.set_on4(p.weekdays[4]);
+        win.set_on5(p.weekdays[5]);
+        win.set_on6(p.weekdays[6]);
+        win.set_every0(p.days[0].interval_min as i32);
+        win.set_every1(p.days[1].interval_min as i32);
+        win.set_every2(p.days[2].interval_min as i32);
+        win.set_every3(p.days[3].interval_min as i32);
+        win.set_every4(p.days[4].interval_min as i32);
+        win.set_every5(p.days[5].interval_min as i32);
+        win.set_every6(p.days[6].interval_min as i32);
+        if texts {
+            win.set_pname(p.name.as_str().into());
+            win.set_ends(p.ends.map(|t| grid_date(self.project.grid.timezone, t - TimeDelta::seconds(1)).format("%Y-%m-%d").to_string()).unwrap_or_default().into());
+            win.set_welcome(still_label(p.welcome.as_ref()).into());
+            win.set_bye(still_label(p.bye.as_ref()).into());
+            win.set_start0(p.days[0].start.as_str().into());
+            win.set_start1(p.days[1].start.as_str().into());
+            win.set_start2(p.days[2].start.as_str().into());
+            win.set_start3(p.days[3].start.as_str().into());
+            win.set_start4(p.days[4].start.as_str().into());
+            win.set_start5(p.days[5].start.as_str().into());
+            win.set_start6(p.days[6].start.as_str().into());
+            win.set_end0(p.days[0].end.as_str().into());
+            win.set_end1(p.days[1].end.as_str().into());
+            win.set_end2(p.days[2].end.as_str().into());
+            win.set_end3(p.days[3].end.as_str().into());
+            win.set_end4(p.days[4].end.as_str().into());
+            win.set_end5(p.days[5].end.as_str().into());
+            win.set_end6(p.days[6].end.as_str().into());
+        }
+        self.programs = Some(win);
     }
 }
 
@@ -1777,6 +2496,166 @@ fn still_label(still: Option<&Still>) -> String {
     match still {
         Some(s) => format!("{} · {}", view::file_name(&s.path), s.mode.map(|m| m.spec().short).unwrap_or("·")),
         None => "—".into(),
+    }
+}
+
+fn level_index(level: LineLevel) -> i32 {
+    match level {
+        LineLevel::Off => 0,
+        LineLevel::Positive => 1,
+        LineLevel::Negative => 2,
+    }
+}
+
+fn level_at(index: i32) -> LineLevel {
+    match index {
+        1 => LineLevel::Positive,
+        2 => LineLevel::Negative,
+        _ => LineLevel::Off,
+    }
+}
+
+fn log_result(result: &str) -> String {
+    match result {
+        "Cut" | "Cortada" => i18n::t("Cut", "Cortada"),
+        other => other.to_string(),
+    }
+}
+
+fn time_ticks(start_hm: &str, end_hm: &str, interval_min: u32) -> Vec<TickItem> {
+    let Some(start) = parse_hhmm(start_hm) else { return Vec::new() };
+    let Some(end_raw) = parse_hhmm(end_hm) else { return Vec::new() };
+    let end = if end_raw <= start { end_raw + 24 * 60 } else { end_raw };
+    let span = (end - start).max(1) as f32;
+    let mut out = vec![
+        TickItem { x: 0.0, label: start_hm.into() },
+        TickItem { x: 1.0, label: end_hm.into() },
+    ];
+    if interval_min == 0 {
+        return out;
+    }
+    let mut step = interval_min.max(1);
+    let count = (end - start) / step;
+    if count > 8 {
+        step = step.saturating_mul((count / 6).max(1));
+    }
+    let mut at = start + step;
+    while at < end && out.len() < 14 {
+        out.push(TickItem { x: (at - start) as f32 / span, label: format_hhmm(at).into() });
+        at += step;
+    }
+    out
+}
+
+fn gfx_stamp(g: &estivi_core::graphics::Graphics) -> u64 {
+    let mut h = 0xcbf29ce484222325u64;
+    for b in format!("{g:?}").bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+fn piece_name(kind: PieceKind) -> String {
+    match kind {
+        PieceKind::Vox => i18n::t("VOX", "VOX"),
+        PieceKind::Cw => i18n::t("CW", "CW"),
+        PieceKind::Ax25 | PieceKind::Dtmf => "AX.25".into(),
+        PieceKind::Ax25Mode => i18n::t("AX.25 mode", "AX.25 modo"),
+        PieceKind::Vis => "VIS".into(),
+        PieceKind::Welcome => i18n::t("Welcome", "Bienvenida"),
+        PieceKind::Bumper => i18n::t("Bumper", "Cortina"),
+        PieceKind::Image => i18n::t("Image", "Imagen"),
+        PieceKind::Bye => i18n::t("Bye", "Despedida"),
+    }
+}
+
+fn silence_row(ms: f64) -> PicItem {
+    PicItem { id: -1, label: i18n::t("Silence", "Silencio").into(), detail: view::duration(ms).into(), on: true, role: 3, ghost: true, group: -1, selected: false }
+}
+
+fn action_labels() -> Vec<SharedString> {
+    [
+        i18n::t("CW", "CW"),
+        "DTMF".into(),
+        i18n::t("Picture", "Imagen"),
+        i18n::t("Pause", "Pausa"),
+        i18n::t("Resume", "Reanudar"),
+        "AX.25".into(),
+        i18n::t("Command", "Comando"),
+        "API".into(),
+        i18n::t("Random picture", "Imagen al azar"),
+    ]
+    .into_iter()
+    .map(SharedString::from)
+    .collect()
+}
+
+fn action_item(action: &Action) -> ActionItem {
+    let mut item = ActionItem { wpm: 20, tone: 700, ..Default::default() };
+    match action {
+        Action::Cw { text, wpm, tone_hz } => {
+            item.kind = 0;
+            item.text = text.as_str().into();
+            item.wpm = *wpm as i32;
+            item.tone = *tone_hz as i32;
+        }
+        Action::Dtmf { sequence } => {
+            item.kind = 1;
+            item.text = sequence.as_str().into();
+        }
+        Action::Image { path, mode } => {
+            item.kind = 2;
+            item.path = path.as_str().into();
+            item.mode = mode.map(view::mode_index).unwrap_or(0);
+        }
+        Action::Pause => item.kind = 3,
+        Action::Resume => item.kind = 4,
+        Action::Ax25 { comment, .. } => {
+            item.kind = 5;
+            item.text = comment.as_str().into();
+        }
+        Action::Command { command, via } => {
+            item.kind = 6;
+            item.text = command.as_str().into();
+            item.via = via_index(*via);
+        }
+        Action::Api { url, json_path, via } => {
+            item.kind = 7;
+            item.url = url.as_str().into();
+            item.json = json_path.as_str().into();
+            item.via = via_index(*via);
+        }
+        Action::Random { paths, mode } => {
+            item.kind = 8;
+            item.path = paths.first().map(|s| s.as_str()).unwrap_or("").into();
+            item.paths = paths.join(" | ").into();
+            item.mode = mode.map(view::mode_index).unwrap_or(0);
+        }
+    }
+    item
+}
+
+fn via_index(via: Carrier) -> i32 {
+    match via {
+        Carrier::Dtmf => 1,
+        Carrier::Ax25 => 2,
+        Carrier::Cw => 0,
+    }
+}
+
+fn carrier_at(index: i32) -> Carrier {
+    match index {
+        1 => Carrier::Dtmf,
+        2 => Carrier::Ax25,
+        _ => Carrier::Cw,
+    }
+}
+
+fn family_name(family: estivi_core::modes::Family) -> String {
+    match family {
+        estivi_core::modes::Family::RobotBw => i18n::t("B/W", "B/N"),
+        _ => i18n::t("Color", "Color"),
     }
 }
 
@@ -1878,17 +2757,19 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
     let app: Shared = Rc::new_cyclic(|me| {
         let _ = me;
         RefCell::new(App {
-            project: Project::default(),
-            path: None,
-            dirty: false,
-            config,
-            config_path,
-            engine,
-            composer: Composer::new(api),
-            status: Status::default(),
-            editor: None,
+        project: Project::default(),
+        baseline: Project::default(),
+        path: None,
+        dirty: false,
+        config,
+        config_path,
+        engine,
+        composer: Composer::new(api),
+        status: Status::default(),
+        editor: None,
             main: ui.as_weak(),
             modes: None,
+            programs: None,
             cards: Vec::new(),
             focus: Focus::None,
             pic: None,
@@ -1897,10 +2778,18 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
             pending: Pending::None,
             after: After::Nothing,
             act_at: 0,
-            prog_at: 0,
+            prog_id: None,
             instant: InstantHold { welcome: None, bye: None },
             seen_air: 0,
-            seen_log: 0,
+        seen_log: 0,
+            live_full: None,
+            next_key: String::new(),
+            thumbs: HashMap::new(),
+            block_span: None,
+            mode_sort: (0, false),
+            gfx_target: GfxTarget::Channel,
+            act_pick: None,
+            ui_quiet: false,
         })
     });
     if !last.is_empty() {
@@ -1916,7 +2805,7 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
     }
     wire(&app, &ui);
     app.borrow_mut().loaded();
-    apply_theme_to(&ui.global::<Theme>(), app.borrow().config.ui.light);
+    apply_theme_to(&ui.global::<Theme>(), &app.borrow().config.ui.theme, app.borrow().config.ui.light);
     ui.invoke_sync_palette();
     let timer = slint::Timer::default();
     {
@@ -1952,18 +2841,75 @@ fn wire(app: &Shared, ui: &MainWindow) {
         let w = w.clone();
         move || with_app(&w, |a| { a.path = None; a.after = After::Nothing; a.save(false); })
     });
-    ui.on_open_editor({ let w = w.clone(); move || { if let Some(app) = w.upgrade() { editor::open(&app); } } });
-    ui.on_open_modes({ let w = w.clone(); move || with_app(&w, App::open_modes) });
+    ui.on_open_editor({
+        let w = w.clone();
+        move || {
+            with_app(&w, |a| a.gfx_target = GfxTarget::Channel);
+            if let Some(app) = w.upgrade() {
+                editor::open(&app);
+            }
+        }
+    });
+    ui.on_open_block_graphics({
+        let w = w.clone();
+        move || {
+            let mut ready = false;
+            with_app(&w, |a| ready = a.prepare_block_graphics());
+            if ready {
+                if let Some(app) = w.upgrade() {
+                    editor::open(&app);
+                }
+            }
+        }
+    });
+    ui.on_undo({ let w = w.clone(); move || with_app(&w, App::undo) });
+    ui.on_set_theme({
+        let w = w.clone();
+        move |index| with_app(&w, |a| a.choose_theme(index))
+    });
+    ui.on_clear_selection({ let w = w.clone(); move || with_app(&w, App::clear_selection) });
+    ui.on_pick_clip({
+        let w = w.clone();
+        move |id| with_app(&w, |a| {
+            if id < 0 {
+                a.pic = None;
+            } else {
+                a.pic = Some(id as u64);
+            }
+            a.push_block(false);
+        })
+    });
+    ui.on_act_select({ let w = w.clone(); move |i| with_app(&w, |a| a.select_activation(i)) });
+    ui.on_act_add({ let w = w.clone(); move |k| with_app(&w, |a| a.add_action(k)) });
+    ui.on_act_drop({ let w = w.clone(); move |i| with_app(&w, |a| a.drop_action(i)) });
+    ui.on_act_edit({
+        let w = w.clone();
+        let uiw = ui.as_weak();
+        move |index, key, value| {
+            if key.as_str() == "pick" {
+                with_app(&w, |a| a.act_pick = Some(index.max(0) as usize));
+                let uiw = uiw.clone();
+                pick_native(NativePick::Images { many: false }, move |paths| {
+                    let Some(ui) = uiw.upgrade() else { return };
+                    ui.invoke_files_ready(SharedString::from("act-image"), paths_model(&paths));
+                });
+                return;
+            }
+            with_app(&w, |a| a.edit_activation(index, key.as_str(), value.as_str()));
+        }
+    });
+    ui.on_act_num({ let w = w.clone(); move |index, key, value| with_app(&w, |a| a.edit_activation_num(index, key.as_str(), value)) });
+    ui.on_open_modes({ let w = w.clone(); move || { let app = w.clone(); with_app(&w, |a| a.open_modes(app)); } });
+    ui.on_open_programs({
+        let w = w.clone();
+        move |from_card| {
+            let app = w.clone();
+            with_app(&w, |a| a.open_programs(from_card, app));
+        }
+    });
     ui.on_set_light({
         let w = w.clone();
-        move |light| with_app(&w, |a| {
-            a.config.ui.light = light;
-            apply_theme_to(&a.ui().global::<Theme>(), light);
-            if let Some(ed) = &a.editor {
-                ed.apply_theme(light);
-            }
-            a.save_config();
-        })
+        move |light| with_app(&w, |a| a.choose_theme(if light { 1 } else { 0 }))
     });
     ui.on_set_agenda({ let w = w.clone(); move |on| with_app(&w, |a| a.engine.send(Command::SetAgenda(on))) });
     ui.on_stop({ let w = w.clone(); move || with_app(&w, |a| a.engine.send(Command::Stop)) });
@@ -1986,8 +2932,8 @@ fn wire(app: &Shared, ui: &MainWindow) {
             a.refresh_cards();
         })
     });
-    ui.on_select_card({ let w = w.clone(); move |i| with_app(&w, |a| { a.focus = Focus::Card(i.max(0) as usize); a.pic = None; a.push_block(true); }) });
-    ui.on_open_card({ let w = w.clone(); move |i| with_app(&w, |a| { a.focus = Focus::Card(i.max(0) as usize); a.ui().set_side(0); a.push_block(true); }) });
+    ui.on_select_card({ let w = w.clone(); move |i| with_app(&w, |a| { a.focus = Focus::Card(i.max(0) as usize); a.pic = None; a.refresh_cards(); a.push_block(true); }) });
+    ui.on_open_card({ let w = w.clone(); move |i| with_app(&w, |a| { a.focus = Focus::Card(i.max(0) as usize); a.ui().set_side(0); a.refresh_cards(); a.push_block(true); }) });
     ui.on_edge({ let w = w.clone(); move |i, end, minute| with_app(&w, |a| a.set_edge(i, end, minute)) });
     ui.on_create_at({ let w = w.clone(); move |cell, minute| with_app(&w, |a| a.open_create(cell, minute)) });
     ui.on_set_field({ let w = w.clone(); move |k, v| with_app(&w, |a| a.on_field(k.as_str(), v.as_str())) });
@@ -2030,6 +2976,15 @@ fn wire(app: &Shared, ui: &MainWindow) {
                         a.import_folder(p);
                     }
                 }
+                "prog-welcome" => a.set_still(true, paths.into_iter().next()),
+                "prog-bye" => a.set_still(false, paths.into_iter().next()),
+                "prog-folder" => {
+                    if let Some(id) = a.prog_id {
+                        if let Some(p) = paths.into_iter().next() {
+                            a.import_into(id, p);
+                        }
+                    }
+                }
                 "instant" => {
                     if let Some(p) = paths.into_iter().next() {
                         a.instant = InstantHold { welcome: None, bye: None };
@@ -2051,6 +3006,21 @@ fn wire(app: &Shared, ui: &MainWindow) {
                 }
                 "welcome" => a.set_still(true, paths.into_iter().next()),
                 "bye" => a.set_still(false, paths.into_iter().next()),
+                "act-image" => {
+                    if let (Some(i), Some(p)) = (a.act_pick.take(), paths.into_iter().next()) {
+                        let stored = a.relativize(&p);
+                        if let Some(action) = a.project.activations.get_mut(a.act_at).and_then(|act| act.actions.get_mut(i)) {
+                            match action {
+                                Action::Image { path, .. } => *path = stored,
+                                Action::Random { paths, .. } => {
+                                    if paths.is_empty() { paths.push(stored); } else { paths[0] = stored; }
+                                }
+                                _ => {}
+                            }
+                            a.changed();
+                        }
+                    }
+                }
                 _ => {}
             });
         }
@@ -2087,6 +3057,126 @@ fn wire(app: &Shared, ui: &MainWindow) {
                 a.ask(5, &i18n::t("Audio quality", "Calidad de audio"), &body, &i18n::t("Continue", "Continuar"), &i18n::t("Cancel", "Cancelar"), "", Pending::Quality { req, dir: PathBuf::from(dir.as_str()) });
             }
         })
+    });
+}
+
+fn wire_programs(app: &Weak<RefCell<App>>, main: &slint::Weak<MainWindow>, win: &ProgramsWindow) {
+    let w = app.clone();
+    win.on_select({
+        let w = w.clone();
+        move |i| with_app(&w, |a| {
+            if let Some(p) = a.project.programs.get(i.max(0) as usize) {
+                a.prog_id = Some(p.id);
+            }
+            a.push_programs(true);
+        })
+    });
+    win.on_create({
+        let w = w.clone();
+        move || with_app(&w, App::create_program)
+    });
+    win.on_remove({
+        let w = w.clone();
+        move || with_app(&w, App::open_delete_program)
+    });
+    win.on_set_name({
+        let w = w.clone();
+        move |v| with_app(&w, |a| a.set_program_name(v.to_string()))
+    });
+    win.on_set_enabled({
+        let w = w.clone();
+        move |on| with_app(&w, |a| a.set_program_enabled(on))
+    });
+    win.on_set_hue({
+        let w = w.clone();
+        move |v| with_app(&w, |a| a.set_program_hue(v))
+    });
+    win.on_set_mode({
+        let w = w.clone();
+        move |v| with_app(&w, |a| a.set_program_mode(v))
+    });
+    win.on_set_ends({
+        let w = w.clone();
+        move |v| with_app(&w, |a| a.set_ends(&v))
+    });
+    win.on_toggle_day({
+        let w = w.clone();
+        move |day, on| with_app(&w, |a| {
+            let Some(id) = a.prog_id else { return };
+            if (0..7).contains(&day) {
+                a.weekday(id, day as usize, on);
+            }
+        })
+    });
+    win.on_set_start({
+        let w = w.clone();
+        move |day, v| with_app(&w, |a| {
+            if (0..7).contains(&day) {
+                a.set_program_hours(day as usize, false, v.to_string());
+            }
+        })
+    });
+    win.on_set_end({
+        let w = w.clone();
+        move |day, v| with_app(&w, |a| {
+            if (0..7).contains(&day) {
+                a.set_program_hours(day as usize, true, v.to_string());
+            }
+        })
+    });
+    win.on_set_every({
+        let w = w.clone();
+        move |day, v| with_app(&w, |a| {
+            if (0..7).contains(&day) {
+                a.set_program_interval(day as usize, v);
+            }
+        })
+    });
+    win.on_pick_still({
+        let main = main.clone();
+        move |welcome| {
+            let main = main.clone();
+            pick_native(NativePick::Images { many: false }, move |paths| {
+                let Some(ui) = main.upgrade() else { return };
+                let tag = if welcome { "prog-welcome" } else { "prog-bye" };
+                ui.invoke_files_ready(SharedString::from(tag), paths_model(&paths));
+            });
+        }
+    });
+    win.on_clear_still({
+        let w = w.clone();
+        move |welcome| with_app(&w, |a| a.set_still(welcome, None))
+    });
+    win.on_mode_still({
+        let w = w.clone();
+        move |welcome| with_app(&w, |a| a.cycle_still(welcome))
+    });
+    win.on_import_folder({
+        let main = main.clone();
+        move || {
+            let main = main.clone();
+            pick_native(NativePick::Directory, move |paths| {
+                let Some(ui) = main.upgrade() else { return };
+                ui.invoke_files_ready(SharedString::from("prog-folder"), paths_model(&paths));
+            });
+        }
+    });
+    win.on_edit_graphics({
+        let w = w.clone();
+        move || {
+            let mut ready = false;
+            with_app(&w, |a| {
+                if let Some(id) = a.prog_id {
+                    a.gfx_target = GfxTarget::Program(id);
+                    ready = true;
+                }
+            });
+            if ready {
+                if let Some(app) = w.upgrade() {
+                    editor::open(&app);
+                }
+            }
+        }
     });
 }
 

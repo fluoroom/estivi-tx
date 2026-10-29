@@ -78,6 +78,18 @@ pub struct Turn {
     pub cw_tone: f32,
 }
 
+/// Where the picture scan sits inside the turn's audio, in milliseconds.
+pub fn image_window(pieces: &[Piece]) -> (f64, f64) {
+    let mut cursor = 0.0;
+    for piece in pieces {
+        if piece.kind == PieceKind::Image {
+            return (cursor, piece.ms);
+        }
+        cursor += piece.ms;
+    }
+    (0.0, 0.0)
+}
+
 impl Turn {
     pub fn audio_ms(&self) -> f64 {
         self.pieces.iter().map(|p| p.ms).sum()
@@ -124,7 +136,7 @@ pub fn due(now: DateTime<Utc>, turn: &Turn, pause_until: Option<DateTime<Utc>>, 
 }
 
 pub fn plan_occurrence(project: &Project, occ: &Occurrence, today: NaiveDate, lead_ms: u32, tail_ms: u32, serial: u64, now: DateTime<Utc>) -> Vec<Turn> {
-    let slots = occ.turns(project.interval_min, project.grid.offset_s);
+    let slots = occ.turns(project.grid.offset_s);
     let normals: Vec<&BlockImage> = occ.images.iter().filter(|i| matches!(i.role, ImageRole::Normal) && i.enabled && !i.path.trim().is_empty()).collect();
     let n = normals.len().min(slots.len());
     let program = occ.program_id.and_then(|id| project.program(id));
@@ -208,7 +220,7 @@ fn bumpers(images: &[BlockImage], of: u64, pre: bool) -> Vec<&BlockImage> {
 }
 
 fn build(project: &Project, b: Build) -> Turn {
-    let mode = project.mode_or(b.image.mode);
+    let mode = project.picture_mode(b.image.mode, b.block_id, b.program_id);
     let (days, daysleft) = program_days(project, b.program_id, b.today);
     let occ = dummy_occ(&b);
     let next = announcements(project, &occ, b.today);
@@ -241,18 +253,18 @@ fn build(project: &Project, b: Build) -> Turn {
         pieces.push(ax25_piece(&info, &project.station.call));
     }
     if let Some(still) = b.welcome.filter(|s| !s.path.trim().is_empty()) {
-        push_sstv(&mut pieces, PieceKind::Welcome, &still.path, project.mode_or(still.mode), -1, i64::try_from(b.image.id).unwrap_or(-1), project.ax25.mode, Some("WELCOME"), &project.station.call);
+        push_sstv(&mut pieces, PieceKind::Welcome, &still.path, project.still_mode(still.mode, b.program_id), -1, i64::try_from(b.image.id).unwrap_or(-1), project.ax25.mode, Some("WELCOME"), &project.station.call);
     }
     let chain = i64::try_from(b.image.id).unwrap_or(-1);
     for pre in &b.pres {
-        push_sstv(&mut pieces, PieceKind::Bumper, &pre.path, project.mode_or(pre.mode), i64::try_from(pre.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER PRE"), &project.station.call);
+        push_sstv(&mut pieces, PieceKind::Bumper, &pre.path, project.picture_mode(pre.mode, b.block_id, b.program_id), i64::try_from(pre.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER PRE"), &project.station.call);
     }
     push_sstv(&mut pieces, PieceKind::Image, &b.image.path, mode, chain, chain, project.ax25.mode, None, &project.station.call);
     for post in &b.posts {
-        push_sstv(&mut pieces, PieceKind::Bumper, &post.path, project.mode_or(post.mode), i64::try_from(post.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER POST"), &project.station.call);
+        push_sstv(&mut pieces, PieceKind::Bumper, &post.path, project.picture_mode(post.mode, b.block_id, b.program_id), i64::try_from(post.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER POST"), &project.station.call);
     }
     if let Some(still) = b.bye.filter(|s| !s.path.trim().is_empty()) {
-        push_sstv(&mut pieces, PieceKind::Bye, &still.path, project.mode_or(still.mode), -1, chain, project.ax25.mode, Some("BYE"), &project.station.call);
+        push_sstv(&mut pieces, PieceKind::Bye, &still.path, project.still_mode(still.mode, b.program_id), -1, chain, project.ax25.mode, Some("BYE"), &project.station.call);
     }
     if !info.is_empty() {
         pieces.push(ax25_piece(&info, &project.station.call));
@@ -304,6 +316,7 @@ fn dummy_occ(b: &Build) -> Occurrence {
         program_enabled: true,
         empty: false,
         images: Vec::new(),
+        interval_min: 6,
     }
 }
 
@@ -511,23 +524,22 @@ mod tests {
 
     fn channel(end: &str, images: Vec<BlockImage>) -> (Project, Occurrence) {
         let mut p = Project::default();
-        p.interval_min = 6;
         p.tx.min_pause_s = 60;
         p.tx.cw_id = false;
         p.tx.mode = Mode::Robot12;
         p.station.call = "LU1ABC".into();
         let mut days = [false; 7];
         days[0] = true;
-        p.programs.push(Program {
+        let mut news = Program {
             id: 1,
             name: "Noticias".into(),
             weekdays: days,
-            start: "14:00".into(),
-            end: end.into(),
             welcome: Some(Still { path: "hola.png".into(), mode: Some(Mode::Robot12) }),
             bye: Some(Still { path: "chau.png".into(), mode: Some(Mode::Robot12) }),
             ..Program::default()
-        });
+        };
+        news.every_day("14:00", end, 6);
+        p.programs.push(news);
         p.blocks.push(Block {
             id: 7,
             program: Some(1),

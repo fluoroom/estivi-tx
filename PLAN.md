@@ -52,7 +52,7 @@ La frase “base de datos” de acá en adelante significa el archivo `.estivi`.
 - **Bloque común.** No tiene programa. No se repite. Tiene fecha, rango horario, nombre propio, imágenes y activado. Si está vacío y no lo borraron, sigue guardado y se dibuja transparente.
 - **Imagen normal.** Una transmisión dentro del bloque.
 - **Bumper / cortina.** Imagen pegada a una imagen normal, antes (prebumper, preámbulo de esa imagen) o después (postbumper, postámbulo de esa imagen). No ocupa un turno propio del intervalo.
-- **Intervalo.** Cada cuánto arranca una transmisión. Es del proyecto, igual que el offset. Los bloques no tienen intervalo ni offset propio.
+- **Intervalo.** Cada cuánto arranca una imagen, en minutos enteros. En un programa es de cada día de la semana, junto con el rango horario. En un bloque común es de esa fecha. `0` = un solo arranque. El offset sigue siendo del proyecto.
 - **TX.** Una salida completa al aire, en el orden de la sección [Secuencia de una transmisión](#secuencia-de-una-transmisión).
 - **Activación.** Disparador de CW o DTMF con una lista ordenada de acciones. No es un objeto de la grilla y no vive dentro de un programa.
 
@@ -86,7 +86,7 @@ Las fases 9 y 7 pueden escribirse en paralelo con sus vecinas cuando se ejecute,
 Estas lecturas están tomadas del pedido. Están escritas acá, aparte, para poder tachar una línea sin releer todo.
 
 1. **Un canal, una frecuencia.** `freq_hz` pasa al proyecto. Se borra del bloque. El CAT, si está activado, pone esa frecuencia antes de cada salida de la grilla.
-2. **Intervalo y offset son del proyecto.** El offset en segundos sigue como está. El intervalo pasa a ser un solo valor, en minutos enteros, para todo el canal. Es la cadencia con la que se comparten turnos (el ejemplo de tres estaciones a 3 min + 3 min + 3 min es un caso de uso, no una constante del programa).
+2. **El offset es del proyecto. El intervalo y el rango horario son de cada día del programa, y de cada bloque común.** El offset en segundos sigue como está y no mueve el fin escrito. El intervalo es minutos enteros, default 6, y `0` deja un solo arranque. Un programa guarda siete ventanas (lunes primero): hora de inicio, hora de fin e intervalo. Cambiar el lunes no cambia el sábado. Al encender un día que no tiene horario, copia el de un día que ya lo tenga. Un bloque común guarda los suyos. Al convertir un bloque de programa en común, se copian el horario y el intervalo de ese día. Un archivo con un solo `start`/`end`/`interval_min` en el programa los reparte a los siete días al abrirlo. Un `interval_min` en la raíz del canal se reparte igual, a los programas y bloques comunes que no tengan el suyo. Al guardar, ni la raíz ni el programa llevan un intervalo único.
 3. **Un bloque común es una sola fecha.** No tiene días de semana y no se repite al semana siguiente. Un programa sí se repite, por máscara de días, hasta su fecha de término o para siempre.
 4. **Las imágenes son de esa ocurrencia.** Cargar fotos el martes 26 no llena los martes siguientes. Cada fecha con imágenes es su propia entrada.
 5. **Vacío de programa no se guarda.** Vacío común sí, hasta que el usuario borra la tarjeta. La frase del pedido “no vamos a guardar un bloque si tiene imágenes” se lee al revés de lo literal, porque la oración siguiente es la regla: se crea la entrada al asignar imágenes y se borra la entrada de un bloque de programa cuando se queda sin imágenes. El texto original queda copiado al final.
@@ -141,19 +141,18 @@ El archivo nuevo lleva `format = 2` para poder rechazar un archivo de una versi�
 
 ### Proyecto
 
-Se mantienen estación (indicativo, operador, QTH, locator), gráficos del canal, zona horaria de la grilla (`utc` o `local`), offset en segundos, pausa mínima, color de SSTV (rango completo o estudio), CW de canal (preámbulo sí/no, postámbulo sí/no, texto, WPM, tono) y el log al lado del proyecto.
+Se mantienen estación (indicativo, operador, QTH, locator), gráficos, una sola zona horaria (`utc` o `local`) que mueve el reloj, la grilla, los finales y los nombres de exportación, offset en segundos, pausa mínima, color de SSTV (rango completo o estudio), CW de canal (preámbulo sí/no, postámbulo sí/no, texto, WPM, tono) y el log al lado del proyecto. El bloque y el programa tienen gráficos propios: se pintan en cadena, primero el bloque, después el programa y al final el canal, cada uno sobre el cuadro anterior.
 
 Entran:
 
 - `freq_hz` del canal. `0` = no tocar la radio.
-- `interval_min`. Minutos entre arranques. Default 6.
 - AX.25 general: activado sí/no.
 - AX.25 de modo (el preámbulo corto delante de cada pieza SSTV): activado sí/no. Es independiente del general, porque son las dos funciones distintas del pedido.
 - Cuántos bloques próximos entran en la info: por cantidad, o por horizonte de horas. Default: 8 bloques, sin deduplicar.
 - Deduplicar próximos: si está activo, entra solo el próximo bloque de cada programa distinto, y no entra ningún bloque del programa que se está transmitiendo ahora.
 - Programas, bloques comunes, bloques de programa que tengan imágenes, activaciones.
 
-Dejan de existir, sin ruta de lectura de los archivos actuales: la lista de imágenes colgada del programa, los slots semanales, la rotación, el CW propio del programa, la frecuencia y el intervalo por bloque, los triggers viejos como única forma de activar, y `tx.fsk_id`. `tx.vox_preamble` se queda.
+Dejan de existir, sin ruta de lectura de los archivos actuales: la lista de imágenes colgada del programa, los slots semanales, la rotación, el CW propio del programa, la frecuencia por bloque y el intervalo viejo (`every_min`), los triggers viejos como única forma de activar, y `tx.fsk_id`. `tx.vox_preamble` se queda. El intervalo nuevo es `interval_min` del programa o del bloque común, no el campo viejo del bloque.
 
 `listen` se queda con los interruptores de decodificar CW y DTMF, y con la velocidad y el tono de CW de recepción. Los disparadores viven en las activaciones.
 
@@ -165,13 +164,14 @@ Dejan de existir, sin ruta de lectura de los archivos actuales: la lista de imá
 | `name` | Lo heredan sus bloques y sale en el AX.25. |
 | `enabled` | Apaga la transmisión de todos sus bloques. No los borra. |
 | `weekdays` | Siete bool, lunes primero. Puede estar todo en falso: el programa existe y no ocupa la grilla. |
-| `start`, `end` | `HH:MM`. Vacío mientras el usuario no lo puso. `end` anterior a `start` cruza medianoche, como hoy. |
+| `days` | Siete ventanas, lunes primero. Cada una tiene `start`, `end` e `interval_min`. El día apagado conserva la ventana. `end` anterior a `start` cruza medianoche. |
 | `welcome` | Imagen opcional y su modo SSTV. |
 | `bye` | Imagen opcional y su modo SSTV. |
 | `ends` | Fecha y hora de término, opcional. Sin valor = infinito = `daysleft 0`. |
 | `hue` | 0–359. Solo para las tarjetas. |
+| `mode` | Modo SSTV opcional. Vacío = el del canal. |
 
-Crear un programa desde el menú: sin días y sin horas. No se inventa un horario. Crear desde un doble click en la grilla vacía: sí viene con ese día de la semana y con la hora del click; el fin propuesto es el inicio más el intervalo del proyecto. Si eso pisara algo, no se crea y se avisa qué tarjeta está en el camino.
+Un programa se crea en la ventana de programas, no desde una tarjeta y no desde un doble click. Nace sin días y sin horas. No se inventa un horario. En esa ventana se elige, para cada día, si está prendido y su comienzo, fin e intervalo. Eso genera las tarjetas. El día y las horas no son campos del bloque: se heredan. Un doble click en la grilla vacía crea solo un bloque común, en esa fecha, con la hora del click y el intervalo del diálogo (empieza en 6). El fin propuesto es el inicio más ese intervalo, y cambia si se cambia el intervalo antes de confirmar. Si eso pisara algo, no se crea y se avisa qué tarjeta está en el camino. Arrastrar el borde de un bloque común cambia el horario de ese bloque. Arrastrar el borde de una tarjeta de programa no cambia el horario: se edita en la ventana de programas.
 
 ### Bloque
 
@@ -181,12 +181,16 @@ Crear un programa desde el menú: sin días y sin horas. No se inventa un horari
 | `program` | el id del programa | vacío |
 | `date` | la fecha de esa ocurrencia | la única fecha |
 | `name` | no se guarda: es el del programa | propio |
-| `start`, `end` | no se guardan: son los del programa | propios, `HH:MM` |
+| `start`, `end` | no se guardan: son los del día de la semana de esa fecha | propios, `HH:MM` |
+| `interval_min` | no se usa: es el de ese día. Al guardar se reescribe con ese valor | propio. Default 6. `0` = un arranque |
 | `weekdays` | no se guardan nunca en el bloque | no tiene |
 | `enabled` | sí. Apaga solo esa ocurrencia | sí |
 | `images` | la lista de abajo | la misma lista |
+| `mode` | Modo SSTV opcional. Vacío = el del programa, o el del canal si no hay programa | el mismo |
 
-Un bloque de programa entra al archivo en el momento en que tiene al menos una imagen (normal o cortina). Cuando se queda sin imágenes, la entrada se borra y la tarjeta vuelve a ser el hueco calculado. El flag activado/desactivado de esa ocurrencia se pierde junto con las imágenes: sin imágenes no significa nada, que es la razón del pedido para no guardarlo.
+El modo de una imagen, si está puesto, gana. Si no, gana el del bloque. Si el bloque tampoco tiene, gana el del programa. Si nadie lo puso, queda el del canal. La bienvenida y la despedida usan el suyo, después el del programa y después el del canal.
+
+Un bloque de programa entra al archivo cuando tiene una imagen, gráficos propios o un modo SSTV propio. Cuando se queda sin las tres cosas, la entrada se borra y la tarjeta vuelve a ser el hueco calculado.
 
 Un bloque común vacío sí se guarda. Borrarlo es una acción distinta de quitarle las fotos.
 
@@ -236,7 +240,7 @@ No hay migración ni lector del formato viejo, ni un guardado que vuelva a escri
 
 ## Calendario
 
-Zona horaria: la de la grilla, UTC o local, como `GridTz` hoy. Los huecos de horario de verano se saltan; los solapes de hora usan el primer instante, como `to_utc` ahora.
+Zona horaria: una sola, UTC o local (`GridTz`). El reloj de la ventana y la grilla usan la misma. Los huecos de horario de verano se saltan; los solapes de hora usan el primer instante, como `to_utc` ahora.
 
 ### Turnos dentro de un bloque
 
@@ -285,7 +289,7 @@ Un programa vencido no se dibuja y no se anuncia.
 
 ### Arrastrar el borde
 
-- Borde de un bloque de programa: cambia `start` o `end` del programa. Se mueven todas sus tarjetas, llenas y vacías, en todas las semanas.
+- Borde de un bloque de programa: cambia `start` o `end` de ese día de la semana. Se mueven las tarjetas de ese día, llenas y vacías, en todas las semanas. Los otros días no se mueven.
 - Borde de un bloque común: cambia solo esa tarjeta.
 
 Si el borde nuevo pisa algo, el arrastre no se confirma.
@@ -559,7 +563,7 @@ La matriz la genera la crate `qrcode`, dentro del binario. El cuadro lo sigue ar
 
 Se rehace la ventana completa. No se parchea el tema claro sobre la distribución actual. Los dos temas tienen que leerse: texto oscuro sobre fondo claro, texto claro sobre fondo oscuro, incluidos los widgets estándar (`Palette.color-scheme` alineado con `Theme.light` en el `init` y en cada toggle; el bug del botón Light/Dark no se “arregla solo” en una fase anterior).
 
-Aspecto de estación, no de formulario genérico: la grilla es el centro, el aire y el que sigue son visibles sin cazarlos en otra pantalla, y los ajustes pesados viven en paneles y no en la tarjeta. Se mantienen inglés y español en todos los textos nuevos. El editor de gráficos del canal se queda (capas, campos `{call}`, `{utc}`, y el resto) y suma la capa QR de la sección [Capa QR](#capa-qr): origen texto, comando o API, y las variables nuevas de grilla también en las capas de texto. El modo de una imagen normal sigue cayendo en el modo del proyecto cuando la imagen no tiene uno propio. Las cortinas y la bienvenida/despedida tienen el suyo.
+Aspecto de estación, no de formulario genérico: la grilla es el centro, el aire y el que sigue son visibles sin cazarlos en otra pantalla, y los ajustes pesados viven en paneles y no en la tarjeta. Se mantienen inglés y español en todos los textos nuevos. El editor de gráficos del canal se queda (capas, campos `{call}`, `{utc}`, y el resto) y suma la capa QR de la sección [Capa QR](#capa-qr): origen texto, comando o API, y las variables nuevas de grilla también en las capas de texto. El modo de una imagen normal sigue la cascada imagen, bloque, programa, canal. Las cortinas usan la misma cascada. La bienvenida y la despedida usan la suya, el programa y el canal. El panel Next muestra la próxima transmisión que va a salir (la primera con hora futura), con los gráficos de ese bloque, de su programa y del canal. Se vuelve a dibujar cuando cambia esa transmisión o cualquiera de esos gráficos.
 
 La grilla:
 
@@ -568,8 +572,8 @@ La grilla:
 - Llena y activa: opaca.
 - Desactivada, por el bloque o por el programa: más transparente. Si la apagó el programa, además va en gris. Menos transparente que un vacío.
 - Vacía (hueco de programa, o común sin fotos): la más transparente. Sigue ocupando y sigue prohibiendo solapes.
-- Doble click en vacío: el diálogo de bloque común o programa, con el rechazo si algo futuro está en el camino.
-- Arrastrar el borde edita el rango, con la regla de herencia ya dicha.
+- Doble click en vacío: el diálogo de bloque común, con el rechazo si algo futuro está en el camino. Un programa se crea en su ventana.
+- Arrastrar el borde de un bloque común edita su rango. El borde de una tarjeta de programa no edita el horario: el día y las horas se heredan y se cambian en la ventana de programas.
 - Un bloque común se puede borrar. Un bloque de programa no se borra como tarjeta suelta: se vacía (y desaparece del archivo) o se desactiva.
 
 La lista del bloque muestra los grupos encadenados, los botones de linkear arriba, linkear abajo y desligar, las filas no editables de CW / AX.25 / bienvenida / despedida, el total de cada TX y el silencio entre turnos.
@@ -702,7 +706,7 @@ Al cerrar esta fase se actualiza el `README.md` para que describa canal, program
 - [ ] Frecuencia solo en el proyecto.
 - [ ] Textos en inglés y en español.
 - [ ] `README.md` reescrito a este modelo.
-- [ ] Recorrer en la ventana: crear programa desde click, rechazar un solape, marcar una cortina, ver el total de la TX, desactivar un programa y ver las tarjetas, exportar un rango corto a FLAC, abrir el tab instantáneo con la grilla armada y comprobar que se niega mientras hay una TX.
+- [ ] Recorrer en la ventana: crear un programa en su ventana y ver las tarjetas, rechazar un solape, marcar una cortina, ver el total de la TX, desactivar un programa y ver las tarjetas, exportar un rango corto a FLAC, abrir el tab instantáneo con la grilla armada y comprobar que se niega mientras hay una TX.
 
 ## Pedido original
 

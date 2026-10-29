@@ -14,7 +14,7 @@ use estivi_core::compose::{LiveText, data_ctx};
 use estivi_core::dynamic::PLACEHOLDERS;
 use estivi_core::graphics::{Align, ApiSource, Fit, ImageLayer, Layer, LayerKind, QrLayer, Rgba, TextLayer};
 
-use crate::app::{App, Shared, apply_theme_to, bind_files, hook_os_drops, is_image, paths_model, pick_native, with_app, NativePick};
+use crate::app::{App, GfxTarget, Shared, apply_theme_to, bind_files, hook_os_drops, is_image, paths_model, pick_native, with_app, NativePick};
 use crate::i18n;
 use crate::view;
 use crate::{EditorWindow, LayerItem};
@@ -23,6 +23,8 @@ fn placeholder_desc(en: &str) -> String {
     match en {
         "Callsign" => i18n::t("Callsign", "Indicativo"),
         "Operator" => i18n::t("Operator", "Operador"),
+        "QTH" => i18n::t("QTH", "QTH"),
+        "Locator" => i18n::t("Locator", "Localizador"),
         "UTC time (HH:MM)" => i18n::t("UTC time (HH:MM)", "Hora UTC (HH:MM)"),
         "UTC date (YYYY-MM-DD)" => i18n::t("UTC date (YYYY-MM-DD)", "Fecha UTC (AAAA-MM-DD)"),
         "Local time (HH:MM)" => i18n::t("Local time (HH:MM)", "Hora local (HH:MM)"),
@@ -66,6 +68,7 @@ pub struct Editor {
     /// Layer the inspector was built for.
     inspector_for: Option<Option<u64>>,
     preview: Option<u64>,
+    base: i32,
     drag: Option<Drag>,
     fonts: Vec<String>,
     layers: Rc<VecModel<LayerItem>>,
@@ -83,12 +86,45 @@ fn edit(w: &Weak<RefCell<App>>, f: impl FnOnce(&mut Editor, &mut App)) {
     });
 }
 
+fn gfx(a: &mut App) -> &mut estivi_core::graphics::Graphics {
+    match a.gfx_target {
+        GfxTarget::Channel => &mut a.project.graphics,
+        GfxTarget::Program(id) => {
+            let found = a.project.programs.iter().position(|p| p.id == id);
+            if let Some(i) = found { &mut a.project.programs[i].graphics } else { &mut a.project.graphics }
+        }
+        GfxTarget::Block(id) => {
+            let found = a.project.blocks.iter().position(|b| b.id == id);
+            if let Some(i) = found { &mut a.project.blocks[i].graphics } else { &mut a.project.graphics }
+        }
+    }
+}
+
+fn gfx_ref(a: &App) -> &estivi_core::graphics::Graphics {
+    match a.gfx_target {
+        GfxTarget::Channel => &a.project.graphics,
+        GfxTarget::Program(id) => a.project.programs.iter().find(|p| p.id == id).map(|p| &p.graphics).unwrap_or(&a.project.graphics),
+        GfxTarget::Block(id) => a.project.blocks.iter().find(|b| b.id == id).map(|b| &b.graphics).unwrap_or(&a.project.graphics),
+    }
+}
+
 fn layer_mut(a: &mut App, id: u64) -> Option<&mut Layer> {
-    a.project.graphics.layers.iter_mut().find(|l| l.id == id)
+    gfx(a).layers.iter_mut().find(|l| l.id == id)
+}
+
+fn preview_mode(a: &App) -> estivi_core::modes::Mode {
+    match a.gfx_target {
+        GfxTarget::Channel => a.project.tx.mode,
+        GfxTarget::Program(id) => a.project.still_mode(None, Some(id)),
+        GfxTarget::Block(id) => {
+            let program = a.project.block(id).and_then(|b| b.program);
+            a.project.picture_mode(None, Some(id), program)
+        }
+    }
 }
 
 fn canvas_of(a: &App) -> (u32, u32) {
-    let spec = a.project.tx.mode.spec();
+    let spec = preview_mode(a).spec();
     (spec.width, spec.height)
 }
 
@@ -113,7 +149,7 @@ pub fn open(app: &Shared) {
         }
     }
     let mut ed = a.editor.take().expect("just created");
-    apply_theme_to(&ed.win.global::<crate::Theme>(), a.config.ui.light);
+    apply_theme_to(&ed.win.global::<crate::Theme>(), &a.config.ui.theme, a.config.ui.light);
     ed.visible = true;
     if ed.preview.is_none() {
         ed.preview = a.project.programs.iter().find(|p| p.enabled).map(|p| p.id);
@@ -124,8 +160,8 @@ pub fn open(app: &Shared) {
 }
 
 impl Editor {
-    pub fn apply_theme(&self, light: bool) {
-        apply_theme_to(&self.win.global::<crate::Theme>(), light);
+    pub fn apply_theme(&self, id: &str, light: bool) {
+        apply_theme_to(&self.win.global::<crate::Theme>(), id, light);
     }
 
     fn new(w: Weak<RefCell<App>>) -> Result<Editor, slint::PlatformError> {
@@ -162,7 +198,12 @@ impl Editor {
         win.window().on_close_requested({
             let w = w.clone();
             move || {
-                edit(&w, |ed, _| ed.visible = false);
+                edit(&w, |ed, a| {
+                    ed.visible = false;
+                    if let GfxTarget::Block(id) = a.gfx_target {
+                        a.forget_empty_block(id);
+                    }
+                });
                 slint::CloseRequestResponse::HideWindow
             }
         });
@@ -194,7 +235,7 @@ impl Editor {
             move |paths| {
                 let Some(p) = paths.iter().map(|s| std::path::PathBuf::from(s.as_str())).find(|p| is_image(p)) else { return };
                 edit(&w, |ed, a| {
-                    if ed.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).is_some_and(|l| matches!(l.kind, LayerKind::Image(_))) {
+                    if ed.selected.and_then(|id| gfx(a).layers.iter().find(|l| l.id == id)).is_some_and(|l| matches!(l.kind, LayerKind::Image(_))) {
                         let stored = a.relativize(&p);
                         if let Some(l) = ed.selected.and_then(|id| layer_mut(a, id)) {
                             if let LayerKind::Image(i) = &mut l.kind {
@@ -216,7 +257,7 @@ impl Editor {
             let w = w.clone();
             move |idx| {
                 edit(&w, |ed, a| {
-                    if let Some(l) = a.project.graphics.layers.get_mut(idx as usize) {
+                    if let Some(l) = gfx(a).layers.get_mut(idx as usize) {
                         l.visible = !l.visible;
                         ed.structural(a);
                     }
@@ -236,7 +277,7 @@ impl Editor {
             move || {
                 edit(&w, |ed, a| {
                     if let Some(id) = ed.selected {
-                        a.project.graphics.layers.retain(|l| l.id != id);
+                        gfx(a).layers.retain(|l| l.id != id);
                         ed.selected = None;
                         ed.structural(a);
                     }
@@ -256,7 +297,7 @@ impl Editor {
             let w = w.clone();
             move |i| {
                 edit(&w, |ed, a| {
-                    a.project.graphics.fit = match i {
+                    gfx(a).fit = match i {
                         1 => Fit::Contain,
                         2 => Fit::Stretch,
                         _ => Fit::Cover,
@@ -270,7 +311,7 @@ impl Editor {
             move |hex| {
                 edit(&w, |ed, a| {
                     if let Some(c) = Rgba::from_hex(&hex) {
-                        a.project.graphics.background = c;
+                        gfx(a).background = c;
                         ed.structural(a);
                     }
                 })
@@ -292,7 +333,7 @@ impl Editor {
             let w = w.clone();
             move |dx, dy| {
                 edit(&w, |ed, a| {
-                    let spec = a.project.tx.mode.spec();
+                    let spec = preview_mode(a).spec();
                     if let Some(l) = ed.selected.and_then(|id| layer_mut(a, id)) {
                         l.x += dx as f32 / spec.width as f32;
                         l.y += dy as f32 / spec.height as f32;
@@ -318,6 +359,20 @@ impl Editor {
             let w = w.clone();
             move || edit(&w, |ed, a| ed.api_test(a))
         });
+        win.set_base_names(ModelRc::new(VecModel::from(vec![
+            SharedString::from(i18n::t("Automatic", "Automática")),
+            SharedString::from(i18n::t("Color bars", "Barras de color")),
+            SharedString::from(i18n::t("Grid", "Grilla")),
+            SharedString::from(i18n::t("Gray ramp", "Rampa de grises")),
+        ])));
+        win.on_base_selected({
+            let w = w.clone();
+            move |i| edit(&w, |ed, a| {
+                ed.base = i.max(0);
+                ed.win.set_base_index(ed.base);
+                ed.render(a);
+            })
+        });
 
         Ok(Editor {
             win,
@@ -325,6 +380,7 @@ impl Editor {
             selected: None,
             inspector_for: None,
             preview: None,
+            base: 0,
             drag: None,
             fonts: Vec::new(),
             layers,
@@ -337,10 +393,12 @@ impl Editor {
     /// Rebuilds everything from the project (`force_inspector` also rebuilds the
     /// property panel, discarding half-typed values).
     pub fn refresh(&mut self, a: &mut App, force_inspector: bool) {
-        let spec = a.project.tx.mode.spec();
+        let spec = preview_mode(a).spec();
         self.win.set_canvas_w(spec.width as i32);
         self.win.set_canvas_h(spec.height as i32);
         self.win.set_mode_name(spec.name.into());
+        self.win.set_level_name(level_name(a).into());
+        self.win.set_base_index(self.base);
         self.fonts = a.composer.fonts.families();
         self.win.set_fonts(ModelRc::new(VecModel::from(self.fonts.iter().map(|f| SharedString::from(f.as_str())).collect::<Vec<_>>())));
 
@@ -357,20 +415,23 @@ impl Editor {
         self.win.set_program_names(ModelRc::new(VecModel::from(names)));
         self.win.set_preview_index(self.preview.and_then(|id| programs.iter().position(|p| p.id == id)).unwrap_or(0) as i32);
 
-        let g = &a.project.graphics;
-        self.win.set_fit_index(match g.fit {
+        let (fit, background, layers) = {
+            let g = gfx(a);
+            (g.fit, g.background, g.layers.clone())
+        };
+        self.win.set_fit_index(match fit {
             Fit::Cover => 0,
             Fit::Contain => 1,
             Fit::Stretch => 2,
         });
-        self.win.set_background_color(view::color(g.background));
-        self.win.set_background_hex(g.background.to_hex().into());
+        self.win.set_background_color(view::color(background));
+        self.win.set_background_hex(background.to_hex().into());
 
-        if self.selected.is_some_and(|id| !g.layers.iter().any(|l| l.id == id)) {
+        if self.selected.is_some_and(|id| !layers.iter().any(|l| l.id == id)) {
             self.selected = None;
         }
-        let canvas = (spec.width, spec.height);
-        self.layers.set_vec(g.layers.iter().map(|l| view::layer_item(l, &self.fonts, canvas)).collect::<Vec<_>>());
+        let rows: Vec<_> = layers.iter().map(|l| self.layer_row(a, l)).collect();
+        self.layers.set_vec(rows);
         self.update_selection_index(a);
         if force_inspector {
             self.reset_inspector(a);
@@ -381,14 +442,13 @@ impl Editor {
     }
 
     fn update_selection_index(&self, a: &App) {
-        let idx = self.selected.and_then(|id| a.project.graphics.layers.iter().position(|l| l.id == id)).map_or(-1, |i| i as i32);
+        let idx = self.selected.and_then(|id| gfx_ref(a).layers.iter().position(|l| l.id == id)).map_or(-1, |i| i as i32);
         self.win.set_selected(idx);
     }
 
     /// Recreates the property panel for the selected layer.
     fn reset_inspector(&mut self, a: &App) {
-        let canvas = canvas_of(a);
-        let item = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).map(|l| view::layer_item(l, &self.fonts, canvas));
+        let item = self.selected.and_then(|id| gfx_ref(a).layers.iter().find(|l| l.id == id)).map(|l| self.layer_row(a, l));
         self.current.set_vec(item.into_iter().collect::<Vec<_>>());
         self.inspector_for = Some(self.selected);
         self.win.set_api_result("".into());
@@ -400,24 +460,40 @@ impl Editor {
             self.reset_inspector(a);
             return;
         }
-        if let Some(l) = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)) {
+        if let Some(l) = self.selected.and_then(|id| gfx_ref(a).layers.iter().find(|l| l.id == id).cloned()) {
             if self.current.row_count() == 1 {
-                self.current.set_row_data(0, view::layer_item(l, &self.fonts, canvas_of(a)));
+                self.current.set_row_data(0, self.layer_row(a, &l));
             }
         }
     }
 
+    fn layer_row(&self, a: &App, layer: &Layer) -> LayerItem {
+        let canvas = canvas_of(a);
+        let mut item = view::layer_item(layer, &self.fonts, canvas);
+        let px = image_px(a, layer);
+        let (sx, sy, sw, sh) = view::selector(layer, canvas, px);
+        item.sel_x = sx;
+        item.sel_y = sy;
+        item.sel_w = sw;
+        item.sel_h = sh;
+        item
+    }
+
     fn render(&mut self, a: &mut App) {
         let program = self.preview.and_then(|id| a.project.program(id)).cloned();
-        let mode = a.project.tx.mode;
+        let mode = preview_mode(a);
         let live = LiveText {
             program: program.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
             block: program.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
             ..LiveText::default()
         };
         let ctx = data_ctx(&a.project, Utc::now(), a.status.serial + 1, mode, &live, a.project.freq_hz, &a.status.last_cw, &a.status.last_dtmf);
+        let spec = mode.spec();
+        let baked = (self.base > 0).then(|| view::test_picture(self.base, spec.width, spec.height));
+        let path = if baked.is_some() { None } else { base_path(a) };
+        let (block, program) = chain_of(a);
         let dir = a.dir();
-        let frame = a.composer.frame_image(&a.project, dir.as_deref(), None, mode, &ctx);
+        let frame = a.composer.frame_chain(&a.project, dir.as_deref(), path.as_deref(), baked.as_ref(), block.as_ref(), program.as_ref(), mode, &ctx);
         self.win.set_frame(view::to_image(&frame));
         self.last_render = Instant::now();
     }
@@ -433,9 +509,11 @@ impl Editor {
     /// A property of the selected layer changed.
     fn edited(&mut self, a: &mut App, notify_engine: bool) {
         a.graphics_changed(notify_engine);
-        if let Some(i) = self.selected.and_then(|id| a.project.graphics.layers.iter().position(|l| l.id == id)) {
-            if i < self.layers.row_count() {
-                self.layers.set_row_data(i, view::layer_item(&a.project.graphics.layers[i], &self.fonts, canvas_of(a)));
+        if let Some(layer) = self.selected.and_then(|id| gfx_ref(a).layers.iter().find(|l| l.id == id).cloned()) {
+            if let Some(i) = gfx_ref(a).layers.iter().position(|l| l.id == layer.id) {
+                if i < self.layers.row_count() {
+                    self.layers.set_row_data(i, self.layer_row(a, &layer));
+                }
             }
         }
         self.sync_inspector(a);
@@ -449,20 +527,20 @@ impl Editor {
     }
 
     fn select_index(&mut self, a: &mut App, idx: i32) {
-        self.selected = (idx >= 0).then(|| a.project.graphics.layers.get(idx as usize).map(|l| l.id)).flatten();
+        self.selected = (idx >= 0).then(|| gfx(a).layers.get(idx as usize).map(|l| l.id)).flatten();
         self.update_selection_index(a);
         self.reset_inspector(a);
     }
 
     fn select_new(&mut self, a: &mut App, layer: Layer) {
         self.selected = Some(layer.id);
-        a.project.graphics.layers.push(layer);
+        gfx(a).layers.push(layer);
         self.structural(a);
         self.reset_inspector(a);
     }
 
     fn add_qr(&mut self, a: &mut App) {
-        let id = a.project.graphics.next_layer_id();
+        let id = gfx(a).next_layer_id();
         let layer = Layer {
             id,
             name: i18n::t("QR", "QR"),
@@ -477,8 +555,8 @@ impl Editor {
     }
 
     fn add_text(&mut self, a: &mut App) {
-        let id = a.project.graphics.next_layer_id();
-        let n = a.project.graphics.layers.iter().filter(|l| matches!(l.kind, LayerKind::Text(_))).count() + 1;
+        let id = gfx(a).next_layer_id();
+        let n = gfx(a).layers.iter().filter(|l| matches!(l.kind, LayerKind::Text(_))).count() + 1;
         let layer = Layer {
             id,
             name: format!("{} {n}", i18n::ts("Text", "Texto")),
@@ -493,7 +571,7 @@ impl Editor {
     }
 
     fn add_image_placeholder(&mut self, a: &mut App) {
-        let id = a.project.graphics.next_layer_id();
+        let id = gfx(a).next_layer_id();
         let layer = Layer {
             id,
             name: i18n::t("Image", "Imagen"),
@@ -508,11 +586,11 @@ impl Editor {
     }
 
     fn add_image(&mut self, a: &mut App, path: &std::path::Path) {
-        let spec = a.project.tx.mode.spec();
+        let spec = preview_mode(a).spec();
         let (iw, ih) = image::image_dimensions(path).unwrap_or((1, 1));
         let w = 0.3f32;
         let h = (w * ih as f32 / iw.max(1) as f32 * spec.width as f32 / spec.height as f32).clamp(MIN_SIZE, 0.9);
-        let id = a.project.graphics.next_layer_id();
+        let id = gfx(a).next_layer_id();
         let layer = Layer {
             id,
             name: path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| i18n::t("Image", "Imagen")),
@@ -527,7 +605,7 @@ impl Editor {
     }
 
     fn move_layer(&mut self, a: &mut App, dir: i32) {
-        let layers = &mut a.project.graphics.layers;
+        let layers = &mut gfx(a).layers;
         let Some(i) = self.selected.and_then(|id| layers.iter().position(|l| l.id == id)) else { return };
         let j = i as i32 + dir;
         if j >= 0 && (j as usize) < layers.len() {
@@ -537,9 +615,9 @@ impl Editor {
     }
 
     fn duplicate(&mut self, a: &mut App) {
-        let Some(src) = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).cloned() else { return };
+        let Some(src) = self.selected.and_then(|id| gfx(a).layers.iter().find(|l| l.id == id)).cloned() else { return };
         let layer = Layer {
-            id: a.project.graphics.next_layer_id(),
+            id: gfx(a).next_layer_id(),
             name: format!("{} (copia)", src.name),
             x: (src.x + 0.03).min(1.0 - MIN_SIZE),
             y: (src.y + 0.03).min(1.0 - MIN_SIZE),
@@ -549,17 +627,22 @@ impl Editor {
     }
 
     fn press(&mut self, a: &mut App, x: f32, y: f32, hx: f32, hy: f32) {
-        let layers = &a.project.graphics.layers;
+        let layers = gfx(a).layers.clone();
+        let canvas = canvas_of(a);
         if let Some(sel) = self.selected.and_then(|id| layers.iter().find(|l| l.id == id)) {
+            let (sx, sy, sw, sh) = view::selector(sel, canvas, image_px(a, sel));
             for corner in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
-                let (cx, cy) = (sel.x + corner.0 * sel.w, sel.y + corner.1 * sel.h);
+                let (cx, cy) = (sx + corner.0 * sw, sy + corner.1 * sh);
                 if (x - cx).abs() <= hx && (y - cy).abs() <= hy {
-                    self.drag = Some(Drag { id: sel.id, corner: Some(corner), start: (x, y), rect: (sel.x, sel.y, sel.w, sel.h), moved: false });
+                    self.drag = Some(Drag { id: sel.id, corner: Some(corner), start: (x, y), rect: (sx, sy, sw, sh), moved: false });
                     return;
                 }
             }
         }
-        let hit = layers.iter().rev().find(|l| l.visible && x >= l.x && x <= l.x + l.w && y >= l.y && y <= l.y + l.h).cloned();
+        let hit = layers.iter().rev().find(|l| {
+            let (x0, y0, w0, h0) = view::selector(l, canvas, image_px(a, l));
+            l.visible && x >= x0 && x <= x0 + w0 && y >= y0 && y <= y0 + h0
+        }).cloned();
         match hit {
             Some(l) => {
                 if self.selected != Some(l.id) {
@@ -669,7 +752,7 @@ impl Editor {
     }
 
     fn set_num(&mut self, a: &mut App, key: &str, v: f32) {
-        let spec = a.project.tx.mode.spec();
+        let spec = preview_mode(a).spec();
         let (cw, ch) = (spec.width as f32, spec.height as f32);
         let Some(layer) = self.selected.and_then(|id| layer_mut(a, id)) else { return };
         match (key, &mut layer.kind) {
@@ -725,7 +808,7 @@ impl Editor {
     }
 
     fn api_test(&mut self, a: &mut App) {
-        let src = self.selected.and_then(|id| a.project.graphics.layers.iter().find(|l| l.id == id)).and_then(|l| match &l.kind {
+        let src = self.selected.and_then(|id| gfx(a).layers.iter().find(|l| l.id == id)).and_then(|l| match &l.kind {
             LayerKind::Text(t) => t.api.clone(),
             LayerKind::Image(_) => None,
             LayerKind::Qr(q) => q.api.clone(),
@@ -747,5 +830,95 @@ impl Editor {
             let _ = win.upgrade_in_event_loop(move |w| w.set_api_result(text.into()));
         });
     }
+}
+
+fn image_px(a: &App, layer: &Layer) -> Option<(u32, u32)> {
+    let LayerKind::Image(img) = &layer.kind else { return None };
+    if img.path.trim().is_empty() {
+        return None;
+    }
+    image::image_dimensions(a.resolve(&img.path)).ok()
+}
+
+fn level_name(a: &App) -> String {
+    match a.gfx_target {
+        GfxTarget::Channel => i18n::t("Channel graphics", "Gráficos del canal"),
+        GfxTarget::Program(id) => {
+            let name = a.project.program(id).map(|p| p.name.as_str()).unwrap_or("");
+            i18n::t(&format!("Program graphics — {name}"), &format!("Gráficos del programa — {name}"))
+        }
+        GfxTarget::Block(id) => {
+            let block = a.project.block(id);
+            let name = block.map(|b| if b.name.is_empty() { b.date.format("%Y-%m-%d").to_string() } else { b.name.clone() }).unwrap_or_default();
+            i18n::t(&format!("Block graphics — {name}"), &format!("Gráficos del bloque — {name}"))
+        }
+    }
+}
+
+fn chain_of(a: &App) -> (Option<estivi_core::graphics::Graphics>, Option<estivi_core::graphics::Graphics>) {
+    match a.gfx_target {
+        GfxTarget::Block(id) => {
+            let block = a.project.block(id).cloned();
+            let program = block.as_ref().and_then(|b| b.program).and_then(|pid| a.project.program(pid)).map(|p| p.graphics.clone());
+            (block.map(|b| b.graphics), program)
+        }
+        GfxTarget::Program(id) => {
+            let program = a.project.program(id).map(|p| p.graphics.clone());
+            (representative_block(a, Some(id)).map(|b| b.graphics), program)
+        }
+        GfxTarget::Channel => {
+            let block = representative_block(a, None);
+            let program = block.as_ref().and_then(|b| b.program).and_then(|pid| a.project.program(pid)).map(|p| p.graphics.clone());
+            (block.map(|b| b.graphics), program)
+        }
+    }
+}
+
+fn representative_block(a: &App, program: Option<u64>) -> Option<estivi_core::project::Block> {
+    let now = chrono::Utc::now();
+    let today = estivi_core::schedule::grid_date(a.project.grid.timezone, now);
+    let occs = estivi_core::schedule::occurrences(&a.project, today, today + chrono::TimeDelta::days(21), today);
+    for occ in &occs {
+        if occ.end <= now {
+            continue;
+        }
+        if program.is_some_and(|id| occ.program_id != Some(id)) {
+            continue;
+        }
+        if let Some(block) = occ.block_id.and_then(|id| a.project.block(id)) {
+            return Some(block.clone());
+        }
+    }
+    a.project.blocks.iter().find(|b| program.is_none_or(|id| b.program == Some(id))).cloned()
+}
+
+fn base_path(a: &App) -> Option<String> {
+    match a.gfx_target {
+        GfxTarget::Block(id) => a.project.block(id).and_then(|b| normal_image(&b.images)),
+        GfxTarget::Program(id) => next_image(a, Some(id)),
+        GfxTarget::Channel => next_image(a, None),
+    }
+}
+
+fn normal_image(images: &[estivi_core::project::BlockImage]) -> Option<String> {
+    images.iter().find(|i| i.enabled && matches!(i.role, estivi_core::project::ImageRole::Normal) && !i.path.trim().is_empty()).map(|i| i.path.clone())
+}
+
+fn next_image(a: &App, program: Option<u64>) -> Option<String> {
+    let now = chrono::Utc::now();
+    let today = estivi_core::schedule::grid_date(a.project.grid.timezone, now);
+    let occs = estivi_core::schedule::occurrences(&a.project, today, today + chrono::TimeDelta::days(21), today);
+    for occ in &occs {
+        if occ.end <= now {
+            continue;
+        }
+        if program.is_some_and(|id| occ.program_id != Some(id)) {
+            continue;
+        }
+        if let Some(path) = normal_image(&occ.images) {
+            return Some(path);
+        }
+    }
+    a.project.blocks.iter().filter(|b| program.is_none_or(|id| b.program == Some(id))).find_map(|b| normal_image(&b.images))
 }
 

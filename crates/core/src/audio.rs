@@ -60,7 +60,7 @@ fn find_device(key: &str, output: bool) -> anyhow::Result<Device> {
     let key = key.trim();
     if key.is_empty() {
         let d = if output { host.default_output_device() } else { host.default_input_device() };
-        return d.ok_or_else(|| anyhow!("no hay dispositivo de audio predeterminado"));
+        return d.ok_or_else(|| anyhow!("no default audio device"));
     }
     let devices: Vec<Device> = if output { host.output_devices()?.collect() } else { host.input_devices()?.collect() };
     let infos: Vec<Option<DeviceInfo>> = devices.iter().map(info).collect();
@@ -68,7 +68,7 @@ fn find_device(key: &str, output: bool) -> anyhow::Result<Device> {
         .iter()
         .position(|i| i.as_ref().is_some_and(|i| i.id == key))
         .or_else(|| infos.iter().position(|i| i.as_ref().is_some_and(|i| i.name == key)))
-        .ok_or_else(|| anyhow!("no se encuentra el dispositivo de audio «{key}» (¿está conectado?)"))?;
+        .ok_or_else(|| anyhow!("audio device \"{key}\" was not found (is it connected?)"))?;
     Ok(devices.into_iter().nth(pos).expect("position within list"))
 }
 
@@ -86,7 +86,7 @@ fn pick_config(device: &Device, rate: u32, output: bool) -> anyhow::Result<Suppo
         .into_iter()
         .filter(|r| r.sample_format() == default.sample_format())
         .find_map(|r| r.try_with_sample_rate(rate))
-        .ok_or_else(|| anyhow!("el dispositivo no admite {rate} Hz"))
+        .ok_or_else(|| anyhow!("the device does not support {rate} Hz"))
 }
 
 /// A running output. Dropping it stops the sound.
@@ -115,7 +115,7 @@ pub fn play(cfg: &AudioConfig, make: impl FnOnce(u32) -> Box<dyn SampleSource>) 
     let supported = pick_config(&device, cfg.sample_rate, true)?;
     let rate = supported.sample_rate();
     log::info!(
-        "salida de audio: {} · {} Hz · {} canales · {:?}",
+        "audio output: {} · {} Hz · {} channels · {:?}",
         info(&device).map_or_else(|| "?".into(), |i| i.label()),
         rate,
         supported.channels(),
@@ -135,9 +135,9 @@ pub fn play(cfg: &AudioConfig, make: impl FnOnce(u32) -> Box<dyn SampleSource>) 
         SampleFormat::U32 => build_output::<u32>(&device, config, ctx),
         SampleFormat::I8 => build_output::<i8>(&device, config, ctx),
         SampleFormat::U8 => build_output::<u8>(&device, config, ctx),
-        other => Err(anyhow!("formato de muestra no soportado: {other:?}")),
+        other => Err(anyhow!("unsupported sample format: {other:?}")),
     }?;
-    stream.play().context("no se pudo iniciar la salida de audio")?;
+    stream.play().context("could not start audio output")?;
     Ok(Playback { _stream: stream, sample_rate: rate, played, finished })
 }
 
@@ -175,7 +175,7 @@ fn build_output<T: SizedSample + FromSample<f32>>(device: &Device, config: Strea
                 }
             }
         },
-        |e| log::error!("salida de audio: {e}"),
+        |e| log::error!("audio output: {e}"),
         None,
     )?;
     Ok(stream)
@@ -193,7 +193,7 @@ pub fn capture(cfg: &AudioConfig, on_block: impl FnMut(&[f32]) + Send + 'static)
     let supported = pick_config(&device, cfg.sample_rate, false)?;
     let rate = supported.sample_rate();
     log::info!(
-        "entrada de audio: {} · {} Hz · {} canales · {:?}",
+        "audio input: {} · {} Hz · {} channels · {:?}",
         info(&device).map_or_else(|| "?".into(), |i| i.label()),
         rate,
         supported.channels(),
@@ -209,9 +209,9 @@ pub fn capture(cfg: &AudioConfig, on_block: impl FnMut(&[f32]) + Send + 'static)
         SampleFormat::U32 => build_input::<u32>(&device, config, on_block),
         SampleFormat::I8 => build_input::<i8>(&device, config, on_block),
         SampleFormat::U8 => build_input::<u8>(&device, config, on_block),
-        other => Err(anyhow!("formato de muestra no soportado: {other:?}")),
+        other => Err(anyhow!("unsupported sample format: {other:?}")),
     }?;
-    stream.play().context("no se pudo iniciar la entrada de audio")?;
+    stream.play().context("could not start audio input")?;
     Ok(Capture { _stream: stream, sample_rate: rate })
 }
 
@@ -228,7 +228,7 @@ where
             mono.extend(data.chunks(channels).map(|f| f[0].to_sample::<f32>()));
             on_block(&mono);
         },
-        |e| log::error!("entrada de audio: {e}"),
+        |e| log::error!("audio input: {e}"),
         None,
     )?;
     Ok(stream)

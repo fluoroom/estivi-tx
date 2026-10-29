@@ -29,7 +29,7 @@ fn read_ts(buf: &[u8]) -> Option<DateTime<Utc>> {
 /// One SNTP query. Returns the offset to add to the system clock, in milliseconds.
 pub fn query_offset_ms(server: &str, timeout: Duration) -> anyhow::Result<i64> {
     let server = server.trim();
-    anyhow::ensure!(!server.is_empty(), "servidor NTP vacío");
+    anyhow::ensure!(!server.is_empty(), "empty NTP server");
     let addr = if server.contains(':') { server.to_string() } else { format!("{server}:123") };
     let sock = UdpSocket::bind("0.0.0.0:0")?;
     sock.set_read_timeout(Some(timeout))?;
@@ -40,9 +40,9 @@ pub fn query_offset_ms(server: &str, timeout: Duration) -> anyhow::Result<i64> {
     let mut buf = [0u8; 48];
     let (n, _) = sock.recv_from(&mut buf)?;
     let t4 = Utc::now();
-    anyhow::ensure!(n >= 48, "respuesta NTP corta");
-    let t2 = read_ts(&buf[32..40]).ok_or_else(|| anyhow::anyhow!("marca de recepción NTP inválida"))?;
-    let t3 = read_ts(&buf[40..48]).ok_or_else(|| anyhow::anyhow!("marca de transmisión NTP inválida"))?;
+    anyhow::ensure!(n >= 48, "short NTP reply");
+    let t2 = read_ts(&buf[32..40]).ok_or_else(|| anyhow::anyhow!("invalid NTP receive timestamp"))?;
+    let t3 = read_ts(&buf[40..48]).ok_or_else(|| anyhow::anyhow!("invalid NTP transmit timestamp"))?;
     Ok(offset_between(t1, t2, t3, t4).num_milliseconds())
 }
 

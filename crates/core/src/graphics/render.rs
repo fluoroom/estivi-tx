@@ -89,6 +89,8 @@ pub struct RenderInput<'a> {
     /// Payload of a QR layer. `None` skips that layer (empty, failed, or too big).
     pub qr_of: &'a dyn Fn(u64, &QrLayer) -> Option<String>,
     pub fonts: &'a FontBook,
+    /// When set, this bitmap is the base picture instead of `program`.
+    pub baked: Option<&'a RgbaImage>,
 }
 
 pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
@@ -97,17 +99,36 @@ pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
     let [r, gr, b, _] = g.background.0;
     let mut canvas = RgbaImage::from_pixel(w, h, Px([r, gr, b, 255]));
 
-    if let Some(path) = input.program {
+    if let Some(baked) = input.baked {
+        let pic = fit_image(baked, w, h, g.fit);
+        let x = (w as i64 - pic.width() as i64) / 2;
+        let y = (h as i64 - pic.height() as i64) / 2;
+        blend_image(&mut canvas, &pic, x, y, 1.0);
+    } else if let Some(path) = input.program {
         match cache.fitted(path, w, h, g.fit) {
             Ok(pic) => {
                 let x = (w as i64 - pic.width() as i64) / 2;
                 let y = (h as i64 - pic.height() as i64) / 2;
                 blend_image(&mut canvas, &pic, x, y, 1.0);
             }
-            Err(e) => log::warn!("programa: {e}"),
+            Err(e) => log::warn!("program picture: {e}"),
         }
     }
 
+    paint_layers(&mut canvas, g, input.resolve, input.text_of, input.qr_of, input.fonts, cache);
+    canvas
+}
+
+pub fn paint_layers(
+    canvas: &mut RgbaImage,
+    g: &Graphics,
+    resolve: &dyn Fn(&str) -> PathBuf,
+    text_of: &dyn Fn(&TextLayer) -> String,
+    qr_of: &dyn Fn(u64, &QrLayer) -> Option<String>,
+    fonts: &FontBook,
+    cache: &mut ImageCache,
+) {
+    let (w, h) = (canvas.width(), canvas.height());
     for layer in g.layers.iter().filter(|l| l.visible && l.opacity > 0.0) {
         let bx = layer.x * w as f32;
         let by = layer.y * h as f32;
@@ -119,28 +140,48 @@ pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
                 if il.path.trim().is_empty() {
                     continue;
                 }
-                let path = (input.resolve)(&il.path);
+                let path = resolve(&il.path);
                 let fit = if il.keep_aspect { Fit::Contain } else { Fit::Stretch };
                 match cache.fitted(&path, bw.round() as u32, bh.round() as u32, fit) {
                     Ok(pic) => {
                         let x = bx + (bw - pic.width() as f32) / 2.0;
                         let y = by + (bh - pic.height() as f32) / 2.0;
-                        blend_image(&mut canvas, &pic, x.round() as i64, y.round() as i64, opacity);
+                        blend_image(canvas, &pic, x.round() as i64, y.round() as i64, opacity);
                     }
-                    Err(e) => log::warn!("capa {}: {e}", layer.name),
+                    Err(e) => log::warn!("layer {}: {e}", layer.name),
                 }
             }
             LayerKind::Text(tl) => {
-                let text = (input.text_of)(tl);
-                draw_text_layer(&mut canvas, input.fonts, tl, &text, (bx, by, bw, bh), opacity);
+                let text = text_of(tl);
+                draw_text_layer(canvas, fonts, tl, &text, (bx, by, bw, bh), opacity);
             }
             LayerKind::Qr(qr) => {
-                let Some(payload) = (input.qr_of)(layer.id, qr) else { continue };
-                draw_qr(&mut canvas, &payload, &qr.ecc, (bx, by, bw, bh), opacity, &layer.name);
+                let Some(payload) = qr_of(layer.id, qr) else { continue };
+                draw_qr(canvas, &payload, &qr.ecc, (bx, by, bw, bh), opacity, &layer.name);
             }
         }
     }
-    canvas
+}
+
+fn fit_image(src: &RgbaImage, w: u32, h: u32, fit: Fit) -> RgbaImage {
+    let (w, h) = (w.max(1), h.max(1));
+    let (sw, sh) = (src.width() as f64, src.height() as f64);
+    match fit {
+        Fit::Stretch => image::imageops::resize(src, w, h, FilterType::CatmullRom),
+        Fit::Contain => {
+            let s = (w as f64 / sw).min(h as f64 / sh);
+            let (tw, th) = (((sw * s).round() as u32).max(1), ((sh * s).round() as u32).max(1));
+            image::imageops::resize(src, tw.min(w), th.min(h), FilterType::CatmullRom)
+        }
+        Fit::Cover => {
+            let s = (w as f64 / sw).max(h as f64 / sh);
+            let (cw, ch) = ((w as f64 / s).round().max(1.0), (h as f64 / s).round().max(1.0));
+            let cx = ((sw - cw) / 2.0).max(0.0) as u32;
+            let cy = ((sh - ch) / 2.0).max(0.0) as u32;
+            let crop = image::imageops::crop_imm(src, cx, cy, (cw as u32).min(src.width()), (ch as u32).min(src.height()));
+            image::imageops::resize(&*crop, w, h, FilterType::CatmullRom)
+        }
+    }
 }
 
 fn ecc_level(s: &str) -> qrcode::EcLevel {
@@ -171,7 +212,7 @@ fn draw_qr(canvas: &mut RgbaImage, payload: &str, ecc: &str, bx: (f32, f32, f32,
     let n = code.width();
     let px = qr_module_px(w, h, n);
     if px == 0 {
-        log::warn!("QR {name}: no entra en la capa");
+        log::warn!("QR {name}: does not fit in the layer");
         return;
     }
     let span = (n + 8) as f32 * px as f32;
@@ -316,6 +357,7 @@ mod tests {
                 text_of: &|t| t.text.clone(),
                 qr_of: &|_, _| None,
                 fonts: &fonts,
+                baked: None,
             },
             &mut ImageCache::default(),
         );
@@ -349,6 +391,7 @@ mod tests {
                 text_of: &|t| t.text.clone(),
                 qr_of: &|_, q| Some(q.text.clone()),
                 fonts: &fonts,
+                baked: None,
             },
             &mut ImageCache::default(),
         );

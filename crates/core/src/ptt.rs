@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Context, anyhow, bail};
 
-use crate::config::{CatConfig, Config, PttMethod, SerialLine};
+use crate::config::{CatConfig, Config, LineLevel, PttMethod};
 
 pub fn serial_ports() -> Vec<String> {
     let mut ports: Vec<String> = serialport::available_ports().map(|v| v.into_iter().map(|p| p.port_name).collect()).unwrap_or_default();
@@ -16,7 +16,7 @@ pub fn serial_ports() -> Vec<String> {
 
 pub enum Ptt {
     None,
-    Serial { port: Box<dyn serialport::SerialPort>, line: SerialLine, invert: bool, keyed: bool },
+    Serial { port: Box<dyn serialport::SerialPort>, rts: LineLevel, dtr: LineLevel, keyed: bool },
     Cat { cat: CatConfig, keyed: bool },
 }
 
@@ -33,8 +33,8 @@ impl Ptt {
                 let port = serialport::new(cfg.ptt.port.trim(), 9600)
                     .timeout(Duration::from_millis(200))
                     .open()
-                    .with_context(|| format!("no se pudo abrir {}", cfg.ptt.port))?;
-                let mut ptt = Ptt::Serial { port, line: cfg.ptt.line, invert: cfg.ptt.invert, keyed: true };
+                    .with_context(|| format!("could not open {}", cfg.ptt.port))?;
+                let mut ptt = Ptt::Serial { port, rts: cfg.ptt.rts, dtr: cfg.ptt.dtr, keyed: true };
                 ptt.key(false)?;
                 ptt
             }
@@ -45,14 +45,9 @@ impl Ptt {
     pub fn key(&mut self, on: bool) -> anyhow::Result<()> {
         match self {
             Ptt::None => Ok(()),
-            Ptt::Serial { port, line, invert, keyed } => {
-                let level = on != *invert;
-                if matches!(line, SerialLine::Rts | SerialLine::Both) {
-                    port.write_request_to_send(level)?;
-                }
-                if matches!(line, SerialLine::Dtr | SerialLine::Both) {
-                    port.write_data_terminal_ready(level)?;
-                }
+            Ptt::Serial { port, rts, dtr, keyed } => {
+                port.write_request_to_send(line_high(*rts, on))?;
+                port.write_data_terminal_ready(line_high(*dtr, on))?;
                 *keyed = on;
                 Ok(())
             }
@@ -76,7 +71,7 @@ impl Drop for Ptt {
     fn drop(&mut self) {
         if self.is_keyed() {
             if let Err(e) = self.key(false) {
-                log::error!("no se pudo soltar el PTT: {e}");
+                log::error!("could not release PTT: {e}");
             }
         }
     }
@@ -87,19 +82,28 @@ pub fn rigctld(cat: &CatConfig, command: &str) -> anyhow::Result<()> {
     let addr = (cat.host.trim(), cat.port)
         .to_socket_addrs()?
         .next()
-        .ok_or_else(|| anyhow!("rigctld: dirección inválida {}:{}", cat.host, cat.port))?;
-    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).with_context(|| format!("rigctld en {addr} no responde"))?;
+        .ok_or_else(|| anyhow!("rigctld: invalid address {}:{}", cat.host, cat.port))?;
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).with_context(|| format!("rigctld at {addr} did not answer"))?;
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
     stream.write_all(format!("{command}\n").as_bytes())?;
     let mut line = String::new();
     BufReader::new(&stream).read_line(&mut line)?;
     match line.trim().strip_prefix("RPRT ") {
         Some("0") => Ok(()),
-        Some(code) => bail!("rigctld rechazó «{command}» (RPRT {code})"),
-        None => bail!("rigctld respondió algo inesperado: {}", line.trim()),
+        Some(code) => bail!("rigctld rejected \"{command}\" (RPRT {code})"),
+        None => bail!("rigctld answered something unexpected: {}", line.trim()),
     }
 }
 
 pub fn set_frequency(cat: &CatConfig, hz: u64) -> anyhow::Result<()> {
     rigctld(cat, &format!("F {hz}"))
+}
+
+/// `Positive` is high while keyed. `Negative` is high at rest. `Off` stays low.
+fn line_high(level: LineLevel, on: bool) -> bool {
+    match level {
+        LineLevel::Off => false,
+        LineLevel::Positive => on,
+        LineLevel::Negative => !on,
+    }
 }
