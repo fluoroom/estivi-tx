@@ -256,7 +256,7 @@ pub struct UiConfig {
     pub autostart: bool,
     /// Light chrome instead of the default dark one. Kept in step with `theme`.
     pub light: bool,
-    /// `gray`, `light`, `lavender`, `pastel`, `subte`, `subte-light`. Empty follows `light`.
+    /// `dark` (older files say `gray`), `light`, `dracula`, `lavender`, `pastel`, `subte`, `subte-light`. Empty follows `light`.
     pub theme: String,
     /// `"en"` / `"es"`. Empty = not chosen yet; first boot picks the system language.
     pub lang: String,

@@ -190,11 +190,23 @@ impl ScanImage {
                 Self::scan(out, a.iter().zip(b).map(|(p, q)| avg(p[1], q[1])), scan_ms);
                 Self::scan(out, b.iter().map(|p| p[0]), scan_ms);
             }
+            Timing::Yoniq { scan_ms } => {
+                // MMSSTV LinePD: chroma of the first row of the pair, luma of both.
+                // The second row's color is discarded, not averaged into the chroma.
+                let (a, b) = (self.ycc_row(2 * line), self.ycc_row(2 * line + 1));
+                out.push(Seg::tone(SYNC_HZ, PD_SYNC_MS));
+                out.push(Seg::tone(BLACK_HZ, PD_PORCH_MS));
+                Self::scan(out, a.iter().map(|p| p[0]), scan_ms);
+                Self::scan(out, a.iter().map(|p| p[2]), scan_ms);
+                Self::scan(out, a.iter().map(|p| p[1]), scan_ms);
+                Self::scan(out, b.iter().map(|p| p[0]), scan_ms);
+            }
         }
     }
 }
 
-pub fn vis_segments(code: u8) -> Vec<Seg> {
+/// VIS header. `odd` selects odd parity; every mode except YoniQ uses even parity.
+pub fn vis_segments(code: u8, odd: bool) -> Vec<Seg> {
     let mut out = vec![
         Seg::tone(LEADER_HZ, 300.0),
         Seg::tone(SYNC_HZ, 10.0),
@@ -207,8 +219,8 @@ pub fn vis_segments(code: u8) -> Vec<Seg> {
         ones += one as u32;
         out.push(Seg::tone(if one { VIS_ONE_HZ } else { VIS_ZERO_HZ }, 30.0));
     }
-    // Even parity over the 7 data bits.
-    out.push(Seg::tone(if ones % 2 == 1 { VIS_ONE_HZ } else { VIS_ZERO_HZ }, 30.0));
+    let parity_one = if odd { ones % 2 == 0 } else { ones % 2 == 1 };
+    out.push(Seg::tone(if parity_one { VIS_ONE_HZ } else { VIS_ZERO_HZ }, 30.0));
     out.push(Seg::tone(SYNC_HZ, 30.0));
     out
 }
@@ -226,8 +238,9 @@ pub const VOX_MS: f64 = 800.0;
 
 /// VIS header, plus the 9 ms sync Scottie receivers expect glued to it.
 pub fn sstv_header(mode: Mode) -> Vec<Seg> {
-    let mut head = vis_segments(mode.spec().vis);
-    if mode.spec().family == Family::Scottie {
+    let spec = mode.spec();
+    let mut head = vis_segments(spec.vis, spec.vis_odd);
+    if spec.family == Family::Scottie {
         head.push(Seg::tone(SYNC_HZ, SCOTTIE_SYNC_MS));
     }
     head
@@ -383,12 +396,46 @@ mod tests {
     }
 
     #[test]
-    fn vis_parity_is_even() {
+    fn vis_parity_matches_the_mode() {
         for mode in Mode::ALL {
-            let segs = vis_segments(mode.spec().vis);
+            let spec = mode.spec();
+            let segs = vis_segments(spec.vis, spec.vis_odd);
             let ones = segs[4..12].iter().filter(|s| s.hz == VIS_ONE_HZ).count();
-            assert_eq!(ones % 2, 0, "{mode:?}");
+            assert_eq!(ones % 2, usize::from(spec.vis_odd), "{mode:?}");
         }
+    }
+
+    #[test]
+    fn yoniq_sends_even_row_chroma_and_vis_0x73() {
+        let mode = Mode::Yoniq;
+        let spec = mode.spec();
+        let img = RgbImage::from_fn(spec.width, spec.height, |_x, y| {
+            if y % 2 == 0 { image::Rgb([255, 0, 0]) } else { image::Rgb([0, 0, 255]) }
+        });
+        let scan = ScanImage::new(mode, &img, ColorRange::Full).unwrap();
+        let mut segs = Vec::new();
+        scan.line(0, &mut segs);
+        let w = spec.width as usize;
+        assert_eq!(segs.len(), 2 + 4 * w);
+        assert_eq!((segs[0].hz, segs[0].ms), (SYNC_HZ, PD_SYNC_MS));
+        assert_eq!((segs[1].hz, segs[1].ms), (BLACK_HZ, PD_PORCH_MS));
+        let px = YONIQ_SCAN_MS / spec.width as f64;
+        assert!((segs[2].ms - px).abs() < 1e-9, "{}", segs[2].ms);
+        let red = rgb_to_ycc([255, 0, 0], ColorRange::Full);
+        let blue = rgb_to_ycc([0, 0, 255], ColorRange::Full);
+        assert_eq!(segs[2].hz, pixel_hz(red[0]));
+        assert_eq!(segs[2 + w].hz, pixel_hz(red[2]));
+        assert_eq!(segs[2 + 2 * w].hz, pixel_hz(red[1]));
+        assert_eq!(segs[2 + 3 * w].hz, pixel_hz(blue[0]));
+        assert_ne!(pixel_hz(red[2]), pixel_hz(avg(red[2], blue[2])));
+
+        let mut code = 0u8;
+        for (i, s) in sstv_header(mode).iter().skip(4).take(8).enumerate() {
+            if s.hz == VIS_ONE_HZ {
+                code |= 1 << i;
+            }
+        }
+        assert_eq!(code, 0x73);
     }
 
     /// Demodulates the generated audio with a quadrature mixer at known positions and

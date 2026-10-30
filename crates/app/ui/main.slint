@@ -265,7 +265,7 @@ export component MainWindow inherits Window {
         HorizontalLayout {
             height: 36px;
             spacing: 6px;
-            alignment: center;
+            alignment: start;
             Text {
                 text: "Estivi";
                 font-size: 16px;
@@ -281,7 +281,6 @@ export component MainWindow inherits Window {
                 overflow: elide;
             }
             if root.callsign != "" : Pill { text: root.callsign; tone: Theme.accent; }
-            Rectangle { horizontal-stretch: 1; }
             ToolButton { text: @tr("New"); clicked => { root.new-project(); } }
             ToolButton { text: @tr("Open"); clicked => { root.open-project(); } }
             ToolButton { text: @tr("Save"); primary: root.dirty; clicked => { root.save-project(); } }
@@ -390,7 +389,7 @@ export component MainWindow inherits Window {
                 spacing: 6px;
                 HorizontalLayout {
                     spacing: 6px;
-                    alignment: center;
+                    alignment: start;
                     ToolButton { text: @tr("Month"); active: root.zoom == 0; clicked => { root.set-zoom(0); } }
                     ToolButton { text: @tr("Week"); active: root.zoom == 1; clicked => { root.set-zoom(1); } }
                     ToolButton { text: @tr("Day"); active: root.zoom == 2; clicked => { root.set-zoom(2); } }

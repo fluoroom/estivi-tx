@@ -20,7 +20,7 @@ Order of one grid turn, each piece only when it is enabled and has something to 
 
 Bumpers do not consume a turn. A disabled picture is skipped and does not consume one either. A single turn that is both first and last carries the welcome and the bye.
 
-There is no FSK ID. The digital identification is AX.25 and, if you leave it on, CW. AX.25 is always 1200 baud (1200/2200 Hz). The source call is the station callsign (`CALL-N` sets the SSID).
+There is no FSK ID. The digital identification is AX.25 and, if you leave it on, CW. AX.25 is always 1200 baud (1200/2200 Hz). The source call is the station callsign (`CALL-N` sets the SSID). `AX25.md` is the text a client reads in those frames.
 
 ## The window
 
@@ -42,7 +42,7 @@ Activations have their own tab. They are not objects on the grid. A trigger is C
 
 Graphics are edited per level. The block is painted first, then the program, then the channel, each on the frame the previous step left. A later step does not refill the background. The automatic base is never a bumper: the block editor uses the first normal image of that block, the program editor uses the first normal image of that program's next block, and the channel editor uses the next image the channel will send. The editor can also stand the graphics on color bars, a grid, or a gray ramp. Text, image, and QR layers sit on that frame. A QR can be text (with the same `{fields}`), a command, or an API. If the QR cannot be built, that layer is skipped and the rest of the frame goes out. Fields, also valid in text: `{block}`, `{range}`, `{days}`, `{daysleft}`, `{next}`.
 
-The themes are Gray (the default), Light, Lavender, Pastel, Subte, and Subte light. Block hues stay their own colors. The interface is English or Spanish, and the first launch follows the system language when it is one of those two. Errors, warnings, and other system text stay in English.
+The themes are Dark (the default; a saved Gray theme opens as Dark), Light, Dracula, Lavender, Pastel, Subte, and Subte light. Block hues stay their own colors. The interface is English or Spanish, and the first launch follows the system language when it is one of those two. Errors, warnings, and other system text stay in English.
 
 ## Two files
 
@@ -66,7 +66,7 @@ Export is not saving the project. You pick a range and one of five shapes: one f
 
 ## SSTV modes
 
-Martin M1–M4, Scottie S1, S2 and DX, Robot 24, 36 and 72, Robot 12 color, Robot B/W 8, 12 and 24, and PD 50, 90, 120, 160, 180, 240 and 290. Every SSTV piece carries VIS. Scottie keeps its 9 ms sync glued to the VIS.
+Martin M1–M4, Scottie S1, S2 and DX, Robot 24, 36 and 72, Robot 12 color, Robot B/W 8, 12 and 24, PD 50, 90, 120, 160, 180, 240 and 290, and YoniQ. Every SSTV piece carries VIS. Scottie keeps its 9 ms sync glued to the VIS. YoniQ is the analog picture mode (320×256, about 70 s). The internet image-recovery handshake is not part of it.
 
 The mode of a picture is its own, otherwise the block's, otherwise the program's, otherwise the channel's. The picture, block, and program menus start with Inherited. The welcome and the bye use their own mode, otherwise the program's, otherwise the channel's. They do not take the block's mode.
 
@@ -105,6 +105,7 @@ Decoded with QSSTV 9 over real audio, except where noted:
 | PD 90, 160, 180, 240 | Same code as the tested PD modes; not decoded separately |
 | Martin M3, M4 · Robot B/W 24 | QSSTV does not support them; they follow the slowrx table and are still untested on the air |
 | Robot 12 color | Duration is tested (12.0 s of picture after the VIS). QSSTV and slowrx do not transmit it; slowrx only has Robot 12 black and white, so this mode was not decoded there |
+| YoniQ | Analog mode from MMSSTV 1.13.2: 320×256, 69.837 s of picture, VIS `0x73` with odd parity. Not decoded with QSSTV |
 
 The color range default is full range, which is what QSSTV decodes as a normal picture. Studio range remains an option and comes out washed on QSSTV.
 

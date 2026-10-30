@@ -181,21 +181,31 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub const THEME_IDS: [&str; 6] = ["gray", "light", "lavender", "pastel", "subte", "subte-light"];
+pub const THEME_IDS: [&str; 7] = ["dark", "light", "dracula", "lavender", "pastel", "subte", "subte-light"];
+
+/// `gray` is the old name of Dark.
+fn theme_id(id: &str) -> &str {
+    match id {
+        "gray" => "dark",
+        other => other,
+    }
+}
 
 pub fn theme_label(id: &str) -> String {
-    match id {
+    match theme_id(id) {
         "light" => i18n::t("Light", "Claro"),
+        "dracula" => i18n::t("Dracula", "Drácula"),
         "lavender" => i18n::t("Lavender", "Lavanda"),
         "pastel" => i18n::t("Pastel", "Pastel"),
         "subte" => i18n::t("Subte", "Subte"),
         "subte-light" => i18n::t("Subte light", "Subte claro"),
-        _ => i18n::t("Gray", "Gris"),
+        _ => i18n::t("Dark", "Oscuro"),
     }
 }
 
 pub fn theme_index(id: &str, light: bool) -> i32 {
-    let id = if THEME_IDS.contains(&id) { id } else if light { "light" } else { "gray" };
+    let id = theme_id(id);
+    let id = if THEME_IDS.contains(&id) { id } else if light { "light" } else { "dark" };
     THEME_IDS.iter().position(|x| *x == id).unwrap_or(0) as i32
 }
 
@@ -223,15 +233,22 @@ struct Palette {
 }
 
 fn palette(id: &str) -> Palette {
-    match id {
+    match theme_id(id) {
+        // Same neutral ramp as Dark, inverted. No blue in the chrome.
         "light" => Palette {
-            light: true, bg: 0xf4f4f5, panel: 0xffffff, raised: 0xf3f4f6, field: 0xffffff, border: 0xe4e4e7, strong: 0xd4d4d8,
-            text: 0x18181b, dim: 0x52525b, faint: 0xa1a1aa, accent: 0x2563eb, on_accent: 0xffffff,
-            on_air: 0xdc2626, ready: 0x16a34a, paused: 0xd97706, danger: 0xdc2626,
+            light: true, bg: 0xf2f2f2, panel: 0xffffff, raised: 0xe4e4e4, field: 0xffffff, border: 0xc8c8c8, strong: 0x8a8a8a,
+            text: 0x111111, dim: 0x3d3d3d, faint: 0x6b6b6b, accent: 0x222222, on_accent: 0xf7f7f7,
+            on_air: 0xd42020, ready: 0x1b7f3a, paused: 0xc47a10, danger: 0xd42020,
+        },
+        // Dracula, with the surfaces pulled apart. The pale purple and yellow stay off the chrome.
+        "dracula" => Palette {
+            light: false, bg: 0x14151c, panel: 0x282a36, raised: 0x383a4a, field: 0x1e1f29, border: 0x44475a, strong: 0x6d7394,
+            text: 0xf8f8f2, dim: 0xd5d6e0, faint: 0x9aa0b8, accent: 0xff79c6, on_accent: 0x1e1f29,
+            on_air: 0xff5555, ready: 0x50fa7b, paused: 0xffb86c, danger: 0xff5555,
         },
         "lavender" => Palette {
-            light: true, bg: 0xf6f1fb, panel: 0xfffbff, raised: 0xefe6f8, field: 0xfffbff, border: 0xe4d6f0, strong: 0xcdb8e4,
-            text: 0x2a2236, dim: 0x655878, faint: 0x9a8aab, accent: 0x6d4ca8, on_accent: 0xffffff,
+            light: true, bg: 0xf7f2fc, panel: 0xfffbff, raised: 0xf3eafb, field: 0xffffff, border: 0xe6d8f2, strong: 0xd4c2e6,
+            text: 0x2c2438, dim: 0x655878, faint: 0x9a8aab, accent: 0x6d4ca8, on_accent: 0xffffff,
             on_air: 0xc43b5a, ready: 0x2f8f5b, paused: 0xb57a18, danger: 0xc43b5a,
         },
         "pastel" => Palette {
@@ -239,27 +256,31 @@ fn palette(id: &str) -> Palette {
             text: 0x3b2f3a, dim: 0x7a6570, faint: 0xb39aa6, accent: 0xff7a90, on_accent: 0x3b1d28,
             on_air: 0xe23d5b, ready: 0x3aa56b, paused: 0xd0892d, danger: 0xe23d5b,
         },
-        // Buenos Aires Subte, from idleberg's Subway theme (dark and light).
+        // Buenos Aires Subte. Dark keeps the night ground. Subte light is the map:
+        // white page, yellow header (H), and the line colors.
+        // A #00aedb, B #ee1b2d, C #0467b3, D #008066, E #6c2181, H #fdba31.
         "subte" => Palette {
             light: false, bg: 0x000000, panel: 0x101010, raised: 0x1c1c1c, field: 0x101010, border: 0x303030, strong: 0x4a4a4e,
             text: 0xc0c0c0, dim: 0x9a9a9e, faint: 0x79787d, accent: 0x00aedb, on_accent: 0x041820,
             on_air: 0xee1b2d, ready: 0x008066, paused: 0xfdba31, danger: 0xee1b2d,
         },
         "subte-light" => Palette {
-            light: true, bg: 0xffffff, panel: 0xf7f7f7, raised: 0xe0e0e0, field: 0xffffff, border: 0xd2d2d2, strong: 0xb0b0b0,
-            text: 0x303030, dim: 0x5a5a5a, faint: 0x8a8a8a, accent: 0x0467b3, on_accent: 0xffffff,
+            light: true, bg: 0xffffff, panel: 0xffffff, raised: 0xf3f3f3, field: 0xffffff, border: 0xe0e0e0, strong: 0xd2d2d2,
+            text: 0x303030, dim: 0x5a5a5a, faint: 0x8a8a8a, accent: 0xfdba31, on_accent: 0x1a1a1a,
             on_air: 0xee1b2d, ready: 0x008066, paused: 0x6c2181, danger: 0xee1b2d,
         },
+        // Dark. Wider steps than the old Gray ramp, still with no hue in the chrome.
         _ => Palette {
-            light: false, bg: 0x141414, panel: 0x1c1c1c, raised: 0x262626, field: 0x141414, border: 0x333333, strong: 0x4a4a4a,
-            text: 0xececec, dim: 0x9a9a9a, faint: 0x6e6e6e, accent: 0xd4d4d4, on_accent: 0x141414,
-            on_air: 0xdc2626, ready: 0x16a34a, paused: 0xd97706, danger: 0xdc2626,
+            light: false, bg: 0x090909, panel: 0x1a1a1a, raised: 0x2e2e2e, field: 0x101010, border: 0x454545, strong: 0x737373,
+            text: 0xf7f7f7, dim: 0xc2c2c2, faint: 0x8a8a8a, accent: 0xf0f0f0, on_accent: 0x111111,
+            on_air: 0xd42020, ready: 0x1b7f3a, paused: 0xc47a10, danger: 0xd42020,
         },
     }
 }
 
 pub fn apply_theme_to(theme: &Theme, id: &str, light_fallback: bool) {
-    let id = if THEME_IDS.contains(&id) { id } else if light_fallback { "light" } else { "gray" };
+    let id = theme_id(id);
+    let id = if THEME_IDS.contains(&id) { id } else if light_fallback { "light" } else { "dark" };
     let p = palette(id);
     theme.set_light(p.light);
     theme.set_bg(rgb(p.bg));
@@ -1045,7 +1066,7 @@ impl App {
     }
 
     fn choose_theme(&mut self, index: i32) {
-        let id = THEME_IDS.get(index.max(0) as usize).copied().unwrap_or("gray");
+        let id = THEME_IDS.get(index.max(0) as usize).copied().unwrap_or("dark");
         if self.config.ui.theme == id {
             return;
         }

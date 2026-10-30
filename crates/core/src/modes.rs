@@ -1,4 +1,4 @@
-//! SSTV mode table: Martin, Scottie, Robot (color and B/W) and PD.
+//! SSTV mode table: Martin, Scottie, Robot (color and B/W), PD and YoniQ.
 //!
 //! Timings follow JL Barber N7CXI, "Proposal for SSTV Mode Specifications"
 //! (Dayton SSTV forum, 2000) and Dave Jones KB4YZ line timing notes, cross-checked
@@ -55,6 +55,9 @@ pub enum Mode {
     Pd240,
     #[serde(rename = "PD290")]
     Pd290,
+    /// Analog YoniQ (MMSSTV 1.13.2). Not the internet image-recovery handshake.
+    #[serde(rename = "YQ")]
+    Yoniq,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,8 +89,12 @@ pub enum Timing {
     },
     /// sync · Y
     RobotBw { sync_ms: f64, y_ms: f64 },
-    /// sync 20 · porch 2.08 · Y(even) · R-Y · B-Y · Y(odd), per line pair
+    /// sync 20 · porch 2.08 · Y(even) · R-Y · B-Y · Y(odd), per line pair.
+    /// Chroma is the average of the pair.
     Pd { pixel_ms: f64 },
+    /// Same porch as PD. Chroma is the even row only (MMSSTV `LinePD`), then Y of the odd row.
+    /// `scan_ms` is one component across the whole width.
+    Yoniq { scan_ms: f64 },
 }
 
 pub const MARTIN_SYNC_MS: f64 = 4.862;
@@ -96,6 +103,8 @@ pub const SCOTTIE_SYNC_MS: f64 = 9.0;
 pub const SCOTTIE_GAP_MS: f64 = 1.5;
 pub const PD_SYNC_MS: f64 = 20.0;
 pub const PD_PORCH_MS: f64 = 2.08;
+/// One YoniQ component across 320 pixels. Four of these plus the PD porch are one 545.6 ms pair.
+pub const YONIQ_SCAN_MS: f64 = 130.88;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ModeSpec {
@@ -104,6 +113,8 @@ pub struct ModeSpec {
     pub short: &'static str,
     pub family: Family,
     pub vis: u8,
+    /// YoniQ sends odd parity. Every other mode sends even parity.
+    pub vis_odd: bool,
     /// Size of the picture the mode carries (the canvas the graphics are composed on).
     pub width: u32,
     pub height: u32,
@@ -126,12 +137,19 @@ const fn robot_color(
 
 macro_rules! spec {
     ($mode:ident, $name:literal, $short:literal, $fam:ident, $vis:literal, $w:literal x $h:literal, $lines:literal, $timing:expr) => {
+        spec!(@ $mode, $name, $short, $fam, $vis, false, $w, $h, $lines, $timing)
+    };
+    ($mode:ident, $name:literal, $short:literal, $fam:ident, $vis:literal, odd, $w:literal x $h:literal, $lines:literal, $timing:expr) => {
+        spec!(@ $mode, $name, $short, $fam, $vis, true, $w, $h, $lines, $timing)
+    };
+    (@ $mode:ident, $name:literal, $short:literal, $fam:ident, $vis:literal, $odd:expr, $w:expr, $h:expr, $lines:expr, $timing:expr) => {
         ModeSpec {
             mode: Mode::$mode,
             name: $name,
             short: $short,
             family: Family::$fam,
             vis: $vis,
+            vis_odd: $odd,
             width: $w,
             height: $h,
             tx_lines: $lines,
@@ -140,7 +158,7 @@ macro_rules! spec {
     };
 }
 
-static SPECS: [ModeSpec; 21] = [
+static SPECS: [ModeSpec; 22] = [
     spec!(MartinM1, "Martin M1", "M1", Martin, 0x2C, 320 x 256, 256, Timing::Martin { scan_ms: 146.432 }),
     spec!(MartinM2, "Martin M2", "M2", Martin, 0x28, 320 x 256, 256, Timing::Martin { scan_ms: 73.216 }),
     spec!(MartinM3, "Martin M3", "M3", Martin, 0x24, 320 x 256, 128, Timing::Martin { scan_ms: 146.432 }),
@@ -164,10 +182,11 @@ static SPECS: [ModeSpec; 21] = [
     spec!(Pd180, "PD 180", "PD180", Pd, 0x60, 640 x 496, 248, Timing::Pd { pixel_ms: 0.286 }),
     spec!(Pd240, "PD 240", "PD240", Pd, 0x61, 640 x 496, 248, Timing::Pd { pixel_ms: 0.382 }),
     spec!(Pd290, "PD 290", "PD290", Pd, 0x5E, 800 x 616, 308, Timing::Pd { pixel_ms: 0.286 }),
+    spec!(Yoniq, "YoniQ", "YQ", Pd, 0x73, odd, 320 x 256, 128, Timing::Yoniq { scan_ms: YONIQ_SCAN_MS }),
 ];
 
 impl Mode {
-    pub const ALL: [Mode; 21] = [
+    pub const ALL: [Mode; 22] = [
         Mode::MartinM1,
         Mode::MartinM2,
         Mode::MartinM3,
@@ -189,6 +208,7 @@ impl Mode {
         Mode::Pd180,
         Mode::Pd240,
         Mode::Pd290,
+        Mode::Yoniq,
     ];
 
     pub fn spec(self) -> &'static ModeSpec {
@@ -217,6 +237,7 @@ impl ModeSpec {
             }
             Timing::RobotBw { sync_ms, y_ms } => sync_ms + y_ms,
             Timing::Pd { pixel_ms } => PD_SYNC_MS + PD_PORCH_MS + 4.0 * pixel_ms * self.width as f64,
+            Timing::Yoniq { scan_ms } => PD_SYNC_MS + PD_PORCH_MS + 4.0 * scan_ms,
         }
     }
 
@@ -238,7 +259,7 @@ impl ModeSpec {
     /// Color model as sent on the air.
     pub fn color_space(&self) -> &'static str {
         match self.timing {
-            Timing::Robot { alternating: true, .. } | Timing::Pd { .. } => "YCrCb 4:2:0",
+            Timing::Robot { alternating: true, .. } | Timing::Pd { .. } | Timing::Yoniq { .. } => "YCrCb 4:2:0",
             Timing::Robot { alternating: false, .. } => "YCrCb 4:2:2",
             Timing::RobotBw { .. } => "Y",
             Timing::Martin { .. } | Timing::Scottie { .. } => "RGB",
@@ -288,6 +309,7 @@ mod tests {
             (Mode::Pd180, 754.24),
             (Mode::Pd240, 1000.0),
             (Mode::Pd290, 937.28),
+            (Mode::Yoniq, 545.6),
         ];
         for (mode, expected) in cases {
             let got = mode.spec().line_ms();
@@ -343,6 +365,21 @@ mod tests {
         // The published 12 s are the picture. The VIS header is extra, as with Robot 36.
         assert!((spec.total_ms() - spec.image_ms() - VIS_HEADER_MS).abs() < 1e-6);
         assert!(spec.is_color());
+    }
+
+    #[test]
+    fn yoniq_is_the_mmsstv_analog_mode() {
+        let spec = Mode::Yoniq.spec();
+        assert_eq!(spec.short, "YQ");
+        assert_eq!(spec.name, "YoniQ");
+        assert_eq!(spec.vis, 0x73);
+        assert!(spec.vis_odd);
+        assert_eq!((spec.width, spec.height, spec.tx_lines), (320, 256, 128));
+        assert!((spec.line_ms() - 545.6).abs() < 1e-6, "{}", spec.line_ms());
+        // 128 pairs. The VIS header is extra.
+        assert!((spec.image_ms() - 69_836.8).abs() < 1e-3, "{}", spec.image_ms());
+        assert!((spec.total_ms() - spec.image_ms() - VIS_HEADER_MS).abs() < 1e-6);
+        assert_eq!(Mode::from_short("yq"), Some(Mode::Yoniq));
     }
 
     #[test]
