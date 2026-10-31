@@ -23,3 +23,4 @@ pub mod air;
 pub mod playlist;
 pub mod shell;
 pub mod export;
+pub mod recovery;

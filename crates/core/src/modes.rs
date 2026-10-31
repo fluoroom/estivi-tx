@@ -55,7 +55,7 @@ pub enum Mode {
     Pd240,
     #[serde(rename = "PD290")]
     Pd290,
-    /// Analog YoniQ (MMSSTV 1.13.2). Not the internet image-recovery handshake.
+    /// Analog YoniQ (MMSSTV 1.13.2). The DGT YQ upload is separate: see `recovery`.
     #[serde(rename = "YQ")]
     Yoniq,
 }

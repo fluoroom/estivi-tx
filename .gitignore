@@ -3,3 +3,4 @@
 /estivi.toml
 estivi.log
 *-registro.csv
+.env

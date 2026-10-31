@@ -107,10 +107,22 @@ fn one_line(s: &str) -> String {
 
 /// `ESTIVI MODE R36`, `ESTIVI MODE R12 BUMPER PRE`, `ESTIVI MODE M1 WELCOME`.
 pub fn mode_text(short: &str, mark: Option<&str>) -> String {
-    match mark {
-        Some(m) if !m.is_empty() => format!("ESTIVI MODE {short} {m}\n"),
-        _ => format!("ESTIVI MODE {short}\n"),
+    mode_line(short, mark, None)
+}
+
+/// A YoniQ frame can carry the recovery stamp: `ESTIVI MODE YQ WELCOME 31102026140509`.
+pub fn mode_line(short: &str, mark: Option<&str>, stamp: Option<&str>) -> String {
+    let mut s = format!("ESTIVI MODE {short}");
+    if let Some(m) = mark.filter(|m| !m.is_empty()) {
+        s.push(' ');
+        s.push_str(m);
     }
+    if let Some(stamp) = stamp.filter(|s| !s.is_empty()) {
+        s.push(' ');
+        s.push_str(stamp);
+    }
+    s.push('\n');
+    s
 }
 
 pub fn duration_ms(info: &str, call: &str) -> f64 {
@@ -311,6 +323,8 @@ mod tests {
         assert_eq!(mode_text("BW8", Some("BUMPER POST")), "ESTIVI MODE BW8 BUMPER POST\n");
         assert_eq!(mode_text("M1", Some("WELCOME")), "ESTIVI MODE M1 WELCOME\n");
         assert_eq!(mode_text("R24", Some("BYE")), "ESTIVI MODE R24 BYE\n");
+        assert_eq!(mode_line("YQ", None, Some("31102026140509")), "ESTIVI MODE YQ 31102026140509\n");
+        assert_eq!(mode_line("YQ", Some("WELCOME"), Some("31102026140509")), "ESTIVI MODE YQ WELCOME 31102026140509\n");
     }
 
     #[test]

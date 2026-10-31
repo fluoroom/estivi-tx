@@ -66,7 +66,15 @@ Export is not saving the project. You pick a range and one of five shapes: one f
 
 ## SSTV modes
 
-Martin M1–M4, Scottie S1, S2 and DX, Robot 24, 36 and 72, Robot 12 color, Robot B/W 8, 12 and 24, PD 50, 90, 120, 160, 180, 240 and 290, and YoniQ. Every SSTV piece carries VIS. Scottie keeps its 9 ms sync glued to the VIS. YoniQ is the analog picture mode (320×256, about 70 s). The internet image-recovery handshake is not part of it.
+Martin M1–M4, Scottie S1, S2 and DX, Robot 24, 36 and 72, Robot 12 color, Robot B/W 8, 12 and 24, PD 50, 90, 120, 160, 180, 240 and 290, and YoniQ. Every SSTV piece carries VIS. Scottie keeps its 9 ms sync glued to the VIS. YoniQ is the analog picture mode (320×256, about 70 s).
+
+## Image recovery
+
+DGT YQ is not an SSTV mode and it does not repair scan lines. When a YoniQ picture goes on the air, Estivi also stores a clean 320×256 BMP where YONIQ 1.13.3 stores one: FTP, passive, binary, directory `/web/imagenes_ioniq/` on `ioniq.evl.es`. The file is `@` plus the station callsign plus `ddmmyyyyhhnnss` plus `.BMP`. The fourteen digits are the machine's local time at the start of that picture, day then month then year, then the 24-hour clock, which is what YONIQ produces after it strips `/` from the short date and `:` from `hh:nn:ss`.
+
+The same digits ride in the mode frame (`ESTIVI MODE YQ 31102026140509`, mark before the stamp when there is one) so an Estivi receiver can ask for that exact file. A transmission with an empty callsign is not uploaded. The upload runs beside the audio. If the server is down, the picture still goes on the air.
+
+`[recovery]` in `estivi.toml` holds `enabled`, `host`, `port`, `user`, and `path`. It starts enabled, aimed at the YONIQ account. The password is `YONIQ_FTP_PASSWORD` in a `.env` file beside `estivi.toml`, beside the program, or in the directory you start it from. Copy `.env.example` and fill that line in. The program does not copy the password into `estivi.toml`. Without it the picture still goes on the air and the upload does not log in. Set `enabled = false` to stop trying.
 
 The mode of a picture is its own, otherwise the block's, otherwise the program's, otherwise the channel's. The picture, block, and program menus start with Inherited. The welcome and the bye use their own mode, otherwise the program's, otherwise the channel's. They do not take the block's mode.
 
@@ -92,7 +100,7 @@ cargo run -p estivi-core --example dispositivos
 
 ## Verification
 
-`cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, bumper linking and `block02` import, export durations for the five shapes, and one short FLAC file.
+`cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, the YoniQ recovery name and a local FTP store, bumper linking and `block02` import, export durations for the five shapes, and one short FLAC file.
 
 Decoded with QSSTV 9 over real audio, except where noted:
 
@@ -105,7 +113,7 @@ Decoded with QSSTV 9 over real audio, except where noted:
 | PD 90, 160, 180, 240 | Same code as the tested PD modes; not decoded separately |
 | Martin M3, M4 · Robot B/W 24 | QSSTV does not support them; they follow the slowrx table and are still untested on the air |
 | Robot 12 color | Duration is tested (12.0 s of picture after the VIS). QSSTV and slowrx do not transmit it; slowrx only has Robot 12 black and white, so this mode was not decoded there |
-| YoniQ | Analog mode from MMSSTV 1.13.2: 320×256, 69.837 s of picture, VIS `0x73` with odd parity. Not decoded with QSSTV |
+| YoniQ | Analog mode from MMSSTV 1.13.2: 320×256, 69.837 s of picture, VIS `0x73` with odd parity. Not decoded with QSSTV. The BMP upload is off the air |
 
 The color range default is full range, which is what QSSTV decodes as a normal picture. Studio range remains an option and comes out washed on QSSTV.
 
