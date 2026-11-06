@@ -20,6 +20,11 @@ export global Theme {
     in-out property <color> ready: #16a34a;
     in-out property <color> paused: #d97706;
     in-out property <color> danger: #dc2626;
+    // Timeline piece colors. Each theme keeps its own so the labels read on both grounds.
+    in-out property <color> tx-cw: #38bdf8;
+    in-out property <color> tx-ax: #fbbf24;
+    in-out property <color> tx-welcome: #4ade80;
+    in-out property <color> tx-bumper: #c084fc;
     out property <length> radius: 3px;
     out property <length> gap: 8px;
     out property <string> mono: "Noto Sans Mono";
@@ -139,6 +144,24 @@ export component Field inherits VerticalLayout {
         text: root.label;
         font-size: 12px;
         color: Theme.text-dim;
+    }
+    @children
+}
+
+// A one-line field for the settings strip in the upper card: the label sits to the
+// left so a whole form fits in the height of the status card.
+export component MiniField inherits HorizontalLayout {
+    in property <string> label;
+    in property <length> label-width: 78px;
+    spacing: 4px;
+    height: 26px;
+    Text {
+        width: root.label-width;
+        text: root.label;
+        font-size: 10px;
+        color: Theme.text-dim;
+        vertical-alignment: center;
+        overflow: elide;
     }
     @children
 }

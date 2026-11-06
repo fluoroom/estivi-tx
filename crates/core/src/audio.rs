@@ -25,7 +25,23 @@ pub struct DeviceInfo {
 impl DeviceInfo {
     pub fn label(&self) -> String {
         let short = self.id.split_once(':').map_or(self.id.as_str(), |(_, rest)| rest);
-        if short.is_empty() || short == self.name { self.name.clone() } else { format!("{} ({short})", self.name) }
+        if short.is_empty() || short == self.name || self.name.to_ascii_lowercase().contains(&short.to_ascii_lowercase()) {
+            self.name.clone()
+        } else {
+            format!("{} ({short})", self.name)
+        }
+    }
+
+    /// True when `key` names this device, including an older `hw:`/`front:` id for
+    /// the same ALSA card (the list now keeps a single plug PCM per card).
+    pub fn same_device(&self, key: &str) -> bool {
+        let key = key.trim();
+        if self.id == key || self.name == key {
+            return true;
+        }
+        let mine = self.id.strip_prefix("alsa:").and_then(card_key);
+        let theirs = key.strip_prefix("alsa:").and_then(card_key);
+        matches!((mine, theirs), (Some(a), Some(b)) if a == b)
     }
 }
 
@@ -47,11 +63,79 @@ fn unique(devices: impl Iterator<Item = Device>) -> Vec<DeviceInfo> {
 }
 
 pub fn output_devices() -> Vec<DeviceInfo> {
-    cpal::default_host().output_devices().map(unique).unwrap_or_default()
+    prune(cpal::default_host().output_devices().map(unique).unwrap_or_default())
 }
 
 pub fn input_devices() -> Vec<DeviceInfo> {
-    cpal::default_host().input_devices().map(unique).unwrap_or_default()
+    prune(cpal::default_host().input_devices().map(unique).unwrap_or_default())
+}
+
+/// The ALSA host lists every plugin PCM (`pulse`, `speex`, `upmix`, rate
+/// converters, `null`, `jack`…) beside the real cards. The settings only need the
+/// cards, the ALSA default and PipeWire, so keep one hardware entry per card and
+/// drop the plugin noise. Other platforms are left untouched.
+fn prune(devices: Vec<DeviceInfo>) -> Vec<DeviceInfo> {
+    let mut cards: Vec<(String, u8, DeviceInfo)> = Vec::new();
+    let mut default = None;
+    let mut pipewire = None;
+    for mut device in devices {
+        if !device.id.starts_with("alsa:") {
+            cards.push((device.id.clone(), 0, device));
+            continue;
+        }
+        let pcm = device.id.strip_prefix("alsa:").unwrap_or(&device.id);
+        if pcm == "default" {
+            device.name = "ALSA default".into();
+            default = Some(device);
+            continue;
+        }
+        if pcm == "pipewire" {
+            device.name = "PipeWire".into();
+            pipewire = Some(device);
+            continue;
+        }
+        let Some(key) = card_key(pcm) else { continue };
+        let Some(rank) = pcm_rank(pcm) else { continue };
+        match cards.iter().position(|(k, _, _)| *k == key) {
+            Some(i) if cards[i].1 > rank => cards[i] = (key, rank, device),
+            Some(_) => {}
+            None => cards.push((key, rank, device)),
+        }
+    }
+    cards.sort_by(|a, b| a.2.name.cmp(&b.2.name));
+    let mut out: Vec<DeviceInfo> = Vec::new();
+    if let Some(default) = default {
+        out.push(default);
+    }
+    out.extend(cards.into_iter().map(|(_, _, device)| device));
+    if let Some(pipewire) = pipewire {
+        out.push(pipewire);
+    }
+    out
+}
+
+/// `CARD=PCH,DEV=0` (or only `CARD=PCH`) from an ALSA PCM name.
+fn card_key(pcm: &str) -> Option<String> {
+    let rest = pcm.split_once("CARD=")?.1;
+    let mut parts = rest.split(',');
+    let card = parts.next().filter(|s| !s.is_empty())?;
+    let dev = parts.find_map(|p| p.strip_prefix("DEV=")).unwrap_or("");
+    Some(format!("{card}|{dev}"))
+}
+
+/// Lower is better. `plughw` resamples and converts, so the app can open the
+/// sample rate it needs; `hw` is the fallback when the card has no plug layer.
+fn pcm_rank(pcm: &str) -> Option<u8> {
+    let name = pcm.split(':').next().unwrap_or(pcm);
+    match name {
+        "plughw" => Some(0),
+        "hw" => Some(1),
+        "front" => Some(2),
+        "sysdefault" => Some(3),
+        "default" => Some(4),
+        n if n.starts_with("surround") || matches!(n, "iec958" | "hdmi" | "spdif") => Some(5),
+        _ => None,
+    }
 }
 
 /// `key` is a device id, or a name for hand-written configs; empty = system default.
@@ -232,4 +316,49 @@ where
         None,
     )?;
     Ok(stream)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dev(id: &str, name: &str) -> DeviceInfo {
+        DeviceInfo { id: id.into(), name: name.into() }
+    }
+
+    #[test]
+    fn alsa_plugins_are_hidden_and_each_card_keeps_one_pcm() {
+        let devices = vec![
+            dev("alsa:null", "Discard all samples"),
+            dev("alsa:pulse", "PulseAudio Sound Server"),
+            dev("alsa:speexrate", "Rate Converter Plugin Using Speex Resampler"),
+            dev("alsa:speex", "Plugin using Speex DSP"),
+            dev("alsa:upmix", "Plugin for channel upmix"),
+            dev("alsa:vdownmix", "Plugin for channel downmix"),
+            dev("alsa:default", "Default ALSA Output"),
+            dev("alsa:pipewire", "PipeWire Sound Server"),
+            dev("alsa:hw:CARD=Device,DEV=0", "USB radio"),
+            dev("alsa:plughw:CARD=Device,DEV=0", "USB radio"),
+            dev("alsa:front:CARD=Device,DEV=0", "USB radio"),
+            dev("alsa:hw:CARD=PCH,DEV=3", "HDMI"),
+            dev("wasapi:{0.0.0.00000000}.{x}", "Windows card"),
+        ];
+        let kept = prune(devices);
+        let ids: Vec<&str> = kept.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, ["alsa:default", "alsa:hw:CARD=PCH,DEV=3", "alsa:plughw:CARD=Device,DEV=0", "wasapi:{0.0.0.00000000}.{x}", "alsa:pipewire"]);
+        assert_eq!(kept[0].name, "ALSA default");
+        assert_eq!(kept[4].name, "PipeWire");
+        assert_eq!(kept[2].label(), "USB radio (plughw:CARD=Device,DEV=0)");
+        assert_eq!(kept[1].label(), "HDMI (hw:CARD=PCH,DEV=3)");
+        assert!(kept[2].same_device("alsa:hw:CARD=Device,DEV=0"));
+        assert!(!kept[2].same_device("alsa:hw:CARD=Device,DEV=1"));
+    }
+
+    #[test]
+    fn an_empty_alsa_list_still_has_the_system_default_and_pipewire() {
+        let kept = prune(vec![dev("alsa:null", "null"), dev("alsa:default", "Default ALSA Output"), dev("alsa:pipewire", "PipeWire Sound Server")]);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].label(), "ALSA default");
+        assert_eq!(kept[1].label(), "PipeWire");
+    }
 }

@@ -63,6 +63,7 @@ impl Composer {
 
     /// Picture, then block layers, then program layers, then channel layers.
     /// Each step is painted on the bitmap the previous step left.
+    #[allow(clippy::too_many_arguments)]
     pub fn frame_chain(
         &mut self,
         project: &Project,
@@ -74,9 +75,27 @@ impl Composer {
         mode: crate::modes::Mode,
         ctx: &DataCtx,
     ) -> RgbaImage {
+        self.frame_chain_with(project, dir, image, baked, block, program, true, mode, ctx)
+    }
+
+    /// Same cascade, with the channel level optional. Instant transmissions can
+    /// choose block + program + channel, program + channel, channel only, or none.
+    #[allow(clippy::too_many_arguments)]
+    pub fn frame_chain_with(
+        &mut self,
+        project: &Project,
+        dir: Option<&Path>,
+        image: Option<&str>,
+        baked: Option<&RgbaImage>,
+        block: Option<&Graphics>,
+        program: Option<&Graphics>,
+        use_channel: bool,
+        mode: crate::modes::Mode,
+        ctx: &DataCtx,
+    ) -> RgbaImage {
         let block_g = block.cloned().unwrap_or_default();
         let program_g = program.cloned().unwrap_or_default();
-        let channel = project.graphics.clone();
+        let channel = if use_channel { project.graphics.clone() } else { Graphics::default() };
         let mut base = if !block_g.is_plain() {
             block_g.clone()
         } else if !program_g.is_plain() {

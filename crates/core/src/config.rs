@@ -14,8 +14,6 @@ pub struct Config {
     pub cat: CatConfig,
     pub ui: UiConfig,
     pub time: TimeSync,
-    /// Clean YoniQ picture, stored for DGT YQ. Off the air.
-    pub recovery: Recovery,
 }
 
 /// Offset against an NTP server. The operating-system clock is not changed.
@@ -30,35 +28,6 @@ pub struct TimeSync {
     pub offset_ms: i64,
     pub last_sync: String,
     pub last_error: String,
-}
-
-/// Account, host, and directory YONIQ 1.13.3 uses for DGT YQ. The password is not
-/// kept in this file: `Config::apply_recovery_secret` reads it from the environment.
-/// `enabled` sends each YoniQ picture there as it goes on the air.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Recovery {
-    pub enabled: bool,
-    pub host: String,
-    pub port: u16,
-    pub user: String,
-    /// `YONIQ_FTP_PASSWORD` from the environment or a `.env` file. Never written back.
-    #[serde(skip_serializing)]
-    pub password: String,
-    pub path: String,
-}
-
-impl Default for Recovery {
-    fn default() -> Self {
-        Recovery {
-            enabled: true,
-            host: "ioniq.evl.es".into(),
-            port: 21,
-            user: "eugenioioniq".into(),
-            password: String::new(),
-            path: "/web/imagenes_ioniq".into(),
-        }
-    }
 }
 
 impl Default for TimeSync {
@@ -309,26 +278,11 @@ impl Config {
     }
 
     pub fn load(path: &Path) -> anyhow::Result<Config> {
-        let mut cfg = match std::fs::read_to_string(path) {
+        Ok(match std::fs::read_to_string(path) {
             Ok(text) => Self::parse(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Config::default(),
             Err(e) => return Err(anyhow::anyhow!("{}: {e}", path.display())),
-        };
-        cfg.apply_recovery_secret(path);
-        Ok(cfg)
-    }
-
-    /// The DGT YQ password comes from `YONIQ_FTP_PASSWORD` in the environment, or from
-    /// a `.env` file beside this config, beside the executable, or in the working
-    /// directory. A value already in the environment wins. Nothing here is logged.
-    pub fn apply_recovery_secret(&mut self, config_path: &Path) {
-        if let Some(pw) = std::env::var("YONIQ_FTP_PASSWORD").ok().filter(|s| !s.is_empty()) {
-            self.recovery.password = pw;
-            return;
-        }
-        if let Some(pw) = secret_from_files(config_path) {
-            self.recovery.password = pw;
-        }
+        })
     }
 
     fn parse(text: &str) -> Result<Config, toml::de::Error> {
@@ -361,62 +315,6 @@ fn dir_writable(dir: &Path) -> bool {
     let ok = std::fs::write(&probe, b"").is_ok();
     let _ = std::fs::remove_file(&probe);
     ok
-}
-
-fn secret_from_files(config_path: &Path) -> Option<String> {
-    for path in dotenv_candidates(config_path) {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        if let Some(pw) = dotenv_key(&text, "YONIQ_FTP_PASSWORD").filter(|s| !s.is_empty()) {
-            return Some(pw);
-        }
-    }
-    None
-}
-
-fn dotenv_candidates(config_path: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Some(dir) = config_path.parent().filter(|d| !d.as_os_str().is_empty()) {
-        out.push(dir.join(".env"));
-    }
-    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
-        let candidate = dir.join(".env");
-        if !out.iter().any(|p| p == &candidate) {
-            out.push(candidate);
-        }
-    }
-    let cwd = PathBuf::from(".env");
-    if !out.iter().any(|p| p == &cwd) {
-        out.push(cwd);
-    }
-    out
-}
-
-fn dotenv_key(text: &str, key: &str) -> Option<String> {
-    for raw in text.lines() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let line = line.strip_prefix("export ").unwrap_or(line).trim();
-        let Some((k, v)) = line.split_once('=') else { continue };
-        if k.trim() != key {
-            continue;
-        }
-        return Some(unquote(v));
-    }
-    None
-}
-
-fn unquote(value: &str) -> String {
-    let value = value.trim();
-    let bytes = value.as_bytes();
-    if bytes.len() >= 2 && ((bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"') || (bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\'')) {
-        return value[1..value.len() - 1].to_string();
-    }
-    match value.find(" #") {
-        Some(i) => value[..i].trim().to_string(),
-        None => value.to_string(),
-    }
 }
 
 fn user_config_dir() -> PathBuf {
@@ -458,31 +356,4 @@ mod tests {
         assert_eq!(Lang::parse("pt_BR"), None);
     }
 
-    #[test]
-    fn recovery_password_is_not_written_into_the_toml() {
-        let mut c = Config::default();
-        c.recovery.password = "not-saved".into();
-        let s = toml::to_string_pretty(&c).unwrap();
-        assert!(!s.contains("not-saved"));
-        assert!(!s.contains("password"));
-        assert_eq!(Config::parse(&s).unwrap().recovery.password, "");
-    }
-
-    #[test]
-    fn dotenv_value_beside_the_config() {
-        let dir = std::env::temp_dir().join(format!("estivi-dotenv-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(".env"), "# note\nexport YONIQ_FTP_PASSWORD=\"s ecret\"\n").unwrap();
-        let found = secret_from_files(&dir.join("estivi.toml")).unwrap();
-        assert_eq!(found, "s ecret");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn dotenv_ignores_comments_and_other_keys() {
-        assert_eq!(dotenv_key("FOO=1\n# YONIQ_FTP_PASSWORD=no\n", "YONIQ_FTP_PASSWORD"), None);
-        assert_eq!(dotenv_key("YONIQ_FTP_PASSWORD=abc # trailing\n", "YONIQ_FTP_PASSWORD").as_deref(), Some("abc"));
-        assert_eq!(dotenv_key("no-equals\nYONIQ_FTP_PASSWORD=kept\n", "YONIQ_FTP_PASSWORD").as_deref(), Some("kept"));
-    }
 }

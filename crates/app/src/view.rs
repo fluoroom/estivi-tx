@@ -6,10 +6,9 @@ use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use image::RgbaImage;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
 
-use estivi_core::air::{Row, RowKind};
 use estivi_core::graphics::{Layer, LayerKind, Rgba, qr_module_px};
 use estivi_core::modes::Mode;
-use estivi_core::project::{BlockImage, GridTz, ImageRole};
+use estivi_core::project::GridTz;
 
 use crate::i18n;
 
@@ -53,6 +52,12 @@ pub fn duration(ms: f64) -> String {
     if s >= 60 { format!("{sign}{}:{:02}", s / 60, s % 60) } else { format!("{sign}{s} s") }
 }
 
+/// Durations in a timing table: sub-second pieces keep their milliseconds instead
+/// of rounding to "0 s" (PTT lead and tail are often a few hundred).
+pub fn span(ms: f64) -> String {
+    if ms.abs() < 995.0 { format!("{:.0} ms", ms) } else { duration(ms) }
+}
+
 pub fn clock_line(offset_ms: i64, error: &str, tz: GridTz) -> String {
     let now = Utc::now() + chrono::TimeDelta::milliseconds(offset_ms);
     let stamp = match tz {
@@ -70,6 +75,14 @@ pub fn clock_hm(t: DateTime<Utc>, tz: GridTz) -> String {
     match tz {
         GridTz::Utc => t.format("%H:%M").to_string(),
         GridTz::Local => t.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+    }
+}
+
+/// Start times carry the project offset in seconds, so the seconds matter here.
+pub fn clock_hms(t: DateTime<Utc>, tz: GridTz) -> String {
+    match tz {
+        GridTz::Utc => t.format("%H:%M:%S").to_string(),
+        GridTz::Local => t.with_timezone(&chrono::Local).format("%H:%M:%S").to_string(),
     }
 }
 
@@ -151,31 +164,6 @@ pub fn selector(layer: &Layer, canvas: (u32, u32), px: Option<(u32, u32)>) -> (f
     let dw = iw as f32 * scale;
     let dh = ih as f32 * scale;
     (x + (box_w - dw) * 0.5 / canvas.0 as f32, y + (box_h - dh) * 0.5 / canvas.1 as f32, dw / canvas.0 as f32, dh / canvas.1 as f32)
-}
-
-pub fn row_label(row: &Row) -> String {
-    let name = match row.kind {
-        RowKind::Vox => i18n::ts("VOX", "VOX"),
-        RowKind::Cw => i18n::ts("CW", "CW"),
-        RowKind::Ax25 => "AX.25",
-        RowKind::Ax25Mode => i18n::ts("AX.25 mode", "AX.25 modo"),
-        RowKind::Vis => "VIS",
-        RowKind::Welcome => i18n::ts("Welcome", "Bienvenida"),
-        RowKind::Bumper => i18n::ts("Bumper", "Cortina"),
-        RowKind::Image => i18n::ts("Image", "Imagen"),
-        RowKind::Bye => i18n::ts("Bye", "Despedida"),
-        RowKind::Silence => i18n::ts("Silence", "Silencio"),
-        RowKind::Total => i18n::ts("Total", "Total"),
-    };
-    if row.airs { name.into() } else { i18n::t(&format!("{name} (skipped)"), &format!("{name} (no sale)")) }
-}
-
-pub fn role_name(image: &BlockImage) -> String {
-    match image.role {
-        ImageRole::Normal => i18n::ts("Image", "Imagen").to_string(),
-        ImageRole::Pre { .. } => i18n::ts("Pre", "Antes").to_string(),
-        ImageRole::Post { .. } => i18n::ts("Post", "Después").to_string(),
-    }
 }
 
 pub fn file_name(path: &str) -> String {

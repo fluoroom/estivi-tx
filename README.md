@@ -1,5 +1,7 @@
 # Estivi
 
+Version 0.2.0. Project format 2.
+
 Estivi runs an SSTV channel the way a station runs a schedule. One window, no browser: a grid of programs and common blocks, the picture list of the block you are on, graphics on the block, the program, and the channel, a live view and the next transmission, an instant transmission, and activations that answer what the radio hears. It is a single executable for Linux and Windows (Rust + Slint).
 
 The channel is one frequency and one timezone, UTC or local. That timezone drives the clock, the grid, the block ends, and the times written into export names. The offset that shifts every start belongs to the whole project and does not move the written end. The interval does not belong to the project. Each common block has its own, in whole minutes. A program has one per weekday: Monday can be 14:00–14:30 every 6 minutes and Saturday 22:00–22:30 every 10, and changing one day leaves the others. Zero means one start in that block. Turning a weekday on copies the hours and interval from a day that already has them, and from then on that day can be changed on its own. A program repeats on the weekdays you mark, until a date or forever. A common block is one date and does not repeat. Pictures belong to that occurrence. A program day is stored once it has a picture, its own graphics, or its own SSTV mode, and it becomes a prediction again when all three are gone. An empty common block stays until you delete the card.
@@ -30,15 +32,17 @@ Programs are a separate window. A new program has no days and no hours until you
 
 “Transmit this date” turns that occurrence off. On a program card the other days stay as they are. On a common block the card stays on the grid, in gray. Start grid and Stop grid arm and disarm the schedule. Cut aborts the transmission that is on the air. Undo puts the channel back to the last load or save and does not write the file.
 
-The block panel lists the pictures and the bumper links. Click a row to select it; the picture-mode menu follows that picture. Each transmission shows its pieces and its total: CW, AX.25, VIS, welcome, the picture, bye, and the silence until the next start. Those time rows are not draggable. The AX.25 mode row and the VIS row travel with their picture, and clicking one selects that picture. Link up, link down, and unlink keep the bumper invariant: pre-bumpers sit immediately above their picture, post-bumpers immediately below, and a bumper does not point at a bumper. Dragging a row, or the up and down buttons, moves a whole group together and moves a bumper only within its own side. The timeline under the grid sizes each transmission by its duration, shows the picture, and marks the start, the end, and the interval. A yellow playhead appears when now is inside the block. Clicking a clip selects that picture.
+Channel and Equipment live in the free right side of the top card, as two tabs with the fields used every day. More channel settings and More equipment settings open the full configuration in a card over the window; nothing scrolls. They are not sidebar tabs; the sidebar keeps Block, Instant and Activations.
+
+The block panel lists only the pictures, in one flat list with the bumper links. A disabled picture stays in the list, dimmed, so it can be turned back on. Each row shows a small thumbnail, the file name, the mode, and the duration; a pre- or post-bumper carries its tag. At the bottom, under the configuration, the timing of the selected transmission (otherwise the first one) is calculated: the start clock, VOX, CW, AX.25, the welcome, each pre-bumper, VIS, the picture, each post-bumper, the bye, PTT lead and tail, the silence until the next start, and the total with the end clock. A transmission that does not fit is marked, and those rows are dim. Click a row to select it; the picture-mode menu follows that picture. Link up, link down, and unlink keep the bumper invariant: pre-bumpers sit immediately above their picture, post-bumpers immediately below, and a bumper does not point at a bumper. Dragging a row, or the up and down buttons, moves a whole group together and moves a bumper only within its own side. The timeline under the grid draws each transmission as its pieces, not one opaque box: VOX, CW, AX.25, the mode frame, VIS, a welcome or bye, each bumper, and the picture have their own color, label, and duration. It marks the start, the end, and the interval. A yellow playhead appears when now is inside the block. Clicking a piece selects that picture.
 
 Live shows the picture that is going out, filling from the top as the audio plays. VIS, CW, and the other non-picture pieces stay black. Next is the soonest transmission that has not started, with its name, the clock time, and the file name. It redraws when that transmission changes, or when the block, program, or channel graphics that paint on it change. It does not stay on a block that is already on the air, and it does not stay on a block that a time edit pushed behind another.
 
 Marking a bumper picks the mode from the file: Robot 12 color when some pixel has a channel difference above 8, Robot 8 black and white otherwise. An unreadable file stays Robot 12. You can change the mode afterwards. Unlinking leaves the mode and makes the row a normal picture.
 
-Instant transmission has its own tab. It works while the grid is armed and idle. While something holds the PTT the transmit control is disabled and says why. It is not cut by a block end. You can start from a picture of the selected block, with that picture's bumpers and, when it is the first or last enabled picture, the welcome or the bye.
+Instant transmission has its own tab. It works while the grid is armed and idle. While something holds the PTT the transmit control is disabled and says why. It is not cut by a block end. Transmit stays at the top of the tab while the rest scrolls. The tab shows the picture with a thumbnail, its mode, CW and AX.25, and a graphics level: none, channel only, program + channel, or block + program + channel. Edit graphics opens the editor for that level. Starting from a picture of the selected block carries that picture's first pre- and post-bumpers and, when it is the first or last enabled picture, the welcome or the bye. Every bumper, welcome and bye can be included or turned off, changed, cleared, and given its own mode.
 
-Activations have their own tab. They are not objects on the grid. A trigger is CW or DTMF, and any one match runs the activation. Actions run in order while that activation holds the PTT: CW, AX.25, DTMF, a local command, a picture, a random picture from a pool, pause, resume, or an API answer. Pause and resume do not key the radio and do not cut a transmission already on the air. A second match while that activation is queued or running does not enqueue another copy.
+Activations have their own tab. They are not objects on the grid. A trigger is CW or DTMF, and any one match runs the activation. The tab edits the activation in place: its name, its trigger, and one card per action with the fields that action needs; the add menu appends an action. Actions run in order while that activation holds the PTT: CW, AX.25, DTMF, a local command, a picture, a random picture from a pool, pause, resume, or an API answer. Pause and resume do not key the radio and do not cut a transmission already on the air. A second match while that activation is queued or running does not enqueue another copy.
 
 Graphics are edited per level. The block is painted first, then the program, then the channel, each on the frame the previous step left. A later step does not refill the background. The automatic base is never a bumper: the block editor uses the first normal image of that block, the program editor uses the first normal image of that program's next block, and the channel editor uses the next image the channel will send. The editor can also stand the graphics on color bars, a grid, or a gray ramp. Text, image, and QR layers sit on that frame. A QR can be text (with the same `{fields}`), a command, or an API. If the QR cannot be built, that layer is skipped and the rest of the frame goes out. Fields, also valid in text: `{block}`, `{range}`, `{days}`, `{daysleft}`, `{next}`.
 
@@ -54,7 +58,7 @@ The themes are Dark (the default; a saved Gray theme opens as Dark), Light, Drac
 
 An old format 1 file is rejected with a clear error and is not rewritten. There is no converter. Format 2 is the file.
 
-The clock of the operating system is not changed. On the first launch Estivi offers to follow `pool.ntp.org` and store the offset (every 6 hours, editable under Equipment). If you refuse, it does not ask again. If the server fails later, the last offset is kept and transmission is not blocked. The grid, the PTT cutoff, “now” for a folder import, and an export range all use the system clock plus that offset.
+The clock of the operating system is not changed. On the first launch Estivi offers to follow `pool.ntp.org` and store the offset (every 6 hours, editable under Equipment). If you refuse, it does not ask again. If the server fails later, the last offset is kept and transmission is not blocked. The grid, the PTT cutoff, “now” for a folder import, and an export range all use the system clock plus that offset. Under Equipment, the audio output, audio input, and serial port are picked from the devices the system reports, not typed; Refresh re-reads the lists. On Linux the audio lists keep the ALSA cards and PipeWire, with one plug PCM per card; PulseAudio and the ALSA plugin PCMs are hidden. A configured device that is no longer connected stays visible and selected, so opening the panel does not silently change the setup.
 
 `.ttf` / `.otf` fonts in a `fuentes/` folder next to the project or the executable show up in the graphics editor, besides the bundled Noto fonts.
 
@@ -67,14 +71,6 @@ Export is not saving the project. You pick a range and one of five shapes: one f
 ## SSTV modes
 
 Martin M1–M4, Scottie S1, S2 and DX, Robot 24, 36 and 72, Robot 12 color, Robot B/W 8, 12 and 24, PD 50, 90, 120, 160, 180, 240 and 290, and YoniQ. Every SSTV piece carries VIS. Scottie keeps its 9 ms sync glued to the VIS. YoniQ is the analog picture mode (320×256, about 70 s).
-
-## Image recovery
-
-DGT YQ is not an SSTV mode and it does not repair scan lines. When a YoniQ picture goes on the air, Estivi also stores a clean 320×256 BMP where YONIQ 1.13.3 stores one: FTP, passive, binary, directory `/web/imagenes_ioniq/` on `ioniq.evl.es`. The file is `@` plus the station callsign plus `ddmmyyyyhhnnss` plus `.BMP`. The fourteen digits are the machine's local time at the start of that picture, day then month then year, then the 24-hour clock, which is what YONIQ produces after it strips `/` from the short date and `:` from `hh:nn:ss`.
-
-The same digits ride in the mode frame (`ESTIVI MODE YQ 31102026140509`, mark before the stamp when there is one) so an Estivi receiver can ask for that exact file. A transmission with an empty callsign is not uploaded. The upload runs beside the audio. If the server is down, the picture still goes on the air.
-
-`[recovery]` in `estivi.toml` holds `enabled`, `host`, `port`, `user`, and `path`. It starts enabled, aimed at the YONIQ account. The password is `YONIQ_FTP_PASSWORD` in a `.env` file beside `estivi.toml`, beside the program, or in the directory you start it from. Copy `.env.example` and fill that line in. The program does not copy the password into `estivi.toml`. Without it the picture still goes on the air and the upload does not log in. Set `enabled = false` to stop trying.
 
 The mode of a picture is its own, otherwise the block's, otherwise the program's, otherwise the channel's. The picture, block, and program menus start with Inherited. The welcome and the bye use their own mode, otherwise the program's, otherwise the channel's. They do not take the block's mode.
 
@@ -96,11 +92,11 @@ cargo run -p estivi-core --example render -- ejemplo/canal-demo.estivi cuadro.pn
 cargo run -p estivi-core --example dispositivos
 ```
 
-`ejemplo/canal-demo.estivi` is a format 2 channel (callsign `LU1AQY`) with two programs, three stored blocks, two activations, a lower third, a QR, and a hidden weather layer. The pictures it names are not in the repository.
+`ejemplo/canal-demo.estivi` is a format 2 channel (callsign `LU1AQY`) with two programs, stored blocks, two activations, a lower third, a QR, and a hidden weather layer. The pictures it names are not in the repository.
 
 ## Verification
 
-`cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, the YoniQ recovery name and a local FTP store, bumper linking and `block02` import, export durations for the five shapes, and one short FLAC file.
+`cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, the ALSA/PipeWire device filter, bumper linking and `block02` import, export durations for the five shapes, and one short FLAC file.
 
 Decoded with QSSTV 9 over real audio, except where noted:
 
@@ -113,13 +109,13 @@ Decoded with QSSTV 9 over real audio, except where noted:
 | PD 90, 160, 180, 240 | Same code as the tested PD modes; not decoded separately |
 | Martin M3, M4 · Robot B/W 24 | QSSTV does not support them; they follow the slowrx table and are still untested on the air |
 | Robot 12 color | Duration is tested (12.0 s of picture after the VIS). QSSTV and slowrx do not transmit it; slowrx only has Robot 12 black and white, so this mode was not decoded there |
-| YoniQ | Analog mode from MMSSTV 1.13.2: 320×256, 69.837 s of picture, VIS `0x73` with odd parity. Not decoded with QSSTV. The BMP upload is off the air |
+| YoniQ | Analog mode from MMSSTV 1.13.2: 320×256, 69.837 s of picture, VIS `0x73` with odd parity. Not decoded with QSSTV |
 
 The color range default is full range, which is what QSSTV decodes as a normal picture. Studio range remains an option and comes out washed on QSSTV.
 
 Serial PTT and CAT (`rigctld`) are implemented and have not been tried on a radio. RTS and DTR are chosen apart: off, positive (high while keyed), or negative (high at rest). On Linux, the `front` PCM of some cards goes through a software mixer: if the level is very low, pick the `plughw` device or raise that control.
 
-The window process was started on a display with `ejemplo/canal-demo.estivi`. It opened the default audio device and stayed up until it was stopped. The click-through — create a program in its window and see the cards, reject an overlap, mark a bumper, read the turn total, disable a program, export a short FLAC, and confirm that instant transmit is refused while the grid holds the PTT — was not clicked through in this run.
+The window was exercised headlessly against `ejemplo/canal-demo.estivi`: a card selected from the grid, the flat picture list with thumbnails, the timing breakdown, the per-piece timeline, a picture copied into the instant tab with its bumper toggles and graphics levels, the graphics editor opened from that tab, and the audio and serial device lists. Creating a program in its window, rejecting an overlap, exporting a FLAC, and a real transmission were not exercised in that run.
 
 ## Licenses
 

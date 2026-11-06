@@ -10,7 +10,6 @@ use crate::dynamic::{DataCtx, expand};
 use crate::encoder::{VOX_MS, vox_segments};
 use crate::modes::{Family, Mode, SCOTTIE_SYNC_MS, VIS_HEADER_MS};
 use crate::project::{BlockImage, ImageRole, Project, Still};
-use crate::recovery;
 use crate::schedule::{Announcement, DaysLeft, Occurrence, announcements, days_left, weekdays_label};
 use crate::synth::{self, Seg};
 
@@ -22,6 +21,21 @@ pub enum Due {
     Wait,
     Go,
     Skip,
+}
+
+/// Which graphics a manual transmission paints on its pictures. The grid always
+/// uses `Block`, the full block → program → channel cascade.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GraphicsLevel {
+    /// The composed picture only: no text, no logo, no frame.
+    None,
+    /// Channel graphics only.
+    Channel,
+    /// Program and channel graphics.
+    Program,
+    /// Block, program and channel graphics.
+    #[default]
+    Block,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,8 +61,6 @@ pub struct Piece {
     pub image_id: i64,
     pub chain: i64,
     pub text: String,
-    /// `ddmmyyyyhhnnss` for a YoniQ picture. Empty for every other piece.
-    pub stamp: String,
 }
 
 #[derive(Clone, Debug)]
@@ -74,6 +86,7 @@ pub struct Turn {
     pub info: String,
     /// Grid turns are cut at the block end. Instant and activation turns are not.
     pub cutoff: bool,
+    pub graphics: GraphicsLevel,
     pub freq_hz: u64,
     pub mode: Mode,
     pub call: String,
@@ -160,6 +173,7 @@ pub fn plan_occurrence(project: &Project, occ: &Occurrence, today: NaiveDate, le
                 lead_ms,
                 tail_ms,
                 cutoff: true,
+                graphics: GraphicsLevel::Block,
                 image,
                 pres: bumpers(&occ.images, image.id, true),
                 posts: bumpers(&occ.images, image.id, false),
@@ -195,6 +209,7 @@ struct Build<'a> {
     lead_ms: u32,
     tail_ms: u32,
     cutoff: bool,
+    graphics: GraphicsLevel,
     image: &'a BlockImage,
     pres: Vec<&'a BlockImage>,
     posts: Vec<&'a BlockImage>,
@@ -256,18 +271,18 @@ fn build(project: &Project, b: Build) -> Turn {
         pieces.push(ax25_piece(&info, &project.station.call));
     }
     if let Some(still) = b.welcome.filter(|s| !s.path.trim().is_empty()) {
-        push_sstv(&mut pieces, PieceKind::Welcome, &still.path, project.still_mode(still.mode, b.program_id), -1, i64::try_from(b.image.id).unwrap_or(-1), project.ax25.mode, Some("WELCOME"), &project.station.call, b.at, b.lead_ms);
+        push_sstv(&mut pieces, PieceKind::Welcome, &still.path, project.still_mode(still.mode, b.program_id), -1, i64::try_from(b.image.id).unwrap_or(-1), project.ax25.mode, Some("WELCOME"), &project.station.call);
     }
     let chain = i64::try_from(b.image.id).unwrap_or(-1);
     for pre in &b.pres {
-        push_sstv(&mut pieces, PieceKind::Bumper, &pre.path, project.picture_mode(pre.mode, b.block_id, b.program_id), i64::try_from(pre.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER PRE"), &project.station.call, b.at, b.lead_ms);
+        push_sstv(&mut pieces, PieceKind::Bumper, &pre.path, project.picture_mode(pre.mode, b.block_id, b.program_id), i64::try_from(pre.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER PRE"), &project.station.call);
     }
-    push_sstv(&mut pieces, PieceKind::Image, &b.image.path, mode, chain, chain, project.ax25.mode, None, &project.station.call, b.at, b.lead_ms);
+    push_sstv(&mut pieces, PieceKind::Image, &b.image.path, mode, chain, chain, project.ax25.mode, None, &project.station.call);
     for post in &b.posts {
-        push_sstv(&mut pieces, PieceKind::Bumper, &post.path, project.picture_mode(post.mode, b.block_id, b.program_id), i64::try_from(post.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER POST"), &project.station.call, b.at, b.lead_ms);
+        push_sstv(&mut pieces, PieceKind::Bumper, &post.path, project.picture_mode(post.mode, b.block_id, b.program_id), i64::try_from(post.id).unwrap_or(-1), chain, project.ax25.mode, Some("BUMPER POST"), &project.station.call);
     }
     if let Some(still) = b.bye.filter(|s| !s.path.trim().is_empty()) {
-        push_sstv(&mut pieces, PieceKind::Bye, &still.path, project.still_mode(still.mode, b.program_id), -1, chain, project.ax25.mode, Some("BYE"), &project.station.call, b.at, b.lead_ms);
+        push_sstv(&mut pieces, PieceKind::Bye, &still.path, project.still_mode(still.mode, b.program_id), -1, chain, project.ax25.mode, Some("BYE"), &project.station.call);
     }
     if !info.is_empty() {
         pieces.push(ax25_piece(&info, &project.station.call));
@@ -295,6 +310,7 @@ fn build(project: &Project, b: Build) -> Turn {
         weekdays: b.weekdays,
         info,
         cutoff: b.cutoff,
+        graphics: b.graphics,
         freq_hz: project.freq_hz,
         mode,
         call: project.station.call.clone(),
@@ -355,7 +371,7 @@ fn data_ctx(project: &Project, b: &Build, mode: Mode, days: &Option<String>, day
 }
 
 fn piece(kind: PieceKind, ms: f64, path: &str, mode: Option<Mode>, image_id: i64, chain: i64, text: String) -> Piece {
-    Piece { kind, ms, path: path.to_string(), mode, image_id, chain, text, stamp: String::new() }
+    Piece { kind, ms, path: path.to_string(), mode, image_id, chain, text }
 }
 
 fn cw_piece(text: &str, wpm: f32, tone: f32) -> Piece {
@@ -367,27 +383,16 @@ fn ax25_piece(text: &str, call: &str) -> Piece {
     piece(PieceKind::Ax25, ax25::duration_ms(text, call), "", None, -1, -1, text.to_string())
 }
 
-/// Local `ddmmyyyyhhnnss` at the moment this picture's scan is planned to start.
-fn yoniq_stamp(at: DateTime<Utc>, lead_ms: u32, before_ms: f64) -> String {
-    let start = at + TimeDelta::milliseconds(i64::from(lead_ms) + before_ms.round() as i64);
-    recovery::stamp(start.with_timezone(&chrono::Local).naive_local())
-}
-
-fn push_sstv(pieces: &mut Vec<Piece>, kind: PieceKind, path: &str, mode: Mode, image_id: i64, chain: i64, mode_ax25: bool, mark: Option<&str>, call: &str, at: DateTime<Utc>, lead_ms: u32) {
-    let stamp = (mode == Mode::Yoniq).then(|| yoniq_stamp(at, lead_ms, pieces.iter().map(|p| p.ms).sum()));
+fn push_sstv(pieces: &mut Vec<Piece>, kind: PieceKind, path: &str, mode: Mode, image_id: i64, chain: i64, mode_ax25: bool, mark: Option<&str>, call: &str) {
     if mode_ax25 {
-        let text = ax25::mode_line(mode.spec().short, mark, stamp.as_deref());
+        let text = ax25::mode_line(mode.spec().short, mark);
         pieces.push(piece(PieceKind::Ax25Mode, ax25::duration_ms(&text, call), "", Some(mode), image_id, chain, text));
     }
     let spec = mode.spec();
     let vis = VIS_HEADER_MS + if spec.family == Family::Scottie { SCOTTIE_SYNC_MS } else { 0.0 };
     pieces.push(piece(PieceKind::Vis, vis, "", Some(mode), image_id, chain, String::new()));
     let scan = spec.tx_lines as f64 * spec.line_ms();
-    let mut picture = piece(kind, scan, path, Some(mode), image_id, chain, String::new());
-    if let Some(stamp) = stamp {
-        picture.stamp = stamp;
-    }
-    pieces.push(picture);
+    pieces.push(piece(kind, scan, path, Some(mode), image_id, chain, String::new()));
 }
 
 /// Audio for one piece. SSTV picture pieces are not included: the engine scans those from the composed frame.
@@ -406,6 +411,7 @@ pub fn piece_segments(piece: &Piece, call: &str, wpm: f32, tone: f32) -> Option<
 pub struct Manual {
     pub cw: bool,
     pub ax25: bool,
+    pub graphics: GraphicsLevel,
     pub welcome: Option<Still>,
     pub pre: Vec<Still>,
     pub image: Still,
@@ -435,6 +441,7 @@ pub fn plan_manual(project: &Project, manual: &Manual, lead_ms: u32, tail_ms: u3
             lead_ms,
             tail_ms,
             cutoff: false,
+            graphics: manual.graphics,
             image: &image,
             pres: pres.iter().collect(),
             posts: posts.iter().collect(),
@@ -646,6 +653,7 @@ mod tests {
             &Manual {
                 cw: false,
                 ax25: true,
+                graphics: GraphicsLevel::Block,
                 welcome: None,
                 pre: vec![],
                 image: Still { path: "x.png".into(), mode: Some(Mode::Robot12) },
@@ -691,20 +699,4 @@ mod tests {
         assert!(rows.last().unwrap().kind == RowKind::Silence);
     }
 
-    #[test]
-    fn yoniq_names_the_recovery_file_in_the_mode_frame() {
-        let (mut p, _) = channel("14:30", pics(1, Mode::Yoniq));
-        p.ax25.mode = true;
-        p.programs[0].welcome = None;
-        p.programs[0].bye = None;
-        let today = NaiveDate::from_ymd_opt(2026, 10, 26).unwrap();
-        let occ = crate::schedule::occurrences(&p, today, today + TimeDelta::days(1), today).into_iter().next().unwrap();
-        let turns = plan_occurrence(&p, &occ, today, 0, 0, 1, occ.start);
-        let picture = turns[0].pieces.iter().find(|p| p.kind == PieceKind::Image).unwrap();
-        assert_eq!(picture.stamp.len(), 14);
-        assert!(picture.stamp.bytes().all(|b| b.is_ascii_digit()));
-        let mode = turns[0].pieces.iter().find(|p| p.kind == PieceKind::Ax25Mode).unwrap();
-        assert!(mode.text.contains(&picture.stamp), "{}", mode.text);
-        assert!(mode.text.starts_with("ESTIVI MODE YQ "));
-    }
 }

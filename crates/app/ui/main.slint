@@ -1,5 +1,5 @@
 import { ComboBox, CheckBox, LineEdit, SpinBox, TextEdit, ScrollView, Palette } from "std-widgets.slint";
-import { Theme, ToolButton, Field, PanelTitle, Pill, BoundCombo } from "theme.slint";
+import { Theme, ToolButton, Field, MiniField, PanelTitle, Pill, BoundCombo } from "theme.slint";
 import { CardItem, PicItem, StepItem, TxItem, TickItem, ActionItem } from "types.slint";
 
 component DayColumn inherits Rectangle {
@@ -107,12 +107,17 @@ export component MainWindow inherits Window {
     in-out property <int> today-cell: -1;
     in-out property <[CardItem]> cards;
     in-out property <int> side: 0;
+    // Settings strip in the upper card: 0 channel, 1 equipment.
+    in-out property <int> gear: 0;
+    // 0 closed; 1 channel settings; 2 equipment settings.
+    in-out property <int> settings-page: 0;
     in-out property <string> block-title;
     in-out property <bool> has-block;
     in-out property <bool> inherited;
     in-out property <bool> ghost;
     in-out property <[PicItem]> pics;
     in-out property <[StepItem]> steps;
+    in-out property <string> timing-caption;
     in-out property <string> tx-total;
     in-out property <bool> block-on: true;
     in-out property <string> form-name;
@@ -143,24 +148,47 @@ export component MainWindow inherits Window {
     in-out property <bool> instant-ok: true;
     in-out property <string> instant-why;
     in-out property <string> instant-path;
+    in-out property <string> instant-file;
+    in-out property <image> instant-thumb;
+    in-out property <bool> instant-has-thumb;
+    in-out property <bool> instant-can-use-block;
     in-out property <int> instant-mode;
     in-out property <bool> instant-cw: true;
     in-out property <bool> instant-ax;
     in-out property <string> instant-pre;
-    in-out property <string> instant-post;
+    in-out property <string> instant-pre-name;
+    in-out property <bool> instant-pre-on;
     in-out property <int> instant-pre-mode;
+    in-out property <string> instant-post;
+    in-out property <string> instant-post-name;
+    in-out property <bool> instant-post-on;
     in-out property <int> instant-post-mode;
+    in-out property <string> instant-welcome;
+    in-out property <string> instant-welcome-name;
+    in-out property <bool> instant-welcome-on;
+    in-out property <int> instant-welcome-mode;
+    in-out property <string> instant-bye;
+    in-out property <string> instant-bye-name;
+    in-out property <bool> instant-bye-on;
+    in-out property <int> instant-bye-mode;
+    in-out property <[string]> instant-graphics-choices;
+    in-out property <int> instant-graphics-index;
+    in-out property <string> instant-graphics-hint;
+    in-out property <bool> instant-graphics-edit-ok;
     in-out property <string> act-list;
     in-out property <string> ptt-note;
     in-out property <int> ptt-index: 1;
-    in-out property <string> ptt-port;
     in-out property <int> lead-ms: 200;
     in-out property <int> tail-ms: 200;
     in-out property <string> cat-host: "127.0.0.1";
     in-out property <int> cat-port: 4532;
     in-out property <bool> cat-freq;
-    in-out property <string> audio-out;
-    in-out property <string> audio-in;
+    in-out property <[string]> audio-outs;
+    in-out property <[string]> audio-ins;
+    in-out property <[string]> serial-ports;
+    in-out property <int> audio-out-index;
+    in-out property <int> audio-in-index;
+    in-out property <int> serial-index;
     in-out property <int> lang-index;
     in-out property <bool> ntp-on;
     in-out property <string> ntp-server: "pool.ntp.org";
@@ -211,7 +239,6 @@ export component MainWindow inherits Window {
     in-out property <string> exp-note;
     in-out property <string> act-name;
     in-out property <string> act-code;
-    in-out property <string> act-script;
     in-out property <int> act-source;
     in-out property <bool> act-on: true;
 
@@ -248,6 +275,8 @@ export component MainWindow inherits Window {
     callback confirm(int);
     callback transmit();
     callback edit-activation(int);
+    callback refresh-devices();
+    callback open-instant-graphics();
     callback files-ready(string, [string]);
     callback saved-as(string);
     callback opened(string);
@@ -297,9 +326,9 @@ export component MainWindow inherits Window {
 
         HorizontalLayout {
             spacing: 8px;
-            height: 168px;
+            height: 190px;
             Rectangle {
-                width: 250px;
+                width: 200px;
                 background: #000000;
                 border-radius: Theme.radius;
                 border-width: 1px;
@@ -321,7 +350,7 @@ export component MainWindow inherits Window {
                 }
             }
             Rectangle {
-                width: 250px;
+                width: 200px;
                 background: #000000;
                 border-radius: Theme.radius;
                 border-width: 1px;
@@ -346,34 +375,161 @@ export component MainWindow inherits Window {
                 border-radius: Theme.radius;
                 border-width: 1px;
                 border-color: Theme.border;
-                VerticalLayout {
+                HorizontalLayout {
                     padding: 8px;
-                    spacing: 4px;
-                    alignment: start;
-                    Text { text: root.on-air; font-size: 15px; font-weight: 700; color: root.busy ? Theme.on-air : Theme.text; overflow: elide; }
-                    Text { text: root.next-up; font-size: 12px; color: Theme.text-dim; overflow: elide; }
-                    HorizontalLayout {
-                        spacing: 6px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        width: 200px;
+                        spacing: 4px;
                         alignment: start;
-                        Text { text: root.clock-note; font-size: 12px; color: Theme.text; vertical-alignment: center; }
-                        ComboBox {
-                            model: [@tr("UTC"), @tr("Local")];
-                            current-index: root.tz-index;
-                            selected => { root.tz-index = self.current-index; root.set-num("tz", self.current-index); }
+                        Text { text: root.on-air; font-size: 15px; font-weight: 700; color: root.busy ? Theme.on-air : Theme.text; overflow: elide; }
+                        Text { text: root.next-up; font-size: 12px; color: Theme.text-dim; overflow: elide; }
+                        Text { text: root.clock-note; font-size: 11px; color: Theme.text; overflow: elide; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            ComboBox {
+                                width: 90px;
+                                model: [@tr("UTC"), @tr("Local")];
+                                current-index: root.tz-index;
+                                selected => { root.tz-index = self.current-index; root.set-num("tz", self.current-index); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
                         }
-                    }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        alignment: start;
-                        ToolButton {
-                            text: root.agenda ? @tr("Stop grid") : @tr("Start grid");
-                            primary: !root.agenda;
-                            danger: root.agenda;
-                            clicked => { root.set-agenda(!root.agenda); }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            ToolButton {
+                                text: root.agenda ? @tr("Stop grid") : @tr("Start grid");
+                                primary: !root.agenda;
+                                danger: root.agenda;
+                                clicked => { root.set-agenda(!root.agenda); }
+                            }
+                            ToolButton { text: @tr("Cut"); danger: true; enabled: root.busy; clicked => { root.stop(); } }
                         }
-                        ToolButton { text: @tr("Cut"); danger: true; enabled: root.busy; clicked => { root.stop(); } }
+                        Text { text: root.last-log; font-size: 10px; color: Theme.text-faint; overflow: elide; }
                     }
-                    Text { text: root.last-log; font-size: 11px; color: Theme.text-faint; overflow: elide; }
+                    Rectangle { width: 1px; background: Theme.border; }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        spacing: 3px;
+                        HorizontalLayout {
+                            spacing: 4px;
+                            ToolButton {
+                                text: @tr("Channel");
+                                height: 24px;
+                                active: root.gear == 0;
+                                clicked => { root.gear = 0; }
+                            }
+                            ToolButton {
+                                text: @tr("Equipment");
+                                height: 24px;
+                                active: root.gear == 1;
+                                clicked => { root.gear = 1; root.refresh-devices(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            if root.gear == 1 : ToolButton {
+                                text: @tr("Refresh");
+                                height: 24px;
+                                clicked => { root.refresh-devices(); }
+                            }
+                        }
+                        if root.gear == 0 : VerticalLayout {
+                            spacing: 2px;
+                            HorizontalLayout {
+                                spacing: 6px;
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("Name");
+                                    LineEdit { text: root.channel-name; height: 22px; horizontal-stretch: 1; edited(v) => { root.channel-name = v; root.set-field("channel", v); } }
+                                }
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("Callsign");
+                                    LineEdit { text: root.call-text; height: 22px; horizontal-stretch: 1; edited(v) => { root.call-text = v; root.set-field("call", v); } }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("Freq. (MHz)");
+                                    LineEdit { text: root.freq-text; height: 22px; horizontal-stretch: 1; edited(v) => { root.freq-text = v; root.set-field("freq", v); } }
+                                }
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("Mode");
+                                    ComboBox { model: root.modes; current-index: root.mode-index; height: 22px; horizontal-stretch: 1; selected => { root.mode-index = self.current-index; root.set-num("mode", self.current-index); } }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("Min pause (s)");
+                                    SpinBox { minimum: 0; maximum: 600; value: root.pause-s; height: 22px; horizontal-stretch: 1; edited(v) => { root.pause-s = v; root.set-num("pause", v); } }
+                                }
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("CW text");
+                                    LineEdit { text: root.cw-text; height: 22px; horizontal-stretch: 1; edited(v) => { root.cw-text = v; root.set-field("cw-text", v); } }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                ToolButton {
+                                    icon: "gear";
+                                    text: @tr("More channel settings…");
+                                    height: 24px;
+                                    clicked => { root.settings-page = 1; }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                        }
+                        if root.gear == 1 : VerticalLayout {
+                            spacing: 2px;
+                            HorizontalLayout {
+                                spacing: 6px;
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("PTT");
+                                    ComboBox { model: [@tr("None"), @tr("VOX"), @tr("Serial"), @tr("CAT")]; current-index: root.ptt-index; height: 22px; horizontal-stretch: 1; selected => { root.ptt-index = self.current-index; root.set-num("ptt", self.current-index); } }
+                                }
+                                MiniField {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    label: @tr("Serial port");
+                                    ComboBox { model: root.serial-ports; current-index: root.serial-index; height: 22px; horizontal-stretch: 1; selected => { root.serial-index = self.current-index; root.set-num("serial", self.current-index); } }
+                                }
+                            }
+                            MiniField {
+                                label: @tr("Audio output");
+                                ComboBox { model: root.audio-outs; current-index: root.audio-out-index; height: 22px; horizontal-stretch: 1; selected => { root.audio-out-index = self.current-index; root.set-num("audio-out", self.current-index); } }
+                            }
+                            MiniField {
+                                label: @tr("Audio input");
+                                ComboBox { model: root.audio-ins; current-index: root.audio-in-index; height: 22px; horizontal-stretch: 1; selected => { root.audio-in-index = self.current-index; root.set-num("audio-in", self.current-index); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                ToolButton {
+                                    icon: "gear";
+                                    text: @tr("More equipment settings…");
+                                    height: 24px;
+                                    clicked => { root.settings-page = 2; }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                        }
+
+                    }
                 }
             }
         }
@@ -473,8 +629,12 @@ export component MainWindow inherits Window {
                         ToolButton { text: @tr("Block"); active: root.side == 0; clicked => { root.side = 0; } }
                         ToolButton { text: @tr("Instant"); active: root.side == 1; clicked => { root.side = 1; } }
                         ToolButton { text: @tr("Activations"); active: root.side == 2; clicked => { root.side = 2; } }
-                        ToolButton { text: @tr("Channel"); active: root.side == 3; clicked => { root.side = 3; } }
-                        ToolButton { text: @tr("Equipment"); active: root.side == 4; clicked => { root.side = 4; } }
+                    }
+                    if root.side == 1 : ToolButton {
+                        text: @tr("Transmit");
+                        primary: true;
+                        enabled: root.instant-ok && root.instant-path != "";
+                        clicked => { root.transmit(); }
                     }
                     ScrollView {
                         vertical-stretch: 1;
@@ -542,26 +702,49 @@ export component MainWindow inherits Window {
                                         ToolButton { text: @tr("Unlink"); clicked => { root.pic("unlink", -1); } }
                                     }
                                     for pic in root.pics : Rectangle {
-                                        height: 26px;
-                                        background: pic.selected ? Theme.accent.transparentize(0.75) : pic.role == 4 ? Theme.panel-raised : transparent;
+                                        height: 30px;
+                                        background: pic.selected ? Theme.accent.transparentize(0.8) : transparent;
                                         border-radius: Theme.radius;
                                         border-width: pic.selected ? 1px : 0px;
                                         border-color: Theme.accent;
                                         HorizontalLayout {
-                                            padding-left: pic.ghost && pic.group >= 0 ? 18px : 6px;
-                                            padding-right: 4px;
-                                            spacing: 4px;
-                                            Text {
-                                                text: pic.label;
-                                                font-size: 12px;
-                                                color: pic.ghost ? Theme.text-faint : pic.on ? Theme.text : Theme.text-faint;
-                                                vertical-alignment: center;
-                                                horizontal-stretch: 1;
-                                                overflow: elide;
+                                            padding-left: 4px;
+                                            padding-right: 6px;
+                                            spacing: 6px;
+                                            if pic.has-thumb : Image {
+                                                source: pic.thumb;
+                                                width: 34px;
+                                                height: 24px;
+                                                image-fit: contain;
+                                                opacity: pic.on ? 1.0 : 0.45;
                                             }
-                                            Text { text: pic.detail; font-size: 11px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
+                                                alignment: center;
+                                                spacing: 0px;
+                                                Text {
+                                                    text: pic.label;
+                                                    font-size: 12px;
+                                                    color: pic.on ? Theme.text : Theme.text-faint;
+                                                    overflow: elide;
+                                                }
+                                                Text {
+                                                    text: pic.detail;
+                                                    font-size: 10px;
+                                                    color: Theme.text-dim;
+                                                    overflow: elide;
+                                                }
+                                            }
+                                            if pic.role != 0 : Text {
+                                                text: pic.role == 1 ? @tr("Pre") : @tr("Post");
+                                                font-size: 10px;
+                                                font-weight: 600;
+                                                color: Theme.tx-bumper;
+                                                vertical-alignment: center;
+                                            }
                                         }
-                                        if !pic.ghost : TouchArea {
+                                        TouchArea {
                                             width: 100%;
                                             height: 100%;
                                             property <length> y0;
@@ -573,16 +756,17 @@ export component MainWindow inherits Window {
                                                     if self.mouse-y - self.y0 < 8px && self.y0 - self.mouse-y < 8px {
                                                         root.pic("select", pic.id);
                                                     } else {
-                                                        root.pic("nudge", round((self.mouse-y - self.y0) / 26px));
+                                                        root.pic("nudge", round((self.mouse-y - self.y0) / 30px));
                                                     }
                                                 }
                                             }
                                         }
-                                        if pic.ghost && pic.group >= 0 : TouchArea {
-                                            width: 100%;
-                                            height: 100%;
-                                            clicked => { root.pic("select", pic.group); }
-                                        }
+                                    }
+                                    if root.pics.length == 0 : Text {
+                                        text: @tr("No pictures in this block yet. Add files, or import a folder of numbered blocks.");
+                                        font-size: 12px;
+                                        color: Theme.text-dim;
+                                        wrap: word-wrap;
                                     }
                                     HorizontalLayout {
                                         spacing: 4px;
@@ -599,28 +783,168 @@ export component MainWindow inherits Window {
                                             selected(i) => { root.pic("mode", i); }
                                         }
                                     }
+                                    PanelTitle { text: @tr("Timing"); }
+                                    Text {
+                                        text: root.timing-caption;
+                                        font-size: 11px;
+                                        color: Theme.text-dim;
+                                        wrap: word-wrap;
+                                    }
+                                    for step in root.steps : HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: step.label;
+                                            font-size: 12px;
+                                            color: step.dim ? Theme.text-faint : Theme.text;
+                                            horizontal-stretch: 1;
+                                            overflow: elide;
+                                        }
+                                        Text {
+                                            text: step.time;
+                                            font-size: 12px;
+                                            font-family: Theme.mono;
+                                            color: Theme.text-dim;
+                                        }
+                                    }
+                                    Text {
+                                        text: root.tx-total;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        color: Theme.text;
+                                        wrap: word-wrap;
+                                    }
                                 }
                             }
                             if root.side == 1 : VerticalLayout {
                                 spacing: 8px;
                                 Text { text: @tr("Instant transmission is outside the grid. A block end does not cut it."); color: Theme.text-dim; font-size: 12px; wrap: word-wrap; }
                                 if !root.instant-ok : Text { text: root.instant-why; color: Theme.on-air; font-size: 13px; wrap: word-wrap; }
-                                ToolButton { text: @tr("Use the selected picture"); clicked => { root.pick("from-block"); } }
-                                Text { text: root.instant-path; font-size: 12px; color: Theme.text; wrap: word-wrap; }
-                                ToolButton { text: @tr("Choose picture"); clicked => { root.pick("instant"); } }
+                                PanelTitle { text: @tr("Picture"); }
+                                if root.instant-has-thumb : Rectangle {
+                                    height: 120px;
+                                    background: #000000;
+                                    border-radius: Theme.radius;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+                                    clip: true;
+                                    Image { source: root.instant-thumb; width: 100%; height: 100%; image-fit: contain; }
+                                }
+                                Text {
+                                    text: root.instant-file == "" ? @tr("No picture chosen.") : root.instant-file;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: root.instant-file == "" ? Theme.text-faint : Theme.text;
+                                    wrap: word-wrap;
+                                }
+                                if !root.instant-has-thumb && root.instant-file != "" : Text { text: root.instant-path; font-size: 10px; color: Theme.text-faint; overflow: elide; }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    ToolButton {
+                                        text: @tr("Use the selected picture");
+                                        enabled: root.instant-can-use-block;
+                                        clicked => { root.pick("from-block"); }
+                                    }
+                                    ToolButton { text: @tr("Choose picture"); clicked => { root.pick("instant"); } }
+                                    ToolButton { text: @tr("Clear"); enabled: root.instant-path != ""; clicked => { root.set-field("instant-clear", ""); } }
+                                }
                                 Field {
                                     label: @tr("Mode");
                                     ComboBox { model: root.modes; current-index: root.instant-mode; selected => { root.instant-mode = self.current-index; } }
                                 }
-                                CheckBox { text: @tr("CW identification"); checked: root.instant-cw; toggled => { root.instant-cw = self.checked; } }
-                                CheckBox { text: @tr("AX.25 info"); checked: root.instant-ax; toggled => { root.instant-ax = self.checked; } }
-                                Text { text: @tr("Pre bumper") + ": " + root.instant-pre; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                                ToolButton { text: @tr("Set pre bumper"); clicked => { root.pick("pre"); } }
-                                ComboBox { model: root.modes; current-index: root.instant-pre-mode; selected => { root.instant-pre-mode = self.current-index; } }
-                                Text { text: @tr("Post bumper") + ": " + root.instant-post; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                                ToolButton { text: @tr("Set post bumper"); clicked => { root.pick("post"); } }
-                                ComboBox { model: root.modes; current-index: root.instant-post-mode; selected => { root.instant-post-mode = self.current-index; } }
-                                ToolButton { text: @tr("Transmit"); primary: true; enabled: root.instant-ok; clicked => { root.transmit(); } }
+                                PanelTitle { text: @tr("Transmission"); }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    CheckBox { text: @tr("CW identification"); checked: root.instant-cw; horizontal-stretch: 1; toggled => { root.instant-cw = self.checked; } }
+                                    CheckBox { text: @tr("AX.25 info"); checked: root.instant-ax; horizontal-stretch: 1; toggled => { root.instant-ax = self.checked; } }
+                                }
+                                PanelTitle { text: @tr("Graphics"); }
+                                Field {
+                                    label: @tr("Paint on the picture");
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        ComboBox {
+                                            horizontal-stretch: 1;
+                                            model: root.instant-graphics-choices;
+                                            current-index: root.instant-graphics-index;
+                                            selected => { root.instant-graphics-index = self.current-index; root.set-num("instant-graphics", self.current-index); }
+                                        }
+                                        ToolButton {
+                                            text: @tr("Edit graphics");
+                                            enabled: root.instant-graphics-edit-ok;
+                                            clicked => { root.open-instant-graphics(); }
+                                        }
+                                    }
+                                }
+                                Text { text: root.instant-graphics-hint; font-size: 11px; color: Theme.text-dim; wrap: word-wrap; }
+                                PanelTitle { text: @tr("Pre bumper"); }
+                                Text { text: root.instant-pre == "" ? @tr("None") : root.instant-pre-name; font-size: 12px; color: root.instant-pre == "" ? Theme.text-faint : Theme.text; wrap: word-wrap; }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    CheckBox {
+                                        text: @tr("Include");
+                                        checked: root.instant-pre-on;
+                                        enabled: root.instant-pre != "";
+                                        toggled => { root.instant-pre-on = self.checked; }
+                                    }
+                                    ToolButton { text: root.instant-pre == "" ? @tr("Choose") : @tr("Change"); clicked => { root.pick("pre"); } }
+                                    ToolButton { text: @tr("Clear"); enabled: root.instant-pre != ""; clicked => { root.set-field("instant-pre-clear", ""); } }
+                                }
+                                if root.instant-pre != "" : Field {
+                                    label: @tr("Mode");
+                                    ComboBox { model: root.modes; current-index: root.instant-pre-mode; selected => { root.instant-pre-mode = self.current-index; } }
+                                }
+                                PanelTitle { text: @tr("Post bumper"); }
+                                Text { text: root.instant-post == "" ? @tr("None") : root.instant-post-name; font-size: 12px; color: root.instant-post == "" ? Theme.text-faint : Theme.text; wrap: word-wrap; }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    CheckBox {
+                                        text: @tr("Include");
+                                        checked: root.instant-post-on;
+                                        enabled: root.instant-post != "";
+                                        toggled => { root.instant-post-on = self.checked; }
+                                    }
+                                    ToolButton { text: root.instant-post == "" ? @tr("Choose") : @tr("Change"); clicked => { root.pick("post"); } }
+                                    ToolButton { text: @tr("Clear"); enabled: root.instant-post != ""; clicked => { root.set-field("instant-post-clear", ""); } }
+                                }
+                                if root.instant-post != "" : Field {
+                                    label: @tr("Mode");
+                                    ComboBox { model: root.modes; current-index: root.instant-post-mode; selected => { root.instant-post-mode = self.current-index; } }
+                                }
+                                PanelTitle { text: @tr("Welcome and bye"); }
+                                Text { text: @tr("Welcome"); font-size: 12px; font-weight: 600; color: Theme.text; }
+                                Text { text: root.instant-welcome == "" ? @tr("None") : root.instant-welcome-name; font-size: 12px; color: root.instant-welcome == "" ? Theme.text-faint : Theme.text; wrap: word-wrap; }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    CheckBox {
+                                        text: @tr("Include");
+                                        checked: root.instant-welcome-on;
+                                        enabled: root.instant-welcome != "";
+                                        toggled => { root.instant-welcome-on = self.checked; }
+                                    }
+                                    ToolButton { text: root.instant-welcome == "" ? @tr("Choose") : @tr("Change"); clicked => { root.pick("instant-welcome"); } }
+                                    ToolButton { text: @tr("Clear"); enabled: root.instant-welcome != ""; clicked => { root.set-field("instant-welcome-clear", ""); } }
+                                }
+                                if root.instant-welcome != "" : Field {
+                                    label: @tr("Mode");
+                                    ComboBox { model: root.modes; current-index: root.instant-welcome-mode; selected => { root.instant-welcome-mode = self.current-index; } }
+                                }
+                                Text { text: @tr("Bye"); font-size: 12px; font-weight: 600; color: Theme.text; }
+                                Text { text: root.instant-bye == "" ? @tr("None") : root.instant-bye-name; font-size: 12px; color: root.instant-bye == "" ? Theme.text-faint : Theme.text; wrap: word-wrap; }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    CheckBox {
+                                        text: @tr("Include");
+                                        checked: root.instant-bye-on;
+                                        enabled: root.instant-bye != "";
+                                        toggled => { root.instant-bye-on = self.checked; }
+                                    }
+                                    ToolButton { text: root.instant-bye == "" ? @tr("Choose") : @tr("Change"); clicked => { root.pick("instant-bye"); } }
+                                    ToolButton { text: @tr("Clear"); enabled: root.instant-bye != ""; clicked => { root.set-field("instant-bye-clear", ""); } }
+                                }
+                                if root.instant-bye != "" : Field {
+                                    label: @tr("Mode");
+                                    ComboBox { model: root.modes; current-index: root.instant-bye-mode; selected => { root.instant-bye-mode = self.current-index; } }
+                                }
                             }
                             if root.side == 2 : VerticalLayout {
                                 spacing: 8px;
@@ -682,60 +1006,6 @@ export component MainWindow inherits Window {
                                     ComboBox { model: root.action-kinds; current-index: 0; selected => { if self.current-index > 0 { root.act-add(self.current-index - 1); self.current-index = 0; } } }
                                 }
                             }
-                            if root.side == 3 : VerticalLayout {
-                                spacing: 8px;
-                                Field { label: @tr("Channel name"); LineEdit { text: root.channel-name; edited(v) => { root.channel-name = v; root.set-field("channel", v); } } }
-                                Field { label: @tr("Callsign"); LineEdit { text: root.call-text; edited(v) => { root.call-text = v; root.set-field("call", v); } } }
-                                Field { label: @tr("Operator"); LineEdit { text: root.op-text; edited(v) => { root.op-text = v; root.set-field("op", v); } } }
-                                Field { label: @tr("QTH"); LineEdit { text: root.qth-text; edited(v) => { root.qth-text = v; root.set-field("qth", v); } } }
-                                Field { label: @tr("Locator"); LineEdit { text: root.loc-text; edited(v) => { root.loc-text = v; root.set-field("loc", v); } } }
-                                Field { label: @tr("Frequency (MHz, 0 = do not retune)"); LineEdit { text: root.freq-text; edited(v) => { root.freq-text = v; root.set-field("freq", v); } } }
-                                Field { label: @tr("Offset (seconds)"); SpinBox { minimum: 0; maximum: 3600; value: root.offset-s; edited(v) => { root.offset-s = v; root.set-num("offset", v); } } }
-                                Field { label: @tr("Mode"); ComboBox { model: root.modes; current-index: root.mode-index; selected => { root.mode-index = self.current-index; root.set-num("mode", self.current-index); } } }
-                                Field { label: @tr("Minimum pause (seconds)"); SpinBox { minimum: 0; maximum: 600; value: root.pause-s; edited(v) => { root.pause-s = v; root.set-num("pause", v); } } }
-                                CheckBox { text: @tr("VOX preamble"); checked: root.vox; toggled => { root.set-field("vox", self.checked ? "1" : "0"); } }
-                                CheckBox { text: @tr("CW before the pictures"); checked: root.cw-pre; toggled => { root.set-field("cw-pre", self.checked ? "1" : "0"); } }
-                                CheckBox { text: @tr("CW after the pictures"); checked: root.cw-id; toggled => { root.set-field("cw-id", self.checked ? "1" : "0"); } }
-                                Field { label: @tr("CW text"); LineEdit { text: root.cw-text; edited(v) => { root.cw-text = v; root.set-field("cw-text", v); } } }
-                                CheckBox { text: @tr("AX.25 info frame"); checked: root.ax-info; toggled => { root.set-field("ax-info", self.checked ? "1" : "0"); } }
-                                CheckBox { text: @tr("AX.25 mode frame"); checked: root.ax-mode; toggled => { root.set-field("ax-mode", self.checked ? "1" : "0"); } }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Field { label: @tr("Upcoming blocks"); SpinBox { minimum: 1; maximum: 40; value: root.next-count; edited(v) => { root.next-count = v; root.set-num("next-count", v); } } }
-                                    Field { label: @tr("or hours"); SpinBox { minimum: 1; maximum: 48; value: root.next-hours; edited(v) => { root.next-hours = v; root.set-num("next-hours", v); } } }
-                                }
-                                CheckBox { text: @tr("One upcoming block per program"); checked: root.dedupe; toggled => { root.set-field("dedupe", self.checked ? "1" : "0"); } }
-                                ToolButton { text: @tr("Graphics"); clicked => { root.open-editor(); } }
-                                ToolButton { text: @tr("Programs"); clicked => { root.open-programs(false); } }
-                                ToolButton { text: @tr("Export audio"); clicked => { root.set-field("export", ""); } }
-                            }
-                            if root.side == 4 : VerticalLayout {
-                                spacing: 8px;
-                                Text { text: root.ptt-note; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                                Field { label: @tr("PTT"); ComboBox { model: [@tr("None"), @tr("VOX"), @tr("Serial"), @tr("CAT")]; current-index: root.ptt-index; selected => { root.ptt-index = self.current-index; root.set-num("ptt", self.current-index); } } }
-                                Field { label: @tr("Serial port"); LineEdit { text: root.ptt-port; edited(v) => { root.ptt-port = v; root.set-field("port", v); } } }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Field { label: "RTS"; ComboBox { model: [@tr("Off"), "+", "−"]; current-index: root.rts-index; selected => { root.rts-index = self.current-index; root.set-num("rts", self.current-index); } } }
-                                    Field { label: "DTR"; ComboBox { model: [@tr("Off"), "+", "−"]; current-index: root.dtr-index; selected => { root.dtr-index = self.current-index; root.set-num("dtr", self.current-index); } } }
-                                }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Field { label: @tr("Lead (ms)"); SpinBox { minimum: 0; maximum: 5000; value: root.lead-ms; edited(v) => { root.lead-ms = v; root.set-num("lead", v); } } }
-                                    Field { label: @tr("Tail (ms)"); SpinBox { minimum: 0; maximum: 5000; value: root.tail-ms; edited(v) => { root.tail-ms = v; root.set-num("tail", v); } } }
-                                }
-                                Field { label: @tr("rigctld host"); LineEdit { text: root.cat-host; edited(v) => { root.cat-host = v; root.set-field("cat-host", v); } } }
-                                Field { label: @tr("rigctld port"); SpinBox { minimum: 1; maximum: 65535; value: root.cat-port; edited(v) => { root.cat-port = v; root.set-num("cat-port", v); } } }
-                                CheckBox { text: @tr("Set the channel frequency before each grid transmission"); checked: root.cat-freq; toggled => { root.set-field("cat-freq", self.checked ? "1" : "0"); } }
-                                Field { label: @tr("Audio output (empty = default)"); LineEdit { text: root.audio-out; edited(v) => { root.audio-out = v; root.set-field("audio-out", v); } } }
-                                Field { label: @tr("Audio input (empty = default)"); LineEdit { text: root.audio-in; edited(v) => { root.audio-in = v; root.set-field("audio-in", v); } } }
-                                Field { label: @tr("Language"); ComboBox { model: [@tr("English"), @tr("Spanish")]; current-index: root.lang-index; selected => { root.lang-index = self.current-index; root.set-num("lang", self.current-index); } } }
-                                PanelTitle { text: @tr("Clock"); }
-                                Text { text: @tr("The computer clock is not changed. Estivi stores an NTP offset and uses it for the grid."); font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                                CheckBox { text: @tr("Correct the clock"); checked: root.ntp-on; toggled => { root.set-field("ntp", self.checked ? "1" : "0"); } }
-                                Field { label: @tr("NTP server"); LineEdit { text: root.ntp-server; edited(v) => { root.ntp-server = v; root.set-field("ntp-server", v); } } }
-                                Field { label: @tr("Every (hours)"); SpinBox { minimum: 1; maximum: 48; value: root.ntp-hours; edited(v) => { root.ntp-hours = v; root.set-num("ntp-hours", v); } } }
-                            }
                             Rectangle { height: 28px; }
                         }
                     }
@@ -746,37 +1016,60 @@ export component MainWindow inherits Window {
         Text { text: root.note; font-size: 12px; color: Theme.text-dim; overflow: elide; height: 16px; }
         Text { text: root.listen-text; font-size: 11px; color: Theme.text-dim; overflow: elide; height: 16px; }
         if root.clips.length > 0 : Rectangle {
-            height: 92px;
+            height: 96px;
             background: Theme.panel;
             border-radius: Theme.radius;
             border-width: 1px;
             border-color: Theme.border;
             clip: true;
+            // One clip per piece: CW, AX.25, welcome, each bumper, the picture, the bye.
+            // A transmission reads as its parts instead of one opaque box.
             for clip in root.clips : Rectangle {
                 x: parent.width * clip.x;
                 y: 4px;
                 width: max(2px, parent.width * clip.w);
-                height: 56px;
-                background: clip.selected ? Theme.accent.transparentize(0.4) : Theme.panel-raised;
-                border-radius: 4px;
+                height: 62px;
+                property <color> tone: clip.kind == 1 ? Theme.tx-cw
+                    : clip.kind == 2 || clip.kind == 3 ? Theme.tx-ax
+                    : clip.kind == 5 || clip.kind == 8 ? Theme.tx-welcome
+                    : clip.kind == 6 ? Theme.tx-bumper
+                    : Theme.text-faint;
+                background: clip.selected ? Theme.accent.transparentize(0.45)
+                    : clip.kind == 7 ? Theme.panel-raised
+                    : tone.transparentize(0.8);
+                border-radius: 3px;
                 border-width: clip.selected ? 2px : 1px;
-                border-color: clip.selected ? #ffe14a : Theme.border-strong;
+                border-color: clip.selected ? #ffe14a : clip.kind == 7 ? Theme.border-strong : tone.transparentize(0.15);
                 clip: true;
                 if clip.has-thumb : Image {
                     source: clip.thumb;
                     width: 100%;
                     height: 100%;
                     image-fit: cover;
-                    opacity: 0.85;
+                    opacity: 0.9;
+                }
+                if clip.has-thumb : Rectangle {
+                    y: parent.height - 17px;
+                    height: 17px;
+                    background: #000000a8;
                 }
                 Text {
-                    x: 4px;
-                    y: 4px;
+                    x: 3px;
+                    y: clip.has-thumb ? parent.height - 15px : 3px;
                     text: clip.label;
-                    font-size: 11px;
-                    color: Theme.text;
+                    font-size: 9px;
+                    color: clip.has-thumb ? #ffffff : Theme.text;
                     overflow: elide;
-                    width: parent.width - 8px;
+                    width: parent.width - 6px;
+                }
+                if !clip.has-thumb : Text {
+                    x: 3px;
+                    y: 16px;
+                    text: clip.detail;
+                    font-size: 9px;
+                    color: Theme.text-dim;
+                    overflow: elide;
+                    width: parent.width - 6px;
                 }
                 TouchArea { clicked => { root.pick-clip(clip.id); } }
             }
@@ -794,6 +1087,131 @@ export component MainWindow inherits Window {
                 width: 2px;
                 height: parent.height - 18px;
                 background: #ffe14a;
+            }
+        }
+    }
+
+    // The full station configuration. The top card keeps the fields used every day;
+    // this card holds the rest and needs no scrolling.
+    if root.settings-page != 0 : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000088;
+        TouchArea { clicked => { root.settings-page = 0; } }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 920px;
+                    background: Theme.panel;
+                    border-radius: Theme.radius;
+                    border-width: 1px;
+                    border-color: Theme.border-strong;
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 8px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: root.settings-page == 1 ? @tr("Channel settings") : @tr("Equipment settings");
+                                font-size: 16px;
+                                font-weight: 700;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                            ToolButton { text: @tr("Close"); clicked => { root.settings-page = 0; } }
+                        }
+                        if root.settings-page == 1 : VerticalLayout {
+                            spacing: 8px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Channel name"); LineEdit { text: root.channel-name; edited(v) => { root.channel-name = v; root.set-field("channel", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Callsign"); LineEdit { text: root.call-text; edited(v) => { root.call-text = v; root.set-field("call", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Operator"); LineEdit { text: root.op-text; edited(v) => { root.op-text = v; root.set-field("op", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("QTH"); LineEdit { text: root.qth-text; edited(v) => { root.qth-text = v; root.set-field("qth", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Locator"); LineEdit { text: root.loc-text; edited(v) => { root.loc-text = v; root.set-field("loc", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Frequency (MHz, 0 = do not retune)"); LineEdit { text: root.freq-text; edited(v) => { root.freq-text = v; root.set-field("freq", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Offset (seconds)"); SpinBox { minimum: 0; maximum: 3600; value: root.offset-s; edited(v) => { root.offset-s = v; root.set-num("offset", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Mode"); ComboBox { model: root.modes; current-index: root.mode-index; selected => { root.mode-index = self.current-index; root.set-num("mode", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Minimum pause (seconds)"); SpinBox { minimum: 0; maximum: 600; value: root.pause-s; edited(v) => { root.pause-s = v; root.set-num("pause", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("CW text"); LineEdit { text: root.cw-text; edited(v) => { root.cw-text = v; root.set-field("cw-text", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Upcoming blocks"); SpinBox { minimum: 1; maximum: 40; value: root.next-count; edited(v) => { root.next-count = v; root.set-num("next-count", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("or hours"); SpinBox { minimum: 1; maximum: 48; value: root.next-hours; edited(v) => { root.next-hours = v; root.set-num("next-hours", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                CheckBox { text: @tr("VOX preamble"); checked: root.vox; horizontal-stretch: 1; toggled => { root.set-field("vox", self.checked ? "1" : "0"); } }
+                                CheckBox { text: @tr("CW before the pictures"); checked: root.cw-pre; horizontal-stretch: 1; toggled => { root.set-field("cw-pre", self.checked ? "1" : "0"); } }
+                                CheckBox { text: @tr("CW after the pictures"); checked: root.cw-id; horizontal-stretch: 1; toggled => { root.set-field("cw-id", self.checked ? "1" : "0"); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                CheckBox { text: @tr("AX.25 info frame"); checked: root.ax-info; horizontal-stretch: 1; toggled => { root.set-field("ax-info", self.checked ? "1" : "0"); } }
+                                CheckBox { text: @tr("AX.25 mode frame"); checked: root.ax-mode; horizontal-stretch: 1; toggled => { root.set-field("ax-mode", self.checked ? "1" : "0"); } }
+                                CheckBox { text: @tr("One upcoming block per program"); checked: root.dedupe; horizontal-stretch: 1; toggled => { root.set-field("dedupe", self.checked ? "1" : "0"); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ToolButton { text: @tr("Export audio"); clicked => { root.settings-page = 0; root.set-field("export", ""); } }
+                                Rectangle { horizontal-stretch: 1; }
+                                ToolButton { text: @tr("Close"); clicked => { root.settings-page = 0; } }
+                            }
+                        }
+                        if root.settings-page == 2 : VerticalLayout {
+                            spacing: 8px;
+                            Text { text: root.ptt-note; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("PTT"); ComboBox { model: [@tr("None"), @tr("VOX"), @tr("Serial"), @tr("CAT")]; current-index: root.ptt-index; selected => { root.ptt-index = self.current-index; root.set-num("ptt", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Serial port"); ComboBox { model: root.serial-ports; current-index: root.serial-index; selected => { root.serial-index = self.current-index; root.set-num("serial", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Language"); ComboBox { model: [@tr("English"), @tr("Spanish")]; current-index: root.lang-index; selected => { root.lang-index = self.current-index; root.set-num("lang", self.current-index); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: "RTS"; ComboBox { model: [@tr("Off"), "+", "−"]; current-index: root.rts-index; selected => { root.rts-index = self.current-index; root.set-num("rts", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: "DTR"; ComboBox { model: [@tr("Off"), "+", "−"]; current-index: root.dtr-index; selected => { root.dtr-index = self.current-index; root.set-num("dtr", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Lead (ms)"); SpinBox { minimum: 0; maximum: 5000; value: root.lead-ms; edited(v) => { root.lead-ms = v; root.set-num("lead", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Tail (ms)"); SpinBox { minimum: 0; maximum: 5000; value: root.tail-ms; edited(v) => { root.tail-ms = v; root.set-num("tail", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("rigctld host"); LineEdit { text: root.cat-host; edited(v) => { root.cat-host = v; root.set-field("cat-host", v); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("rigctld port"); SpinBox { minimum: 1; maximum: 65535; value: root.cat-port; edited(v) => { root.cat-port = v; root.set-num("cat-port", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Audio output"); ComboBox { model: root.audio-outs; current-index: root.audio-out-index; selected => { root.audio-out-index = self.current-index; root.set-num("audio-out", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Audio input"); ComboBox { model: root.audio-ins; current-index: root.audio-in-index; selected => { root.audio-in-index = self.current-index; root.set-num("audio-in", self.current-index); } } }
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("NTP server"); LineEdit { text: root.ntp-server; edited(v) => { root.ntp-server = v; root.set-field("ntp-server", v); } } }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Field { horizontal-stretch: 1; min-width: 0px; label: @tr("Every (hours)"); SpinBox { minimum: 1; maximum: 48; value: root.ntp-hours; edited(v) => { root.ntp-hours = v; root.set-num("ntp-hours", v); } } }
+                                CheckBox { text: @tr("Set the channel frequency before each grid transmission"); checked: root.cat-freq; horizontal-stretch: 2; toggled => { root.set-field("cat-freq", self.checked ? "1" : "0"); } }
+                                CheckBox { text: @tr("Correct the clock"); checked: root.ntp-on; horizontal-stretch: 1; toggled => { root.set-field("ntp", self.checked ? "1" : "0"); } }
+                            }
+                            Text { text: @tr("The computer clock is not changed. Estivi stores an NTP offset and uses it for the grid."); font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
+                            Text { text: @tr("The lists show what this computer reports. Refresh after connecting or removing a device."); font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                ToolButton { text: @tr("Refresh devices"); clicked => { root.refresh-devices(); } }
+                                Rectangle { horizontal-stretch: 1; }
+                                ToolButton { text: @tr("Close"); clicked => { root.settings-page = 0; } }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -852,18 +1270,6 @@ export component MainWindow inherits Window {
                                 }
                             }
                             Text { text: root.exp-note; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                        }
-                        if root.dialog == 7 : VerticalLayout {
-                            spacing: 8px;
-                            CheckBox { text: @tr("Enabled"); checked: root.act-on; toggled => { root.act-on = self.checked; } }
-                            Field { label: @tr("Name"); LineEdit { text: root.act-name; edited(v) => { root.act-name = v; } } }
-                            Field { label: @tr("Trigger"); ComboBox { model: [@tr("DTMF"), @tr("CW")]; current-index: root.act-source; selected => { root.act-source = self.current-index; } } }
-                            Field { label: @tr("Code"); LineEdit { text: root.act-code; edited(v) => { root.act-code = v; } } }
-                            Field {
-                                label: @tr("Actions, one per line");
-                                TextEdit { text: root.act-script; height: 120px; wrap: no-wrap; edited(v) => { root.act-script = v; } }
-                            }
-                            Text { text: @tr("cw text · dtmf 123 · image path · pause · resume · ax25 comment · command cw|the line · api cw|https://… · random a.png|b.png"); font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
                         }
                         HorizontalLayout {
                             spacing: 8px;

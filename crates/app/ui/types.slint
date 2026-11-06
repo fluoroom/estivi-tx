@@ -19,12 +19,11 @@ export struct PicItem {
     label: string,
     detail: string,
     on: bool,
-    // 0 normal, 1 pre bumper, 2 post bumper, 3 ghost, 4 this transmission's total
+    // 0 normal, 1 pre bumper, 2 post bumper
     role: int,
-    ghost: bool,
-    // Image this ghost belongs to. -1 when it does not travel with a picture.
-    group: int,
     selected: bool,
+    thumb: image,
+    has-thumb: bool,
 }
 
 export struct StepItem {
@@ -148,10 +147,13 @@ export struct TxItem {
     x: float,
     w: float,
     label: string,
+    detail: string,
     id: int,
     selected: bool,
     thumb: image,
     has-thumb: bool,
+    // 0 VOX, 1 CW, 2 AX.25, 3 AX.25 mode, 4 VIS, 5 welcome, 6 bumper, 7 picture, 8 bye.
+    kind: int,
 }
 
 export struct TickItem {

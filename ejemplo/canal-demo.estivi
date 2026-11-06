@@ -63,8 +63,8 @@ end = "15:00"
 interval_min = 10
 
 [[programs.days]]
-start = "12:00"
-end = "15:00"
+start = "17:00"
+end = "17:20"
 interval_min = 10
 
 [[programs.days]]
@@ -259,6 +259,46 @@ outline = 0.1
 outline_color = "#000000"
 shadow = false
 box_color = "#00000000"
+
+[[blocks]]
+id = 18
+program = 1
+date = "2026-11-06"
+enabled = true
+interval_min = 10
+
+[[blocks.images]]
+id = 21
+path = "/mnt/DATA/nic0/Pictures/satdef.png"
+enabled = true
+mode = "BW8"
+role = "pre"
+of = 19
+
+[[blocks.images]]
+id = 19
+path = "/mnt/DATA/nic0/Downloads/r9L-xhbv_400x400.jpg"
+enabled = true
+role = "normal"
+
+[[blocks.images]]
+id = 20
+path = "/mnt/DATA/nic0/Downloads/HWTXYRuXQAA8xbl.jpeg"
+enabled = true
+mode = "R12"
+role = "pre"
+of = 18
+
+[[blocks.images]]
+id = 18
+path = "/mnt/DATA/nic0/Pictures/dis/cutleveled.png"
+enabled = true
+role = "normal"
+
+[blocks.graphics]
+background = "#000000"
+fit = "cover"
+layers = []
 
 [[activations]]
 id = 10

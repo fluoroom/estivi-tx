@@ -9,7 +9,8 @@ use std::time::Duration;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, TimeDelta, Utc};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use estivi_core::air::{self, PieceKind};
+use estivi_core::air::{self, GraphicsLevel, PieceKind};
+use estivi_core::audio::{self, DeviceInfo};
 use estivi_core::compose::Composer;
 use estivi_core::config::{Config, Lang, LineLevel, PttMethod};
 use estivi_core::dynamic::ApiCache;
@@ -21,6 +22,7 @@ use estivi_core::project::{
     self, ActTrigger, Action, Activation, Block, BlockImage, Carrier, GridTz, ImageRole, Program, Project, Still, TriggerSource,
     format_hhmm, parse_hhmm, relativize, resolve,
 };
+use estivi_core::ptt;
 use estivi_core::schedule::{self, Card, Keep, Occurrence, Zoom, future_limit, grid_date, proposed_window, to_utc};
 
 use crate::editor;
@@ -230,6 +232,10 @@ struct Palette {
     ready: u32,
     paused: u32,
     danger: u32,
+    tx_cw: u32,
+    tx_ax: u32,
+    tx_welcome: u32,
+    tx_bumper: u32,
 }
 
 fn palette(id: &str) -> Palette {
@@ -239,22 +245,26 @@ fn palette(id: &str) -> Palette {
             light: true, bg: 0xf2f2f2, panel: 0xffffff, raised: 0xe4e4e4, field: 0xffffff, border: 0xc8c8c8, strong: 0x8a8a8a,
             text: 0x111111, dim: 0x3d3d3d, faint: 0x6b6b6b, accent: 0x222222, on_accent: 0xf7f7f7,
             on_air: 0xd42020, ready: 0x1b7f3a, paused: 0xc47a10, danger: 0xd42020,
+            tx_cw: 0x0284c7, tx_ax: 0xb45309, tx_welcome: 0x15803d, tx_bumper: 0x7e22ce,
         },
         // Dracula, with the surfaces pulled apart. The pale purple and yellow stay off the chrome.
         "dracula" => Palette {
             light: false, bg: 0x14151c, panel: 0x282a36, raised: 0x383a4a, field: 0x1e1f29, border: 0x44475a, strong: 0x6d7394,
             text: 0xf8f8f2, dim: 0xd5d6e0, faint: 0x9aa0b8, accent: 0xff79c6, on_accent: 0x1e1f29,
             on_air: 0xff5555, ready: 0x50fa7b, paused: 0xffb86c, danger: 0xff5555,
+            tx_cw: 0x8be9fd, tx_ax: 0xffb86c, tx_welcome: 0x50fa7b, tx_bumper: 0xbd93f9,
         },
         "lavender" => Palette {
             light: true, bg: 0xf7f2fc, panel: 0xfffbff, raised: 0xf3eafb, field: 0xffffff, border: 0xe6d8f2, strong: 0xd4c2e6,
             text: 0x2c2438, dim: 0x655878, faint: 0x9a8aab, accent: 0x6d4ca8, on_accent: 0xffffff,
             on_air: 0xc43b5a, ready: 0x2f8f5b, paused: 0xb57a18, danger: 0xc43b5a,
+            tx_cw: 0x3b82f6, tx_ax: 0xb57a18, tx_welcome: 0x2f8f5b, tx_bumper: 0x8b5cf6,
         },
         "pastel" => Palette {
             light: true, bg: 0xf7f1ea, panel: 0xfffaf6, raised: 0xffe8dc, field: 0xfffaf6, border: 0xf0d9cc, strong: 0xe4c3b4,
             text: 0x3b2f3a, dim: 0x7a6570, faint: 0xb39aa6, accent: 0xff7a90, on_accent: 0x3b1d28,
             on_air: 0xe23d5b, ready: 0x3aa56b, paused: 0xd0892d, danger: 0xe23d5b,
+            tx_cw: 0x4c9bd6, tx_ax: 0xd0892d, tx_welcome: 0x3aa56b, tx_bumper: 0xb06fb8,
         },
         // Buenos Aires Subte. Dark keeps the night ground. Subte light is the map:
         // white page, yellow header (H), and the line colors.
@@ -263,17 +273,20 @@ fn palette(id: &str) -> Palette {
             light: false, bg: 0x000000, panel: 0x101010, raised: 0x1c1c1c, field: 0x101010, border: 0x303030, strong: 0x4a4a4e,
             text: 0xc0c0c0, dim: 0x9a9a9e, faint: 0x79787d, accent: 0x00aedb, on_accent: 0x041820,
             on_air: 0xee1b2d, ready: 0x008066, paused: 0xfdba31, danger: 0xee1b2d,
+            tx_cw: 0x00aedb, tx_ax: 0xfdba31, tx_welcome: 0x008066, tx_bumper: 0x6c2181,
         },
         "subte-light" => Palette {
             light: true, bg: 0xffffff, panel: 0xffffff, raised: 0xf3f3f3, field: 0xffffff, border: 0xe0e0e0, strong: 0xd2d2d2,
             text: 0x303030, dim: 0x5a5a5a, faint: 0x8a8a8a, accent: 0xfdba31, on_accent: 0x1a1a1a,
             on_air: 0xee1b2d, ready: 0x008066, paused: 0x6c2181, danger: 0xee1b2d,
+            tx_cw: 0x0467b3, tx_ax: 0xb07a00, tx_welcome: 0x008066, tx_bumper: 0x6c2181,
         },
         // Dark. Wider steps than the old Gray ramp, still with no hue in the chrome.
         _ => Palette {
             light: false, bg: 0x090909, panel: 0x1a1a1a, raised: 0x2e2e2e, field: 0x101010, border: 0x454545, strong: 0x737373,
             text: 0xf7f7f7, dim: 0xc2c2c2, faint: 0x8a8a8a, accent: 0xf0f0f0, on_accent: 0x111111,
             on_air: 0xd42020, ready: 0x1b7f3a, paused: 0xc47a10, danger: 0xd42020,
+            tx_cw: 0x38bdf8, tx_ax: 0xfbbf24, tx_welcome: 0x4ade80, tx_bumper: 0xc084fc,
         },
     }
 }
@@ -298,6 +311,10 @@ pub fn apply_theme_to(theme: &Theme, id: &str, light_fallback: bool) {
     theme.set_ready(rgb(p.ready));
     theme.set_paused(rgb(p.paused));
     theme.set_danger(rgb(p.danger));
+    theme.set_tx_cw(rgb(p.tx_cw));
+    theme.set_tx_ax(rgb(p.tx_ax));
+    theme.set_tx_welcome(rgb(p.tx_welcome));
+    theme.set_tx_bumper(rgb(p.tx_bumper));
 }
 
 /// Which graphics the editor is changing. The picture is painted block, then program, then channel.
@@ -338,7 +355,6 @@ enum Pending {
     Export,
     Quality { req: ExportRequest, dir: PathBuf },
     Clock,
-    Activation(Option<u64>),
     Leave(After),
 }
 
@@ -347,9 +363,18 @@ enum Focus {
     Card(usize),
 }
 
+/// What the instant tab keeps from the block it copied a picture from.
+#[derive(Clone, Copy, Debug)]
 struct InstantHold {
-    welcome: Option<Still>,
-    bye: Option<Still>,
+    program_id: Option<u64>,
+    block_id: Option<u64>,
+    graphics: GraphicsLevel,
+}
+
+impl Default for InstantHold {
+    fn default() -> Self {
+        InstantHold { program_id: None, block_id: None, graphics: GraphicsLevel::Channel }
+    }
 }
 
 struct NextFrame {
@@ -399,6 +424,12 @@ pub struct App {
     live_full: Option<image::RgbaImage>,
     next_key: String,
     thumbs: HashMap<String, slint::Image>,
+    /// Graphics choices shown in the instant tab, in the same order as the combo.
+    instant_choices: Vec<GraphicsLevel>,
+    /// Devices found by the last scan. Equipment maps a combo index back to these.
+    audio_outputs: Vec<DeviceInfo>,
+    audio_inputs: Vec<DeviceInfo>,
+    serial_ports: Vec<String>,
     block_span: Option<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)>,
     mode_sort: (i32, bool),
     pub gfx_target: GfxTarget,
@@ -485,6 +516,7 @@ impl App {
         self.config.ui.last_project = self.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         let _ = self.config.save(&self.config_path);
         self.push_channel();
+        self.scan_devices();
         self.push_equipment();
         self.refresh_cards();
         self.push_block(true);
@@ -778,6 +810,7 @@ impl App {
         let ui = self.ui();
         let Some(card) = self.card().cloned() else {
             ui.set_has_block(false);
+            ui.set_instant_can_use_block(false);
             ui.set_inherited(false);
             ui.set_ghost(false);
             ui.set_form_when("".into());
@@ -785,6 +818,7 @@ impl App {
             ui.set_day_hint("".into());
             ui.set_pics(ModelRc::new(VecModel::from(Vec::<PicItem>::new())));
             ui.set_steps(ModelRc::new(VecModel::from(Vec::<StepItem>::new())));
+            ui.set_timing_caption("".into());
             ui.set_tx_total("".into());
             ui.set_clips(ModelRc::new(VecModel::from(Vec::<TxItem>::new())));
             ui.set_ticks(ModelRc::new(VecModel::from(Vec::<TickItem>::new())));
@@ -794,6 +828,7 @@ impl App {
         };
         let inherited = card.program_id >= 0;
         ui.set_has_block(true);
+        ui.set_instant_can_use_block(self.pic.is_some());
         ui.set_inherited(inherited);
         ui.set_ghost(inherited && card.block_id < 0);
         let wd = card.date.weekday().num_days_from_monday() as usize;
@@ -833,12 +868,14 @@ impl App {
         });
         let occ = self.occurrence_of(&card);
         ui.set_block_on(occ.as_ref().map(|o| o.block_enabled).unwrap_or(true));
-        let (pics, clips, span) = if let Some(occ) = &occ {
-            let turns = air::plan_occurrence(&self.project, occ, self.today(), self.config.ptt.lead_ms, self.config.ptt.tail_ms, self.status.serial, self.now());
-            (self.picture_rows(&turns), self.clip_rows(&turns, occ.start, occ.end), Some((occ.start, occ.end)))
+        let turns = if let Some(occ) = &occ {
+            air::plan_occurrence(&self.project, occ, self.today(), self.config.ptt.lead_ms, self.config.ptt.tail_ms, self.status.serial, self.now())
         } else {
-            (Vec::new(), Vec::new(), None)
+            Vec::new()
         };
+        let pics = occ.as_ref().map(|o| self.picture_rows(o)).unwrap_or_default();
+        let clips = occ.as_ref().map(|o| self.clip_rows(&turns, o.start, o.end)).unwrap_or_default();
+        let (steps, timing_caption, tx_total) = self.timing_rows(&turns);
         let mode = self.pic.and_then(|id| occ.as_ref().and_then(|o| o.images.iter().find(|i| i.id == id))).and_then(|i| i.mode);
         ui.set_pic_mode(mode.map(|m| view::mode_index(m) + 1).unwrap_or(0));
         let block_mode = card.block_id.try_into().ok().and_then(|id: u64| self.project.block(id)).and_then(|b| b.mode);
@@ -849,93 +886,173 @@ impl App {
         ui.set_clips(ModelRc::new(VecModel::from(clips)));
         let ticks = occ.as_ref().map(|o| time_ticks(&o.start_hm, &o.end_hm, o.interval_min)).unwrap_or_default();
         ui.set_ticks(ModelRc::new(VecModel::from(ticks)));
-        ui.set_steps(ModelRc::new(VecModel::from(Vec::<StepItem>::new())));
-        ui.set_tx_total("".into());
-        self.block_span = span;
+        ui.set_steps(ModelRc::new(VecModel::from(steps)));
+        ui.set_timing_caption(timing_caption.into());
+        ui.set_tx_total(tx_total.into());
+        self.block_span = occ.as_ref().map(|o| (o.start, o.end));
     }
 
-    fn picture_rows(&self, turns: &[air::Turn]) -> Vec<PicItem> {
-        let mut pics = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        let mut fixed = false;
-        for turn in turns {
-            if !seen.insert(turn.image_id) {
+    /// The block's pictures, in stored order. Disabled rows stay here so they can be
+    /// turned back on; the time rows live in the timing section instead.
+    fn picture_rows(&mut self, occ: &Occurrence) -> Vec<PicItem> {
+        let mut rows = Vec::new();
+        for image in &occ.images {
+            if image.path.trim().is_empty() {
                 continue;
             }
-            for piece in &turn.pieces {
-                let is_fixed = matches!(piece.kind, PieceKind::Vox | PieceKind::Cw | PieceKind::Ax25);
-                if is_fixed && fixed {
-                    continue;
-                }
-                let grouped = matches!(piece.kind, PieceKind::Ax25Mode | PieceKind::Vis);
-                if matches!(piece.kind, PieceKind::Image | PieceKind::Bumper) {
-                    pics.push(self.pic_row(piece, turn.airs));
-                } else {
-                    pics.push(PicItem {
-                        id: -1,
-                        label: piece_name(piece.kind).into(),
-                        detail: view::duration(piece.ms).into(),
-                        on: turn.airs,
-                        role: 3,
-                        ghost: true,
-                        group: if grouped { piece.image_id as i32 } else { -1 },
-                        selected: false,
-                    });
-                }
+            let mode = self.project.picture_mode(image.mode, occ.block_id, occ.program_id);
+            let role = match image.role {
+                ImageRole::Normal => 0,
+                ImageRole::Pre { .. } => 1,
+                ImageRole::Post { .. } => 2,
+            };
+            let mut detail = format!("{} · {}", mode.spec().short, view::duration(mode.spec().total_ms()));
+            if !image.enabled {
+                detail.push_str(" · ");
+                detail.push_str(i18n::ts("off", "apagada"));
             }
-            fixed = true;
-            pics.push(PicItem {
-                id: -1,
-                label: i18n::t("This transmission", "Esta transmisión").into(),
-                detail: view::duration(turn.audio_ms()).into(),
-                on: turn.airs,
-                role: 4,
-                ghost: true,
-                group: -1,
-                selected: false,
+            let thumb = self.thumb(&image.path);
+            rows.push(PicItem {
+                id: image.id as i32,
+                label: view::file_name(&image.path).into(),
+                detail: detail.into(),
+                on: image.enabled,
+                role,
+                selected: self.pic == Some(image.id),
+                has_thumb: thumb.is_some(),
+                thumb: thumb.unwrap_or_default(),
             });
-            if let Some(next) = turns.iter().find(|t| t.at > turn.at) {
-                let gap = (next.at - turn.at).num_milliseconds() as f64 - turn.total_ms();
-                if gap > 500.0 {
-                    pics.push(silence_row(gap));
-                }
-            }
         }
-        pics
-    }
-
-    fn pic_row(&self, piece: &air::Piece, airs: bool) -> PicItem {
-        let id = piece.image_id as u64;
-        let mode = piece.mode.map(|m| m.spec().short).unwrap_or("·");
-        PicItem {
-            id: piece.image_id as i32,
-            label: view::file_name(&piece.path).into(),
-            detail: format!("{mode}  {}", view::duration(piece.ms)).into(),
-            on: airs,
-            role: if piece.kind == PieceKind::Bumper { 1 } else { 0 },
-            ghost: false,
-            group: -1,
-            selected: self.pic == Some(id),
-        }
+        rows
     }
 
     fn clip_rows(&mut self, turns: &[air::Turn], start: chrono::DateTime<Utc>, end: chrono::DateTime<Utc>) -> Vec<TxItem> {
-        let span = (end - start).num_milliseconds().max(1) as f32;
-        turns.iter().map(|turn| {
-            let x = (turn.at - start).num_milliseconds().max(0) as f32 / span;
-            let w = (turn.audio_ms() as f32 / span).clamp(0.01, 1.0);
-            let image = turn.pieces.iter().find(|p| p.kind == PieceKind::Image);
-            let thumb = image.and_then(|p| self.thumb(&p.path));
-            TxItem {
-                x,
-                w: w.min(1.0 - x).max(0.008),
-                label: image.map(|p| view::file_name(&p.path)).unwrap_or_else(|| turn.name.clone()).into(),
-                id: turn.image_id as i32,
-                selected: self.pic == Some(turn.image_id),
-                has_thumb: thumb.is_some(),
-                thumb: thumb.unwrap_or_default(),
+        let span = (end - start).num_milliseconds().max(1) as f64;
+        let mut rows = Vec::new();
+        for turn in turns {
+            let base = (turn.at - start).num_milliseconds().max(0) as f64;
+            let mut cursor = base;
+            let mut after_picture = false;
+            for piece in &turn.pieces {
+                let id = if piece.image_id > 0 { piece.image_id as i32 } else { turn.image_id as i32 };
+                let kind = match piece.kind {
+                    PieceKind::Vox => 0,
+                    PieceKind::Cw => 1,
+                    PieceKind::Ax25 | PieceKind::Dtmf => 2,
+                    PieceKind::Ax25Mode => 3,
+                    PieceKind::Vis => 4,
+                    PieceKind::Welcome => 5,
+                    PieceKind::Bumper => 6,
+                    PieceKind::Image => 7,
+                    PieceKind::Bye => 8,
+                };
+                if piece.kind == PieceKind::Image {
+                    after_picture = true;
+                }
+                let label = match piece.kind {
+                    PieceKind::Vox => "VOX".to_string(),
+                    PieceKind::Cw => "CW".to_string(),
+                    PieceKind::Ax25 | PieceKind::Dtmf => "AX.25".to_string(),
+                    PieceKind::Ax25Mode => format!("AX.25 {}", piece.mode.map(|m| m.spec().short).unwrap_or("")),
+                    PieceKind::Vis => "VIS".to_string(),
+                    PieceKind::Welcome => i18n::t("Welcome", "Bienvenida"),
+                    PieceKind::Bumper => format!("{}  {}", i18n::t(if after_picture { "Post" } else { "Pre" }, if after_picture { "Después" } else { "Antes" }), view::file_name(&piece.path)),
+                    PieceKind::Image => format!("{}  ·  {}", view::file_name(&piece.path), view::span(piece.ms)),
+                    PieceKind::Bye => i18n::t("Bye", "Despedida"),
+                };
+                let thumb = if piece.kind == PieceKind::Image { self.thumb(&piece.path) } else { None };
+                let x = (cursor / span).clamp(0.0, 1.0) as f32;
+                let w = (piece.ms / span).clamp(0.0015, 1.0) as f32;
+                rows.push(TxItem {
+                    x,
+                    w: w.min(1.0 - x).max(0.0015),
+                    label: label.into(),
+                    detail: view::span(piece.ms).into(),
+                    id,
+                    selected: self.pic == Some(id as u64),
+                    has_thumb: thumb.is_some(),
+                    thumb: thumb.unwrap_or_default(),
+                    kind,
+                });
+                cursor += piece.ms;
             }
-        }).collect()
+        }
+        rows
+    }
+
+    /// The selected transmission, or the first one, as the full time calculation:
+    /// start, every piece, PTT, the silence after it, and the total.
+    fn timing_rows(&self, turns: &[air::Turn]) -> (Vec<StepItem>, String, String) {
+        let Some(turn) = self
+            .pic
+            .and_then(|id| turns.iter().find(|t| t.pieces.iter().any(|p| p.image_id == id as i64)))
+            .or_else(|| turns.first())
+        else {
+            return (
+                Vec::new(),
+                i18n::t("No picture in this block is ready to transmit.", "Ninguna imagen de este bloque está lista para salir.").into(),
+                String::new(),
+            );
+        };
+        let tz = self.project.grid.timezone;
+        let mut steps = Vec::new();
+        steps.push(StepItem { label: i18n::t("Start", "Comienzo").into(), time: view::clock_hms(turn.at, tz).into(), dim: false });
+        let mut after_picture = false;
+        for piece in &turn.pieces {
+            if piece.kind == PieceKind::Image {
+                after_picture = true;
+            }
+            let label = match piece.kind {
+                PieceKind::Image | PieceKind::Welcome | PieceKind::Bye => {
+                    format!("{}  {}", piece_name(piece.kind), view::file_name(&piece.path))
+                }
+                PieceKind::Bumper => format!(
+                    "{}  {}",
+                    i18n::t(if after_picture { "Post bumper" } else { "Pre bumper" }, if after_picture { "Cortina posterior" } else { "Cortina previa" }),
+                    view::file_name(&piece.path)
+                ),
+                PieceKind::Ax25Mode => format!("{}  {}", piece_name(piece.kind), piece.mode.map(|m| m.spec().short).unwrap_or("")),
+                _ => piece_name(piece.kind),
+            };
+            steps.push(StepItem { label: label.into(), time: view::span(piece.ms).into(), dim: !turn.airs });
+        }
+        let ptt = f64::from(turn.lead_ms + turn.tail_ms);
+        if ptt > 0.0 {
+            steps.push(StepItem {
+                label: i18n::t("PTT lead + tail", "PTT entrada + cola").into(),
+                time: view::span(ptt).into(),
+                dim: !turn.airs,
+            });
+        }
+        let until = turn.next_at.unwrap_or(turn.block_end);
+        let gap = (until - turn.at).num_milliseconds() as f64 - turn.total_ms();
+        if gap > 500.0 {
+            steps.push(StepItem { label: i18n::t("Silence", "Silencio").into(), time: view::span(gap).into(), dim: false });
+        }
+        let index = turns.iter().position(|t| t.at == turn.at).unwrap_or(0) + 1;
+        let name = turn
+            .pieces
+            .iter()
+            .find(|p| p.kind == PieceKind::Image)
+            .map(|p| view::file_name(&p.path))
+            .unwrap_or_else(|| turn.name.clone());
+        let mut caption = format!("{name}  ·  {}  ·  {index}/{}", view::clock_hms(turn.at, tz), turns.len());
+        if !turn.airs {
+            caption.push_str("  ·  ");
+            caption.push_str(i18n::ts("does not fit", "no entra"));
+        }
+        let end = turn.at + TimeDelta::milliseconds(turn.total_ms().round() as i64);
+        let mut total = format!("{}  {}", i18n::t("Total", "Total"), view::duration(turn.total_ms()));
+        if turn.airs {
+            total.push_str("  ·  ");
+            total.push_str(i18n::ts("ends", "termina"));
+            total.push(' ');
+            total.push_str(&view::clock_hms(end, tz));
+        } else {
+            total.push_str("  ·  ");
+            total.push_str(i18n::ts("does not fit", "no entra"));
+        }
+        (steps, caption, total)
     }
 
     fn thumb(&mut self, path: &str) -> Option<slint::Image> {
@@ -1065,6 +1182,39 @@ impl App {
         true
     }
 
+    fn prepare_instant_graphics(&mut self) -> bool {
+        match self.instant.graphics {
+            GraphicsLevel::None => {
+                self.note(i18n::t("Choose Channel, Program or Block graphics first.", "Elegí primero gráfica de canal, programa o bloque."));
+                false
+            }
+            GraphicsLevel::Channel => {
+                self.gfx_target = GfxTarget::Channel;
+                true
+            }
+            GraphicsLevel::Program => match self.instant.program_id {
+                Some(id) if self.project.program(id).is_some() => {
+                    self.gfx_target = GfxTarget::Program(id);
+                    true
+                }
+                _ => {
+                    self.note(i18n::t("That program no longer exists. Use the selected picture again.", "Ese programa ya no existe. Volvé a usar la imagen elegida."));
+                    false
+                }
+            },
+            GraphicsLevel::Block => match self.instant.block_id {
+                Some(id) if self.project.block(id).is_some() => {
+                    self.gfx_target = GfxTarget::Block(id);
+                    true
+                }
+                _ => {
+                    self.note(i18n::t("That block no longer exists. Use the selected picture again.", "Ese bloque ya no existe. Volvé a usar la imagen elegida."));
+                    false
+                }
+            },
+        }
+    }
+
     fn choose_theme(&mut self, index: i32) {
         let id = THEME_IDS.get(index.max(0) as usize).copied().unwrap_or("dark");
         if self.config.ui.theme == id {
@@ -1102,6 +1252,39 @@ impl App {
         let ui = self.ui();
         ui.set_act_list(if act.is_empty() { i18n::t("No activations yet.", "Todavía no hay activaciones.").into() } else { act.join("\n").into() });
         self.push_activation();
+        self.push_instant();
+    }
+
+    /// Names, thumbnails and the graphics choices of the instant tab. The paths and
+    /// checkboxes are owned by the window; this only reflects them.
+    fn push_instant(&mut self) {
+        let ui = self.ui();
+        let path = ui.get_instant_path().to_string();
+        let thumb = self.thumb(&path);
+        ui.set_instant_file(view::file_name(&path).into());
+        ui.set_instant_has_thumb(thumb.is_some());
+        ui.set_instant_thumb(thumb.unwrap_or_default());
+        ui.set_instant_pre_name(view::file_name(&ui.get_instant_pre()).into());
+        ui.set_instant_post_name(view::file_name(&ui.get_instant_post()).into());
+        ui.set_instant_welcome_name(view::file_name(&ui.get_instant_welcome()).into());
+        ui.set_instant_bye_name(view::file_name(&ui.get_instant_bye()).into());
+        let mut levels = vec![GraphicsLevel::None, GraphicsLevel::Channel];
+        if self.instant.program_id.is_some() {
+            levels.push(GraphicsLevel::Program);
+        }
+        if self.instant.block_id.is_some() {
+            levels.push(GraphicsLevel::Block);
+        }
+        if !levels.contains(&self.instant.graphics) {
+            self.instant.graphics = GraphicsLevel::Channel;
+        }
+        let labels: Vec<SharedString> = levels.iter().map(|l| SharedString::from(graphics_label(*l))).collect();
+        let index = levels.iter().position(|l| *l == self.instant.graphics).unwrap_or(1) as i32;
+        ui.set_instant_graphics_choices(ModelRc::new(VecModel::from(labels)));
+        ui.set_instant_graphics_index(index);
+        ui.set_instant_graphics_hint(graphics_hint(self.instant.graphics).into());
+        ui.set_instant_graphics_edit_ok(self.instant.graphics != GraphicsLevel::None);
+        self.instant_choices = levels;
     }
 
     fn push_activation(&mut self) {
@@ -1171,16 +1354,35 @@ impl App {
         ui.set_exp_note(format!("{mp3}\n{aac}").into());
     }
 
+    fn scan_devices(&mut self) {
+        self.audio_outputs = audio::output_devices();
+        self.audio_inputs = audio::input_devices();
+        self.serial_ports = ptt::serial_ports();
+    }
+
+    pub fn refresh_devices(&mut self) {
+        self.scan_devices();
+        self.push_equipment();
+    }
+
     fn push_equipment(&mut self) {
         let c = &self.config;
+        let (outs, out_index) = audio_choices(&self.audio_outputs, &c.audio.output);
+        let (ins, in_index) = audio_choices(&self.audio_inputs, &c.audio.input);
+        let (ports, serial_index) = serial_choices(&self.serial_ports, &c.ptt.port);
         let ui = self.ui();
+        ui.set_audio_outs(ModelRc::new(VecModel::from(outs)));
+        ui.set_audio_out_index(out_index);
+        ui.set_audio_ins(ModelRc::new(VecModel::from(ins)));
+        ui.set_audio_in_index(in_index);
+        ui.set_serial_ports(ModelRc::new(VecModel::from(ports)));
+        ui.set_serial_index(serial_index);
         ui.set_ptt_index(match c.ptt.method {
             PttMethod::None => 0,
             PttMethod::Vox => 1,
             PttMethod::Serial => 2,
             PttMethod::Cat => 3,
         });
-        ui.set_ptt_port(c.ptt.port.as_str().into());
         self.ui_quiet = true;
         ui.set_rts_index(level_index(c.ptt.rts));
         ui.set_dtr_index(level_index(c.ptt.dtr));
@@ -1190,8 +1392,6 @@ impl App {
         ui.set_cat_host(c.cat.host.as_str().into());
         ui.set_cat_port(i32::from(c.cat.port));
         ui.set_cat_freq(c.cat.set_freq);
-        ui.set_audio_out(c.audio.output.as_str().into());
-        ui.set_audio_in(c.audio.input.as_str().into());
         ui.set_lang_index(if matches!(Lang::resolve(&c.ui.lang), Lang::Spanish) { 1 } else { 0 });
         ui.set_ntp_on(c.time.enabled);
         ui.set_ntp_server(c.time.server.as_str().into());
@@ -1578,38 +1778,6 @@ impl App {
         self.changed();
     }
 
-    fn save_activation(&mut self, id: Option<u64>) {
-        let ui = self.ui();
-        let name = ui.get_act_name().to_string().trim().to_string();
-        let code = ui.get_act_code().to_string().trim().to_string();
-        if name.is_empty() || code.is_empty() {
-            self.note(i18n::t("Write a name and the code the radio must hear.", "Escribí un nombre y el código que tiene que oír la radio."));
-            return;
-        }
-        let actions = match parse_script(&ui.get_act_script(), self.project.tx.cw_wpm, self.project.tx.cw_tone_hz) {
-            Ok(a) => a,
-            Err(e) => {
-                self.note(e);
-                return;
-            }
-        };
-        let trigger = ActTrigger { source: if ui.get_act_source() == 1 { TriggerSource::Cw } else { TriggerSource::Dtmf }, code };
-        if let Some(id) = id {
-            if let Some(act) = self.project.activations.iter_mut().find(|a| a.id == id) {
-                act.name = name;
-                act.enabled = ui.get_act_on();
-                act.triggers = vec![trigger];
-                act.actions = actions;
-            }
-            } else {
-            let id = self.project.next_id();
-            self.project.activations.push(Activation { id, enabled: ui.get_act_on(), name, triggers: vec![trigger], actions });
-            self.act_at = self.project.activations.len().saturating_sub(1);
-        }
-        self.close_dialog();
-        self.changed();
-    }
-
     fn transmit(&mut self) {
         if self.status.busy {
             self.note(self.status.busy_reason.clone());
@@ -1624,18 +1792,27 @@ impl App {
         let mode = view::mode_at(ui.get_instant_mode());
         let pre_path = ui.get_instant_pre().to_string();
         let post_path = ui.get_instant_post().to_string();
-        let pre = (!pre_path.trim().is_empty()).then(|| Still { path: pre_path, mode: Some(view::mode_at(ui.get_instant_pre_mode())) });
-        let post = (!post_path.trim().is_empty()).then(|| Still { path: post_path, mode: Some(view::mode_at(ui.get_instant_post_mode())) });
+        let pre = (ui.get_instant_pre_on() && !pre_path.trim().is_empty())
+            .then(|| Still { path: pre_path, mode: Some(view::mode_at(ui.get_instant_pre_mode())) });
+        let post = (ui.get_instant_post_on() && !post_path.trim().is_empty())
+            .then(|| Still { path: post_path, mode: Some(view::mode_at(ui.get_instant_post_mode())) });
+        let welcome_path = ui.get_instant_welcome().to_string();
+        let bye_path = ui.get_instant_bye().to_string();
+        let welcome = (ui.get_instant_welcome_on() && !welcome_path.trim().is_empty())
+            .then(|| Still { path: welcome_path, mode: Some(view::mode_at(ui.get_instant_welcome_mode())) });
+        let bye = (ui.get_instant_bye_on() && !bye_path.trim().is_empty())
+            .then(|| Still { path: bye_path, mode: Some(view::mode_at(ui.get_instant_bye_mode())) });
         let manual = air::Manual {
             cw: ui.get_instant_cw(),
             ax25: ui.get_instant_ax(),
-            welcome: self.instant.welcome.clone(),
+            graphics: self.instant.graphics,
+            welcome,
             pre: pre.into_iter().collect(),
             image: Still { path, mode: Some(mode) },
             post: post.into_iter().collect(),
-            bye: self.instant.bye.clone(),
-            program_id: None,
-            block_id: None,
+            bye,
+            program_id: self.instant.program_id,
+            block_id: self.instant.block_id,
             name: i18n::t("Instant", "Instantánea"),
             program_name: String::new(),
             range: String::new(),
@@ -1659,21 +1836,56 @@ impl App {
         let enabled: Vec<&BlockImage> = images.iter().filter(|i| matches!(i.role, ImageRole::Normal) && i.enabled).collect();
         let first = enabled.first().map(|i| i.id) == Some(normal_id);
         let last = enabled.last().map(|i| i.id) == Some(normal_id);
-        let program = self.card_program().and_then(|id| self.project.program(id)).cloned();
-        self.instant.welcome = if first { program.as_ref().and_then(|p| p.welcome.clone()) } else { None };
-        self.instant.bye = if last { program.as_ref().and_then(|p| p.bye.clone()) } else { None };
+        let program_id = self.card_program();
+        let block_id = self.card().and_then(|c| (c.block_id >= 0).then_some(c.block_id as u64));
+        let program = program_id.and_then(|id| self.project.program(id)).cloned();
+        let image_mode = self.project.picture_mode(normal.mode, block_id, program_id);
+        self.instant.program_id = program_id;
+        self.instant.block_id = block_id;
+        self.instant.graphics = if block_id.is_some() {
+            GraphicsLevel::Block
+        } else if program_id.is_some() {
+            GraphicsLevel::Program
+        } else {
+            GraphicsLevel::Channel
+        };
         let ui = self.ui();
         ui.set_instant_path(normal.path.as_str().into());
-        ui.set_instant_mode(view::mode_index(normal.mode.unwrap_or(self.project.tx.mode)));
-        if let Some(pre) = pres.first() {
+        ui.set_instant_mode(view::mode_index(image_mode));
+        ui.set_instant_pre("".into());
+        ui.set_instant_post("".into());
+        ui.set_instant_pre_on(false);
+        ui.set_instant_post_on(false);
+        ui.set_instant_welcome("".into());
+        ui.set_instant_bye("".into());
+        ui.set_instant_welcome_on(false);
+        ui.set_instant_bye_on(false);
+        if let Some(pre) = pres.first().filter(|p| !p.path.trim().is_empty()) {
             ui.set_instant_pre(pre.path.as_str().into());
-            ui.set_instant_pre_mode(view::mode_index(pre.mode.unwrap_or(self.project.tx.mode)));
+            ui.set_instant_pre_mode(view::mode_index(self.project.picture_mode(pre.mode, block_id, program_id)));
+            ui.set_instant_pre_on(true);
         }
-        if let Some(post) = posts.first() {
+        if let Some(post) = posts.first().filter(|p| !p.path.trim().is_empty()) {
             ui.set_instant_post(post.path.as_str().into());
-            ui.set_instant_post_mode(view::mode_index(post.mode.unwrap_or(self.project.tx.mode)));
+            ui.set_instant_post_mode(view::mode_index(self.project.picture_mode(post.mode, block_id, program_id)));
+            ui.set_instant_post_on(true);
+        }
+        if first {
+            if let Some(welcome) = program.as_ref().and_then(|p| p.welcome.as_ref()).filter(|s| !s.path.trim().is_empty()) {
+                ui.set_instant_welcome(welcome.path.as_str().into());
+                ui.set_instant_welcome_mode(view::mode_index(self.project.still_mode(welcome.mode, program_id)));
+                ui.set_instant_welcome_on(true);
+            }
+        }
+        if last {
+            if let Some(bye) = program.as_ref().and_then(|p| p.bye.as_ref()).filter(|s| !s.path.trim().is_empty()) {
+                ui.set_instant_bye(bye.path.as_str().into());
+                ui.set_instant_bye_mode(view::mode_index(self.project.still_mode(bye.mode, program_id)));
+                ui.set_instant_bye_on(true);
+            }
         }
         ui.set_side(1);
+        self.push_instant();
         self.note(i18n::t("The instant tab has this picture. Transmit when you are ready.", "La pestaña instantánea tiene esta imagen. Transmití cuando quieras."));
     }
 
@@ -1965,13 +2177,48 @@ impl App {
             "ax-info" => { self.project.ax25.info = value == "1"; self.changed(); }
             "ax-mode" => { self.project.ax25.mode = value == "1"; self.changed(); }
             "dedupe" => { self.project.ax25.dedupe = value == "1"; self.changed(); }
-            "port" => { self.config.ptt.port = value.to_string(); self.save_config(); }
             "cat-host" => { self.config.cat.host = value.to_string(); self.save_config(); }
             "cat-freq" => { self.config.cat.set_freq = value == "1"; self.save_config(); }
-            "audio-out" => { self.config.audio.output = value.to_string(); self.save_config(); }
-            "audio-in" => { self.config.audio.input = value.to_string(); self.save_config(); }
             "ntp" => { self.config.time.enabled = value == "1"; self.config.time.prompted = true; self.save_config(); }
             "ntp-server" => { self.config.time.server = value.to_string(); self.save_config(); }
+            "instant-clear" => {
+                self.instant = InstantHold::default();
+                let ui = self.ui();
+                ui.set_instant_path("".into());
+                ui.set_instant_pre("".into());
+                ui.set_instant_post("".into());
+                ui.set_instant_pre_on(false);
+                ui.set_instant_post_on(false);
+                ui.set_instant_welcome("".into());
+                ui.set_instant_bye("".into());
+                ui.set_instant_welcome_on(false);
+                ui.set_instant_bye_on(false);
+                self.push_instant();
+            }
+            "instant-pre-clear" => {
+                let ui = self.ui();
+                ui.set_instant_pre("".into());
+                ui.set_instant_pre_on(false);
+                self.push_instant();
+            }
+            "instant-post-clear" => {
+                let ui = self.ui();
+                ui.set_instant_post("".into());
+                ui.set_instant_post_on(false);
+                self.push_instant();
+            }
+            "instant-welcome-clear" => {
+                let ui = self.ui();
+                ui.set_instant_welcome("".into());
+                ui.set_instant_welcome_on(false);
+                self.push_instant();
+            }
+            "instant-bye-clear" => {
+                let ui = self.ui();
+                ui.set_instant_bye("".into());
+                ui.set_instant_bye_on(false);
+                self.push_instant();
+            }
                 _ => {}
             }
     }
@@ -2023,6 +2270,27 @@ impl App {
                 };
                 self.save_config();
             }
+            "serial" => {
+                let port = if value <= 0 { Some(String::new()) } else { self.serial_ports.get(value as usize - 1).cloned() };
+                if let Some(port) = port {
+                    self.config.ptt.port = port;
+                    self.save_config();
+                }
+            }
+            "audio-out" => {
+                let device = if value <= 0 { Some(String::new()) } else { self.audio_outputs.get(value as usize - 1).map(|d| d.id.clone()) };
+                if let Some(id) = device {
+                    self.config.audio.output = id;
+                    self.save_config();
+                }
+            }
+            "audio-in" => {
+                let device = if value <= 0 { Some(String::new()) } else { self.audio_inputs.get(value as usize - 1).map(|d| d.id.clone()) };
+                if let Some(id) = device {
+                    self.config.audio.input = id;
+                    self.save_config();
+                }
+            }
             "lead" => { self.config.ptt.lead_ms = value.max(0) as u32; self.save_config(); }
             "tail" => { self.config.ptt.tail_ms = value.max(0) as u32; self.save_config(); }
             "rts" => {
@@ -2048,6 +2316,14 @@ impl App {
                 self.push_programs(true);
             }
             "ntp-hours" => { self.config.time.period_h = value.max(1) as u32; self.save_config(); }
+            "instant-graphics" => {
+                let Some(level) = self.instant_choices.get(value.max(0) as usize).copied() else { return };
+                self.instant.graphics = level;
+                let ui = self.ui();
+                ui.set_instant_graphics_index(value);
+                ui.set_instant_graphics_hint(graphics_hint(level).into());
+                ui.set_instant_graphics_edit_ok(level != GraphicsLevel::None);
+            }
             _ => {}
         }
     }
@@ -2112,14 +2388,6 @@ impl App {
                 self.close_dialog();
                 self.save_config();
                 self.push_equipment();
-            }
-            Pending::Activation(id) => {
-                if which == 0 {
-                    let id = *id;
-                    self.save_activation(id);
-                } else {
-                    self.close_dialog();
-                }
             }
             Pending::Leave(after) => {
                 let after = *after;
@@ -2536,6 +2804,44 @@ fn level_at(index: i32) -> LineLevel {
     }
 }
 
+/// Combo labels for a sound card. Index 0 is the system default. A configured device
+/// that is not connected stays visible and selected, so opening the panel never
+/// silently changes the radio setup.
+fn audio_choices(devices: &[DeviceInfo], key: &str) -> (Vec<SharedString>, i32) {
+    let key = key.trim();
+    let mut labels = vec![SharedString::from(i18n::t("System default", "Predeterminado del sistema"))];
+    let mut index = 0;
+    for device in devices {
+        labels.push(SharedString::from(device.label()));
+        if index == 0 && device.same_device(key) {
+            index = labels.len() as i32 - 1;
+        }
+    }
+    if !key.is_empty() && index == 0 {
+        labels.push(SharedString::from(format!("{key} ({})", i18n::t("not connected", "no conectado"))));
+        index = labels.len() as i32 - 1;
+    }
+    (labels, index)
+}
+
+/// Combo labels for serial PTT. Index 0 is no port.
+fn serial_choices(ports: &[String], key: &str) -> (Vec<SharedString>, i32) {
+    let key = key.trim();
+    let mut labels = vec![SharedString::from(i18n::t("None", "Ninguno"))];
+    let mut index = 0;
+    for port in ports {
+        labels.push(SharedString::from(port.as_str()));
+        if index == 0 && port == key {
+            index = labels.len() as i32 - 1;
+        }
+    }
+    if !key.is_empty() && index == 0 {
+        labels.push(SharedString::from(format!("{key} ({})", i18n::t("not connected", "no conectado"))));
+        index = labels.len() as i32 - 1;
+    }
+    (labels, index)
+}
+
 fn log_result(result: &str) -> String {
     match result {
         "Cut" | "Cortada" => i18n::t("Cut", "Cortada"),
@@ -2577,6 +2883,24 @@ fn gfx_stamp(g: &estivi_core::graphics::Graphics) -> u64 {
     h
 }
 
+fn graphics_label(level: GraphicsLevel) -> String {
+    match level {
+        GraphicsLevel::None => i18n::t("No graphics", "Sin gráfica"),
+        GraphicsLevel::Channel => i18n::t("Channel only", "Solo canal"),
+        GraphicsLevel::Program => i18n::t("Program + channel", "Programa + canal"),
+        GraphicsLevel::Block => i18n::t("Block + program + channel", "Bloque + programa + canal"),
+    }
+}
+
+fn graphics_hint(level: GraphicsLevel) -> String {
+    match level {
+        GraphicsLevel::None => i18n::t("Only the picture goes out.", "Solo sale la imagen."),
+        GraphicsLevel::Channel => i18n::t("The channel graphics are painted on the picture.", "La gráfica del canal se pinta sobre la imagen."),
+        GraphicsLevel::Program => i18n::t("The program and channel graphics are painted on the picture.", "La gráfica del programa y la del canal se pintan sobre la imagen."),
+        GraphicsLevel::Block => i18n::t("The block, program and channel graphics are painted on the picture.", "La gráfica del bloque, la del programa y la del canal se pintan sobre la imagen."),
+    }
+}
+
 fn piece_name(kind: PieceKind) -> String {
     match kind {
         PieceKind::Vox => i18n::t("VOX", "VOX"),
@@ -2589,10 +2913,6 @@ fn piece_name(kind: PieceKind) -> String {
         PieceKind::Image => i18n::t("Image", "Imagen"),
         PieceKind::Bye => i18n::t("Bye", "Despedida"),
     }
-}
-
-fn silence_row(ms: f64) -> PicItem {
-    PicItem { id: -1, label: i18n::t("Silence", "Silencio").into(), detail: view::duration(ms).into(), on: true, role: 3, ghost: true, group: -1, selected: false }
 }
 
 fn action_labels() -> Vec<SharedString> {
@@ -2704,70 +3024,6 @@ fn ensure_ext(path: &Path) -> PathBuf {
     }
 }
 
-fn script_of(actions: &[Action]) -> String {
-    actions.iter().map(|a| match a {
-        Action::Cw { text, .. } => format!("cw {text}"),
-        Action::Dtmf { sequence } => format!("dtmf {sequence}"),
-        Action::Image { path, .. } => format!("image {path}"),
-        Action::Pause => "pause".into(),
-        Action::Resume => "resume".into(),
-        Action::Ax25 { comment, .. } => format!("ax25 {comment}"),
-        Action::Command { command, via } => format!("command {}|{command}", via_name(*via)),
-        Action::Api { url, via, .. } => format!("api {}|{url}", via_name(*via)),
-        Action::Random { paths, .. } => format!("random {}", paths.join("|")),
-    }).collect::<Vec<_>>().join("\n")
-}
-
-fn via_name(via: Carrier) -> &'static str {
-    match via {
-        Carrier::Dtmf => "dtmf",
-        Carrier::Ax25 => "ax25",
-        Carrier::Cw => "cw",
-    }
-}
-
-fn parse_via(s: &str) -> Carrier {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "dtmf" => Carrier::Dtmf,
-        "ax25" => Carrier::Ax25,
-        _ => Carrier::Cw,
-    }
-}
-
-fn parse_script(text: &str, wpm: f32, tone: f32) -> Result<Vec<Action>, String> {
-    let mut out = Vec::new();
-    for raw in text.lines() {
-        let line = raw.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let (kind, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
-        let rest = rest.trim();
-        match kind.to_ascii_lowercase().as_str() {
-            "cw" => out.push(Action::Cw { text: rest.into(), wpm, tone_hz: tone }),
-            "dtmf" => out.push(Action::Dtmf { sequence: rest.into() }),
-            "image" => out.push(Action::Image { path: rest.into(), mode: None }),
-            "pause" => out.push(Action::Pause),
-            "resume" => out.push(Action::Resume),
-            "ax25" => out.push(Action::Ax25 { lines: Default::default(), comment: rest.into() }),
-            "command" => {
-                let (via, cmd) = rest.split_once('|').unwrap_or(("cw", rest));
-                out.push(Action::Command { command: cmd.trim().into(), via: parse_via(via) });
-            }
-            "api" => {
-                let (via, url) = rest.split_once('|').unwrap_or(("cw", rest));
-                out.push(Action::Api { url: url.trim().into(), json_path: String::new(), via: parse_via(via) });
-            }
-            "random" => {
-                let paths = rest.split('|').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-                out.push(Action::Random { paths, mode: None });
-            }
-            other => return Err(i18n::t(&format!("Unknown action: {other}"), &format!("Acción desconocida: {other}"))),
-        }
-    }
-    Ok(out)
-}
-
 pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
     let ui = MainWindow::new()?;
     i18n::apply_slint(Lang::resolve(&config.ui.lang));
@@ -2800,12 +3056,16 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
             after: After::Nothing,
             act_at: 0,
             prog_id: None,
-            instant: InstantHold { welcome: None, bye: None },
+            instant: InstantHold::default(),
             seen_air: 0,
         seen_log: 0,
             live_full: None,
             next_key: String::new(),
             thumbs: HashMap::new(),
+            instant_choices: Vec::new(),
+            audio_outputs: Vec::new(),
+            audio_inputs: Vec::new(),
+            serial_ports: Vec::new(),
             block_span: None,
             mode_sort: (0, false),
             gfx_target: GfxTarget::Channel,
@@ -2876,6 +3136,18 @@ fn wire(app: &Shared, ui: &MainWindow) {
         move || {
             let mut ready = false;
             with_app(&w, |a| ready = a.prepare_block_graphics());
+            if ready {
+                if let Some(app) = w.upgrade() {
+                    editor::open(&app);
+                }
+            }
+        }
+    });
+    ui.on_open_instant_graphics({
+        let w = w.clone();
+        move || {
+            let mut ready = false;
+            with_app(&w, |a| ready = a.prepare_instant_graphics());
             if ready {
                 if let Some(app) = w.upgrade() {
                     editor::open(&app);
@@ -2963,6 +3235,7 @@ fn wire(app: &Shared, ui: &MainWindow) {
     ui.on_confirm({ let w = w.clone(); move |which| with_app(&w, |a| a.confirm(which)) });
     ui.on_transmit({ let w = w.clone(); move || with_app(&w, App::transmit) });
     ui.on_edit_activation({ let w = w.clone(); move |n| with_app(&w, |a| a.open_activation(n < 0)) });
+    ui.on_refresh_devices({ let w = w.clone(); move || with_app(&w, App::refresh_devices) });
     ui.on_pick({
         let w = w.clone();
         let uiw = ui.as_weak();
@@ -2975,7 +3248,7 @@ fn wire(app: &Shared, ui: &MainWindow) {
             let pick = match kind.as_str() {
                 "images" => NativePick::Images { many: true },
                 "folder" => NativePick::Directory,
-                "instant" | "pre" | "post" | "welcome" | "bye" => NativePick::Images { many: false },
+                "instant" | "pre" | "post" | "welcome" | "bye" | "instant-welcome" | "instant-bye" => NativePick::Images { many: false },
                 _ => return,
             };
             let uiw = uiw.clone();
@@ -3008,21 +3281,60 @@ fn wire(app: &Shared, ui: &MainWindow) {
                 }
                 "instant" => {
                     if let Some(p) = paths.into_iter().next() {
-                        a.instant = InstantHold { welcome: None, bye: None };
-                        a.ui().set_instant_path(a.relativize(&p).into());
-                        a.ui().set_instant_mode(view::mode_index(a.project.tx.mode));
+                        a.instant = InstantHold::default();
+                        let ui = a.ui();
+                        ui.set_instant_path(a.relativize(&p).into());
+                        ui.set_instant_file(view::file_name(&a.relativize(&p)).into());
+                        ui.set_instant_mode(view::mode_index(a.project.tx.mode));
+                        ui.set_instant_pre("".into());
+                        ui.set_instant_post("".into());
+                        ui.set_instant_pre_on(false);
+                        ui.set_instant_post_on(false);
+                        ui.set_instant_welcome("".into());
+                        ui.set_instant_bye("".into());
+                        ui.set_instant_welcome_on(false);
+                        ui.set_instant_bye_on(false);
+                        a.push_instant();
                     }
                 }
                 "pre" => {
                     if let Some(p) = paths.into_iter().next() {
-                        a.ui().set_instant_pre_mode(view::mode_index(playlist::bumper_mode(&p)));
-                        a.ui().set_instant_pre(a.relativize(&p).into());
+                        let stored = a.relativize(&p);
+                        let ui = a.ui();
+                        ui.set_instant_pre_mode(view::mode_index(playlist::bumper_mode(&p)));
+                        ui.set_instant_pre(stored.into());
+                        ui.set_instant_pre_on(true);
+                        a.push_instant();
                     }
                 }
                 "post" => {
                     if let Some(p) = paths.into_iter().next() {
-                        a.ui().set_instant_post_mode(view::mode_index(playlist::bumper_mode(&p)));
-                        a.ui().set_instant_post(a.relativize(&p).into());
+                        let stored = a.relativize(&p);
+                        let ui = a.ui();
+                        ui.set_instant_post_mode(view::mode_index(playlist::bumper_mode(&p)));
+                        ui.set_instant_post(stored.into());
+                        ui.set_instant_post_on(true);
+                        a.push_instant();
+                    }
+                }
+                "instant-welcome" => {
+                    if let Some(p) = paths.into_iter().next() {
+                        let stored = a.relativize(&p);
+                        let ui = a.ui();
+                        ui.set_instant_welcome_mode(view::mode_index(playlist::bumper_mode(&p)));
+                        ui.set_instant_welcome(stored.into());
+                        ui.set_instant_welcome_on(true);
+                        a.push_instant();
+                    }
+                }
+                "instant-bye" => {
+                    if let Some(p) = paths.into_iter().next() {
+                        let stored = a.relativize(&p);
+                        let ui = a.ui();
+                        ui.set_instant_bye_mode(view::mode_index(playlist::bumper_mode(&p)));
+                        ui.set_instant_bye(stored.into());
+                        ui.set_instant_bye_on(true);
+                        a.push_instant();
                     }
                 }
                 "welcome" => a.set_still(true, paths.into_iter().next()),

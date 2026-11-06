@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: estivi 0.1.0\n"
+"Project-Id-Version: estivi 0.2.0\n"
 "Language: es\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -250,6 +250,63 @@ msgstr "Iniciar"
 msgid "Cut"
 msgstr "Cortar"
 
+msgid "Channel"
+msgstr "Canal"
+
+msgid "Equipment"
+msgstr "Equipo"
+
+msgid "Refresh"
+msgstr "Actualizar"
+
+msgid "Name"
+msgstr "Nombre"
+
+msgid "Callsign"
+msgstr "Indicativo"
+
+msgid "Freq. (MHz)"
+msgstr "Frec. (MHz)"
+
+msgid "Mode"
+msgstr "Modo"
+
+msgid "Min pause (s)"
+msgstr "Pausa mín. (s)"
+
+msgid "CW text"
+msgstr "Texto CW"
+
+msgid "More channel settings…"
+msgstr "Más ajustes del canal…"
+
+msgid "PTT"
+msgstr "PTT"
+
+msgid "None"
+msgstr "Ninguno"
+
+msgid "VOX"
+msgstr "VOX"
+
+msgid "Serial"
+msgstr "Serie"
+
+msgid "CAT"
+msgstr "CAT"
+
+msgid "Serial port"
+msgstr "Puerto serie"
+
+msgid "Audio output"
+msgstr "Salida de audio"
+
+msgid "Audio input"
+msgstr "Entrada de audio"
+
+msgid "More equipment settings…"
+msgstr "Más ajustes del equipo…"
+
 msgid "Month"
 msgstr "Mes"
 
@@ -271,17 +328,11 @@ msgstr "Instantánea"
 msgid "Activations"
 msgstr "Activaciones"
 
-msgid "Channel"
-msgstr "Canal"
-
-msgid "Equipment"
-msgstr "Equipo"
+msgid "Transmit"
+msgstr "Transmitir"
 
 msgid "Double-click an empty hour for a common block, or click a card. A program's days and hours are set in Programs."
 msgstr "Doble clic en una hora vacía para un bloque común, o clic en una tarjeta. Los días y las horas de un programa se configuran en Programas."
-
-msgid "Name"
-msgstr "Nombre"
 
 msgid "Start"
 msgstr "Comienzo"
@@ -322,6 +373,15 @@ msgstr "Unir abajo"
 msgid "Unlink"
 msgstr "Desunir"
 
+msgid "Pre"
+msgstr "Antes"
+
+msgid "Post"
+msgstr "Después"
+
+msgid "No pictures in this block yet. Add files, or import a folder of numbered blocks."
+msgstr "Todavía no hay imágenes en este bloque. Agregá archivos o importá una carpeta de bloques numerados."
+
 msgid "Up"
 msgstr "Subir"
 
@@ -337,8 +397,17 @@ msgstr "Quitar"
 msgid "Picture mode"
 msgstr "Modo de la imagen"
 
+msgid "Timing"
+msgstr "Tiempos"
+
 msgid "Instant transmission is outside the grid. A block end does not cut it."
 msgstr "La transmisión instantánea está fuera de la grilla. El fin de un bloque no la corta."
+
+msgid "Picture"
+msgstr "Imagen"
+
+msgid "No picture chosen."
+msgstr "Ninguna imagen elegida."
 
 msgid "Use the selected picture"
 msgstr "Usar la imagen elegida"
@@ -346,8 +415,11 @@ msgstr "Usar la imagen elegida"
 msgid "Choose picture"
 msgstr "Elegir imagen"
 
-msgid "Mode"
-msgstr "Modo"
+msgid "Clear"
+msgstr "Quitar"
+
+msgid "Transmission"
+msgstr "Transmisión"
 
 msgid "CW identification"
 msgstr "Identificación CW"
@@ -355,20 +427,35 @@ msgstr "Identificación CW"
 msgid "AX.25 info"
 msgstr "Info AX.25"
 
+msgid "Paint on the picture"
+msgstr "Pintar sobre la imagen"
+
+msgid "Edit graphics"
+msgstr "Editar gráfica"
+
 msgid "Pre bumper"
 msgstr "Cortina previa"
 
-msgid "Set pre bumper"
-msgstr "Poner cortina previa"
+msgid "Include"
+msgstr "Incluir"
+
+msgid "Choose"
+msgstr "Elegir"
+
+msgid "Change"
+msgstr "Cambiar"
 
 msgid "Post bumper"
 msgstr "Cortina posterior"
 
-msgid "Set post bumper"
-msgstr "Poner cortina posterior"
+msgid "Welcome and bye"
+msgstr "Bienvenida y despedida"
 
-msgid "Transmit"
-msgstr "Transmitir"
+msgid "Welcome"
+msgstr "Bienvenida"
+
+msgid "Bye"
+msgstr "Despedida"
 
 msgid "A matching DTMF or CW code runs the actions. Triggers are OR. Pause waits for the current transmission to finish."
 msgstr "Un código DTMF o CW que coincida corre las acciones. Los disparadores son O. Pausa espera a que termine la transmisión que ya está al aire."
@@ -403,20 +490,23 @@ msgstr "PPM"
 msgid "Hz"
 msgstr "Hz"
 
-msgid "Picture"
-msgstr "Imagen"
-
 msgid "Send the answer as"
 msgstr "Mandar la respuesta como"
 
 msgid "Add an action"
 msgstr "Agregar una acción"
 
+msgid "Channel settings"
+msgstr "Ajustes del canal"
+
+msgid "Equipment settings"
+msgstr "Ajustes del equipo"
+
+msgid "Close"
+msgstr "Cerrar"
+
 msgid "Channel name"
 msgstr "Nombre del canal"
-
-msgid "Callsign"
-msgstr "Indicativo"
 
 msgid "Operator"
 msgstr "Operador"
@@ -436,6 +526,12 @@ msgstr "Desfase (segundos)"
 msgid "Minimum pause (seconds)"
 msgstr "Pausa mínima (segundos)"
 
+msgid "Upcoming blocks"
+msgstr "Próximos bloques"
+
+msgid "or hours"
+msgstr "o horas"
+
 msgid "VOX preamble"
 msgstr "Preámbulo VOX"
 
@@ -445,20 +541,11 @@ msgstr "CW antes de las imágenes"
 msgid "CW after the pictures"
 msgstr "CW después de las imágenes"
 
-msgid "CW text"
-msgstr "Texto CW"
-
 msgid "AX.25 info frame"
 msgstr "Trama de info AX.25"
 
 msgid "AX.25 mode frame"
 msgstr "Trama de modo AX.25"
-
-msgid "Upcoming blocks"
-msgstr "Próximos bloques"
-
-msgid "or hours"
-msgstr "o horas"
 
 msgid "One upcoming block per program"
 msgstr "Un próximo bloque por programa"
@@ -466,23 +553,14 @@ msgstr "Un próximo bloque por programa"
 msgid "Export audio"
 msgstr "Exportar audio"
 
-msgid "PTT"
-msgstr "PTT"
+msgid "Language"
+msgstr "Idioma"
 
-msgid "None"
-msgstr "Ninguno"
+msgid "English"
+msgstr "Inglés"
 
-msgid "VOX"
-msgstr "VOX"
-
-msgid "Serial"
-msgstr "Serie"
-
-msgid "CAT"
-msgstr "CAT"
-
-msgid "Serial port"
-msgstr "Puerto serie"
+msgid "Spanish"
+msgstr "Español"
 
 msgid "Off"
 msgstr "Desactivada"
@@ -499,38 +577,26 @@ msgstr "Host de rigctld"
 msgid "rigctld port"
 msgstr "Puerto de rigctld"
 
-msgid "Set the channel frequency before each grid transmission"
-msgstr "Fijar la frecuencia del canal antes de cada transmisión de la grilla"
-
-msgid "Audio output (empty = default)"
-msgstr "Salida de audio (vacío = predeterminada)"
-
-msgid "Audio input (empty = default)"
-msgstr "Entrada de audio (vacío = predeterminada)"
-
-msgid "Language"
-msgstr "Idioma"
-
-msgid "English"
-msgstr "Inglés"
-
-msgid "Spanish"
-msgstr "Español"
-
-msgid "Clock"
-msgstr "Reloj"
-
-msgid "The computer clock is not changed. Estivi stores an NTP offset and uses it for the grid."
-msgstr "El reloj de la computadora no se cambia. Estivi guarda un desfase NTP y lo usa para la grilla."
-
-msgid "Correct the clock"
-msgstr "Corregir el reloj"
-
 msgid "NTP server"
 msgstr "Servidor NTP"
 
 msgid "Every (hours)"
 msgstr "Cada (horas)"
+
+msgid "Set the channel frequency before each grid transmission"
+msgstr "Fijar la frecuencia del canal antes de cada transmisión de la grilla"
+
+msgid "Correct the clock"
+msgstr "Corregir el reloj"
+
+msgid "The computer clock is not changed. Estivi stores an NTP offset and uses it for the grid."
+msgstr "El reloj de la computadora no se cambia. Estivi guarda un desfase NTP y lo usa para la grilla."
+
+msgid "The lists show what this computer reports. Refresh after connecting or removing a device."
+msgstr "Las listas muestran lo que informa esta computadora. Actualizá después de conectar o quitar un dispositivo."
+
+msgid "Refresh devices"
+msgstr "Actualizar dispositivos"
 
 msgid "Date"
 msgstr "Fecha"
@@ -567,15 +633,6 @@ msgstr "Segundos por trozo"
 
 msgid "Sample rate"
 msgstr "Frecuencia de muestreo"
-
-msgid "Trigger"
-msgstr "Disparador"
-
-msgid "Actions, one per line"
-msgstr "Acciones, una por línea"
-
-msgid "cw text · dtmf 123 · image path · pause · resume · ax25 comment · command cw|the line · api cw|https://… · random a.png|b.png"
-msgstr "cw texto · dtmf 123 · image ruta · pause · resume · ax25 comentario · command cw|la línea · api cw|https://… · random a.png|b.png"
 
 msgid "New program"
 msgstr "Nuevo programa"
@@ -622,17 +679,8 @@ msgstr "Sábado"
 msgid "Sunday"
 msgstr "Domingo"
 
-msgid "Welcome"
-msgstr "Bienvenida"
-
 msgid "Set welcome"
 msgstr "Poner bienvenida"
-
-msgid "Clear"
-msgstr "Quitar"
-
-msgid "Bye"
-msgstr "Despedida"
 
 msgid "Set bye"
 msgstr "Poner despedida"
@@ -654,7 +702,4 @@ msgstr "Lienzo"
 
 msgid "M2, M4 and S2 scan in half the time of M1/S1: the canvas stays 320 px, written as 160(320). Robot 36 alternates R-Y/B-Y (4:2:0); Robot 72 sends both chromas on every line (4:2:2). Martin and Scottie send G, B, R in sequence."
 msgstr "M2, M4 y S2 barren en la mitad de tiempo que M1/S1: el lienzo sigue en 320 px, pero se escriben 160(320). Robot 36 alterna R-Y/B-Y (4:2:0); Robot 72 manda ambos croma en cada línea (4:2:2). Martin y Scottie envían G, B, R en secuencia."
-
-msgid "Close"
-msgstr "Cerrar"
 

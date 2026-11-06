@@ -34,9 +34,7 @@ fn main() {
     logger::init(config_path.with_file_name("estivi.log"));
     let mut config = Config::load(&config_path).unwrap_or_else(|e| {
         log::error!("config: {e:#}; using defaults");
-        let mut config = Config::default();
-        config.apply_recovery_secret(&config_path);
-        config
+        Config::default()
     });
     // First boot (no lang saved yet): follow the OS when it is English or Spanish.
     if config.ui.lang.trim().is_empty() {

@@ -11,7 +11,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use crossbeam_channel::{Receiver, Sender, select, unbounded};
 use image::RgbaImage;
 
-use crate::air::{self, PieceKind, Turn, due};
+use crate::air::{self, GraphicsLevel, PieceKind, Turn, due};
 use crate::aslog::{self, LogEntry};
 use crate::compose::{Composer, LiveText, data_ctx};
 use crate::config::{Config, Lang, PttMethod};
@@ -336,15 +336,10 @@ impl Worker {
                 let audio_changed = config.audio != self.config.audio;
                 let ptt_changed = config.ptt != self.config.ptt || config.cat != self.config.cat;
                 let time = self.config.time.clone();
-                let password = self.config.recovery.password.clone();
                 self.config = *config;
                 // The window does not own the offset; a settings save must not wipe a sync that just landed.
                 if self.config.time.offset_ms == 0 && time.offset_ms != 0 && self.config.time.last_sync == time.last_sync {
                     self.config.time.offset_ms = time.offset_ms;
-                }
-                // `.env` is the only copy. A settings save reloads a config that no longer has it.
-                if self.config.recovery.password.is_empty() {
-                    self.config.recovery.password = password;
                 }
                 if ptt_changed {
                     self.ptt = None;
@@ -600,7 +595,6 @@ impl Worker {
             if piece.kind == PieceKind::Image {
                 preview = Some(frame.clone());
             }
-            self.store_recovery(&turn.call, mode, &piece.stamp, &frame);
             let scan = ScanImage::new(mode, &image::DynamicImage::ImageRgba8(frame).to_rgb8(), self.project.tx.color_range)?;
             for line in 0..mode.spec().tx_lines {
                 scan.line(line, &mut segs);
@@ -621,9 +615,14 @@ impl Worker {
         };
         let ctx = data_ctx(&self.project, self.now(), self.serial + 1, mode, &live, turn.freq_hz, &self.last_cw, &self.last_dtmf);
         let dir = self.dir();
-        let block = turn.block_id.and_then(|id| self.project.block(id)).map(|b| b.graphics.clone());
-        let program = turn.program_id.and_then(|id| self.project.program(id)).map(|p| p.graphics.clone());
-        self.composer.frame_chain(&self.project, dir.as_deref(), Some(&piece.path), None, block.as_ref(), program.as_ref(), mode, &ctx)
+        let block = matches!(turn.graphics, GraphicsLevel::Block)
+            .then(|| turn.block_id.and_then(|id| self.project.block(id)).map(|b| b.graphics.clone()))
+            .flatten();
+        let program = matches!(turn.graphics, GraphicsLevel::Block | GraphicsLevel::Program)
+            .then(|| turn.program_id.and_then(|id| self.project.program(id)).map(|p| p.graphics.clone()))
+            .flatten();
+        let channel = !matches!(turn.graphics, GraphicsLevel::None);
+        self.composer.frame_chain_with(&self.project, dir.as_deref(), Some(&piece.path), None, block.as_ref(), program.as_ref(), channel, mode, &ctx)
     }
 
     fn run_job(&mut self, job: ActJob) {
@@ -754,9 +753,8 @@ impl Worker {
 
     fn sstv(&mut self, path: &str, mode: Mode, mark: Option<&str>) -> anyhow::Result<Vec<Seg>> {
         let mut segs = Vec::new();
-        let stamp = (mode == Mode::Yoniq).then(|| crate::recovery::stamp(self.now().with_timezone(&chrono::Local).naive_local()));
         if self.project.ax25.mode {
-            let text = crate::ax25::mode_line(mode.spec().short, mark, stamp.as_deref());
+            let text = crate::ax25::mode_line(mode.spec().short, mark);
             segs.extend(crate::ax25::segments(&text, &self.project.station.call));
         }
         segs.extend(sstv_header(mode));
@@ -764,28 +762,11 @@ impl Worker {
         let ctx = data_ctx(&self.project, self.now(), self.serial + 1, mode, &live, self.project.freq_hz, &self.last_cw, &self.last_dtmf);
         let dir = self.dir();
         let frame = self.composer.frame_image(&self.project, dir.as_deref(), Some(path), mode, &ctx);
-        if let Some(stamp) = stamp.as_deref() {
-            self.store_recovery(&self.project.station.call, mode, stamp, &frame);
-        }
         let scan = ScanImage::new(mode, &image::DynamicImage::ImageRgba8(frame).to_rgb8(), self.project.tx.color_range)?;
         for line in 0..mode.spec().tx_lines {
             scan.line(line, &mut segs);
         }
         Ok(segs)
-    }
-
-    fn store_recovery(&self, call: &str, mode: Mode, stamp: &str, frame: &RgbaImage) {
-        if mode != Mode::Yoniq || !self.config.recovery.enabled || stamp.is_empty() {
-            return;
-        }
-        let Some(name) = crate::recovery::remote_name(call, stamp) else { return };
-        let bmp = crate::recovery::bmp_320x256(frame);
-        let cfg = self.config.recovery.clone();
-        std::thread::spawn(move || {
-            if let Err(e) = crate::recovery::upload(&cfg, &name, &bmp) {
-                log::warn!("YoniQ image recovery: {e}");
-            }
-        });
     }
 
     fn show_on_air(&mut self, name: &str, origin: &str, mode: Mode, serial: u64, started: DateTime<Utc>, total_ms: f64, image: Option<RgbaImage>, scan_at: f64, scan_ms: f64) {
