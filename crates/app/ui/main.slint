@@ -548,13 +548,13 @@ export component MainWindow inherits Window {
                                     horizontal-stretch: 1;
                                     min-width: 0px;
                                     label: @tr("Name");
-                                    LineEdit { text: root.channel-name; height: 22px; horizontal-stretch: 1; edited(v) => { root.channel-name = v; root.set-field("channel", v); } }
+                                    LineEdit { text: root.channel-name; height: 22px; preferred-width: 0px; horizontal-stretch: 1; edited(v) => { root.channel-name = v; root.set-field("channel", v); } }
                                 }
                                 MiniField {
                                     horizontal-stretch: 1;
                                     min-width: 0px;
                                     label: @tr("Callsign");
-                                    LineEdit { text: root.call-text; height: 22px; horizontal-stretch: 1; edited(v) => { root.call-text = v; root.set-field("call", v); } }
+                                    LineEdit { text: root.call-text; height: 22px; preferred-width: 0px; horizontal-stretch: 1; edited(v) => { root.call-text = v; root.set-field("call", v); } }
                                 }
                             }
                             HorizontalLayout {
@@ -563,13 +563,13 @@ export component MainWindow inherits Window {
                                     horizontal-stretch: 1;
                                     min-width: 0px;
                                     label: @tr("Freq. (MHz)");
-                                    LineEdit { text: root.freq-text; height: 22px; horizontal-stretch: 1; edited(v) => { root.freq-text = v; root.set-field("freq", v); } }
+                                    LineEdit { text: root.freq-text; height: 22px; preferred-width: 0px; horizontal-stretch: 1; edited(v) => { root.freq-text = v; root.set-field("freq", v); } }
                                 }
                                 MiniField {
                                     horizontal-stretch: 1;
                                     min-width: 0px;
                                     label: @tr("Mode");
-                                    ComboBox { model: root.modes; current-index: root.mode-index; height: 22px; horizontal-stretch: 1; selected => { root.mode-index = self.current-index; root.set-num("mode", self.current-index); } }
+                                    ComboBox { model: root.modes; current-index: root.mode-index; height: 22px; preferred-width: 0px; horizontal-stretch: 1; selected => { root.mode-index = self.current-index; root.set-num("mode", self.current-index); } }
                                 }
                             }
                             HorizontalLayout {
@@ -578,13 +578,13 @@ export component MainWindow inherits Window {
                                     horizontal-stretch: 1;
                                     min-width: 0px;
                                     label: @tr("Min pause (s)");
-                                    SpinBox { minimum: 0; maximum: 600; value: root.pause-s; height: 22px; horizontal-stretch: 1; edited(v) => { root.pause-s = v; root.set-num("pause", v); } }
+                                    SpinBox { minimum: 0; maximum: 600; value: root.pause-s; height: 22px; preferred-width: 0px; horizontal-stretch: 1; edited(v) => { root.pause-s = v; root.set-num("pause", v); } }
                                 }
                                 MiniField {
                                     horizontal-stretch: 1;
                                     min-width: 0px;
                                     label: @tr("CW text");
-                                    LineEdit { text: root.cw-text; height: 22px; horizontal-stretch: 1; edited(v) => { root.cw-text = v; root.set-field("cw-text", v); } }
+                                    LineEdit { text: root.cw-text; height: 22px; preferred-width: 0px; horizontal-stretch: 1; edited(v) => { root.cw-text = v; root.set-field("cw-text", v); } }
                                 }
                             }
                             HorizontalLayout {
@@ -593,9 +593,9 @@ export component MainWindow inherits Window {
                                     icon: "gear";
                                     text: @tr("More channel settings…");
                                     height: 24px;
+                                    horizontal-stretch: 1;
                                     clicked => { root.settings-page = 1; }
                                 }
-                                Rectangle { horizontal-stretch: 1; }
                             }
                         }
                         if root.gear == 1 : VerticalLayout {

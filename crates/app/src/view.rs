@@ -136,10 +136,20 @@ pub fn fit_contain(src: &RgbaImage, w: u32, h: u32) -> RgbaImage {
 }
 
 /// A stand-in picture so graphics can be judged on something other than black.
+/// `kind` follows the editor's base menu: 0 is the transparency checkerboard,
+/// 1 color bars, 2 a grid and 3 a gray ramp.
 pub fn test_picture(kind: i32, w: u32, h: u32) -> RgbaImage {
     let mut img = RgbaImage::new(w.max(1), h.max(1));
     let (w, h) = (img.width(), img.height());
     match kind {
+        0 => {
+            // Photoshop's default transparency grid: 8 px squares in white and #cccccc.
+            const CELL: u32 = 8;
+            for (x, y, p) in img.enumerate_pixels_mut() {
+                let light = (x / CELL + y / CELL) % 2 == 0;
+                *p = if light { image::Rgba([255, 255, 255, 255]) } else { image::Rgba([204, 204, 204, 255]) };
+            }
+        }
         1 => {
             let bars: [[u8; 3]; 8] = [
                 [192, 192, 192], [192, 192, 0], [0, 192, 192], [0, 192, 0], [192, 0, 192], [192, 0, 0], [0, 0, 192], [0, 0, 0],
@@ -316,5 +326,15 @@ mod tests {
         assert_eq!(out.get_pixel(0, 1).0, [200, 100, 50, 255]);
         assert_eq!(out.get_pixel(0, 2).0, [0, 0, 0, 255]);
         assert_eq!(out.get_pixel(3, 3).0, [0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn transparency_picture_is_a_photoshop_checkerboard() {
+        let img = test_picture(0, 20, 10);
+        assert_eq!(img.get_pixel(0, 0).0, [255, 255, 255, 255]);
+        assert_eq!(img.get_pixel(7, 7).0, [255, 255, 255, 255]);
+        assert_eq!(img.get_pixel(8, 0).0, [204, 204, 204, 255]);
+        assert_eq!(img.get_pixel(0, 8).0, [204, 204, 204, 255]);
+        assert_eq!(img.get_pixel(8, 8).0, [255, 255, 255, 255]);
     }
 }

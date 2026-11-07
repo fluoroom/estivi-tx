@@ -138,7 +138,7 @@ TR = {
     "the program that goes on air": "el programa que sale al aire",
     "{} × {} px · {} · drag to move, corners to resize, arrows to nudge": "{} × {} px · {} · arrastrá para mover, las esquinas para cambiar el tamaño, flechas para ajustar",
     "BASE PICTURE": "IMAGEN BASE",
-    "This is each program's picture. It always stays at the bottom and is fitted to the mode size.": "Es la imagen de cada programa. Queda siempre abajo de todo y se adapta al tamaño del modo.",
+    "The picture the layers sit on, fitted to the mode size. Transparent draws the checkerboard of an empty background; Next live picture uses the next picture that will be transmitted, never a bumper.": "La imagen sobre la que van las capas, ajustada al tamaño del modo. Transparente dibuja el tablero de un fondo vacío; Próxima al aire usa la siguiente imagen que se va a transmitir, nunca una cortina.",
     "How it is fitted": "Cómo se ajusta",
     "Crop to fill": "Recortar para llenar",
     "Fit (with bars)": "Entera (con bandas)",

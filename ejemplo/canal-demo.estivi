@@ -70,7 +70,7 @@ interval_min = 10
 [[programs.days]]
 start = "12:00"
 end = "15:00"
-interval_min = 10
+interval_min = 8
 
 [[programs.days]]
 start = "12:00"
@@ -156,13 +156,13 @@ interval_min = 14
 
 [[blocks.images]]
 id = 14
-path = "/mnt/DATA/nic0/Pictures/screenshots/Screenshot_20261027_133647.png"
+path = "programas/atardecer.png"
 enabled = true
 role = "normal"
 
 [[blocks.images]]
 id = 13
-path = "/home/nic0/projects/sstv-audiocodecs-test/sstv-mp3-test/comparison-wav.png"
+path = "programas/carta-de-ajuste.png"
 enabled = true
 role = "normal"
 
@@ -180,14 +180,14 @@ interval_min = 10
 
 [[blocks.images]]
 id = 12
-path = "/home/nic0/projects/sstv-audiocodecs-test/sstv-mp3-test/comparison-wav.png"
+path = "programas/carta-de-ajuste.png"
 enabled = true
 mode = "M1"
 role = "normal"
 
 [[blocks.images]]
 id = 17
-path = "/mnt/DATA/nic0/Pictures/screenshots/Screenshot_20261028_215105.png"
+path = "programas/73.png"
 enabled = true
 role = "normal"
 
@@ -229,7 +229,7 @@ interval_min = 6
 
 [[blocks.images]]
 id = 16
-path = "/mnt/DATA/nic0/Pictures/SAC_1061.png"
+path = "programas/atardecer.png"
 enabled = true
 role = "normal"
 
@@ -269,7 +269,7 @@ interval_min = 10
 
 [[blocks.images]]
 id = 21
-path = "/mnt/DATA/nic0/Pictures/satdef.png"
+path = "programas/carta-de-ajuste.png"
 enabled = true
 mode = "BW8"
 role = "pre"
@@ -277,13 +277,13 @@ of = 19
 
 [[blocks.images]]
 id = 19
-path = "/mnt/DATA/nic0/Downloads/r9L-xhbv_400x400.jpg"
+path = "programas/atardecer.png"
 enabled = true
 role = "normal"
 
 [[blocks.images]]
 id = 20
-path = "/mnt/DATA/nic0/Downloads/HWTXYRuXQAA8xbl.jpeg"
+path = "programas/73.png"
 enabled = true
 mode = "R12"
 role = "pre"
@@ -291,7 +291,7 @@ of = 18
 
 [[blocks.images]]
 id = 18
-path = "/mnt/DATA/nic0/Pictures/dis/cutleveled.png"
+path = "programas/73.png"
 enabled = true
 role = "normal"
 

@@ -61,6 +61,58 @@ struct Drag {
     moved: bool,
 }
 
+/// What the layers stand on while editing. The order is the menu order in the
+/// window, and `as_index` is what the combo box holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BasePicture {
+    Transparent,
+    NextLive,
+    ColorBars,
+    Grid,
+    GrayRamp,
+}
+
+impl BasePicture {
+    const ALL: [BasePicture; 5] = [Self::Transparent, Self::NextLive, Self::ColorBars, Self::Grid, Self::GrayRamp];
+
+    fn as_index(self) -> i32 {
+        match self {
+            Self::Transparent => 0,
+            Self::NextLive => 1,
+            Self::ColorBars => 2,
+            Self::Grid => 3,
+            Self::GrayRamp => 4,
+        }
+    }
+
+    fn from_index(i: i32) -> Self {
+        Self::ALL.get(i.max(0) as usize).copied().unwrap_or(Self::Transparent)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Transparent => i18n::ts("Transparent", "Transparente"),
+            Self::NextLive => i18n::ts("Next live picture", "Próxima al aire"),
+            Self::ColorBars => i18n::ts("Color bars", "Barras de color"),
+            Self::Grid => i18n::ts("Grid", "Grilla"),
+            Self::GrayRamp => i18n::ts("Gray ramp", "Rampa de grises"),
+        }
+    }
+
+    /// The generated fill for this choice. `NextLive` is a real picture and is
+    /// resolved from the schedule, so it has no bitmap of its own.
+    fn baked(self, w: u32, h: u32) -> Option<image::RgbaImage> {
+        let kind = match self {
+            Self::NextLive => return None,
+            Self::Transparent => 0,
+            Self::ColorBars => 1,
+            Self::Grid => 2,
+            Self::GrayRamp => 3,
+        };
+        Some(view::test_picture(kind, w, h))
+    }
+}
+
 pub struct Editor {
     win: EditorWindow,
     visible: bool,
@@ -68,7 +120,7 @@ pub struct Editor {
     /// Layer the inspector was built for.
     inspector_for: Option<Option<u64>>,
     preview: Option<u64>,
-    base: i32,
+    base: BasePicture,
     drag: Option<Drag>,
     fonts: Vec<String>,
     layers: Rc<VecModel<LayerItem>>,
@@ -362,17 +414,14 @@ impl Editor {
             let w = w.clone();
             move || edit(&w, |ed, a| ed.api_test(a))
         });
-        win.set_base_names(ModelRc::new(VecModel::from(vec![
-            SharedString::from(i18n::t("Automatic", "Automática")),
-            SharedString::from(i18n::t("Color bars", "Barras de color")),
-            SharedString::from(i18n::t("Grid", "Grilla")),
-            SharedString::from(i18n::t("Gray ramp", "Rampa de grises")),
-        ])));
+        win.set_base_names(ModelRc::new(VecModel::from(
+            BasePicture::ALL.iter().map(|b| SharedString::from(b.name())).collect::<Vec<_>>(),
+        )));
         win.on_base_selected({
             let w = w.clone();
             move |i| edit(&w, |ed, a| {
-                ed.base = i.max(0);
-                ed.win.set_base_index(ed.base);
+                ed.base = BasePicture::from_index(i);
+                ed.win.set_base_index(ed.base.as_index());
                 ed.render(a);
             })
         });
@@ -383,7 +432,7 @@ impl Editor {
             selected: None,
             inspector_for: None,
             preview: None,
-            base: 0,
+            base: BasePicture::Transparent,
             drag: None,
             fonts: Vec::new(),
             layers,
@@ -402,7 +451,7 @@ impl Editor {
         self.win.set_canvas_h(spec.height as i32);
         self.win.set_mode_name(spec.name.into());
         self.win.set_level_name(level_name(a).into());
-        self.win.set_base_index(self.base);
+        self.win.set_base_index(self.base.as_index());
         self.fonts = a.composer.fonts.families();
         self.win.set_fonts(ModelRc::new(VecModel::from(self.fonts.iter().map(|f| SharedString::from(f.as_str())).collect::<Vec<_>>())));
 
@@ -502,8 +551,8 @@ impl Editor {
         };
         let ctx = data_ctx(&a.project, Utc::now(), a.status.serial + 1, mode, &live, a.project.freq_hz, &a.status.last_cw, &a.status.last_dtmf);
         let spec = mode.spec();
-        let baked = (self.base > 0).then(|| view::test_picture(self.base, spec.width, spec.height));
-        let path = if baked.is_some() { None } else { base_path(a) };
+        let baked = self.base.baked(spec.width, spec.height);
+        let path = if baked.is_some() { None } else { next_live_picture(a) };
         let (block, program) = chain_of(a);
         let dir = a.dir();
         let frame = a.composer.frame_chain(&a.project, dir.as_deref(), path.as_deref(), baked.as_ref(), block.as_ref(), program.as_ref(), mode, &ctx);
@@ -912,19 +961,54 @@ fn representative_block(a: &App, program: Option<u64>) -> Option<estivi_core::pr
     a.project.blocks.iter().find(|b| program.is_none_or(|id| b.program == Some(id))).cloned()
 }
 
-fn base_path(a: &App) -> Option<String> {
+/// The next normal picture that will go out for the level being edited. It
+/// follows the turn slots, so an ongoing block moves on to its next picture;
+/// bumpers never qualify. When nothing at that level is scheduled ahead, fall
+/// back to the first normal picture the level still has so the canvas shows
+/// something recognisable.
+fn next_live_picture(a: &App) -> Option<String> {
+    let now = chrono::Utc::now();
+    let today = estivi_core::schedule::grid_date(a.project.grid.timezone, now);
+    let occs = estivi_core::schedule::occurrences(&a.project, today, today + chrono::TimeDelta::days(21), today);
+    let offset = a.project.grid.offset_s;
+    for occ in &occs {
+        if !occ.transmits() || !level_matches(a.gfx_target, occ) {
+            continue;
+        }
+        let slots = occ.turns(offset);
+        for (i, image) in occ.images.iter().filter(|i| is_normal(i)).enumerate() {
+            match slots.get(i) {
+                Some(at) if *at > now => return Some(image.path.clone()),
+                Some(_) => {}
+                None => break,
+            }
+        }
+    }
     match a.gfx_target {
         GfxTarget::Block(id) => a.project.block(id).and_then(|b| normal_image(&b.images)),
-        GfxTarget::Program(id) => next_image(a, Some(id)),
-        GfxTarget::Channel => next_image(a, None),
+        GfxTarget::Program(id) => first_scheduled(a, Some(id)),
+        GfxTarget::Channel => first_scheduled(a, None),
     }
 }
 
-fn normal_image(images: &[estivi_core::project::BlockImage]) -> Option<String> {
-    images.iter().find(|i| i.enabled && matches!(i.role, estivi_core::project::ImageRole::Normal) && !i.path.trim().is_empty()).map(|i| i.path.clone())
+fn level_matches(target: GfxTarget, occ: &estivi_core::schedule::Occurrence) -> bool {
+    match target {
+        GfxTarget::Channel => true,
+        GfxTarget::Program(id) => occ.program_id == Some(id),
+        GfxTarget::Block(id) => occ.block_id == Some(id),
+    }
 }
 
-fn next_image(a: &App, program: Option<u64>) -> Option<String> {
+fn is_normal(image: &estivi_core::project::BlockImage) -> bool {
+    image.enabled && matches!(image.role, estivi_core::project::ImageRole::Normal) && !image.path.trim().is_empty()
+}
+
+fn normal_image(images: &[estivi_core::project::BlockImage]) -> Option<String> {
+    images.iter().find(|i| is_normal(i)).map(|i| i.path.clone())
+}
+
+/// Fallback for the picture under the graphics when no turn is ahead.
+fn first_scheduled(a: &App, program: Option<u64>) -> Option<String> {
     let now = chrono::Utc::now();
     let today = estivi_core::schedule::grid_date(a.project.grid.timezone, now);
     let occs = estivi_core::schedule::occurrences(&a.project, today, today + chrono::TimeDelta::days(21), today);
@@ -942,3 +1026,17 @@ fn next_image(a: &App, program: Option<u64>) -> Option<String> {
     a.project.blocks.iter().filter(|b| program.is_none_or(|id| b.program == Some(id))).find_map(|b| normal_image(&b.images))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_menu_order_matches_its_indexes() {
+        for (i, base) in BasePicture::ALL.iter().enumerate() {
+            assert_eq!(base.as_index(), i as i32);
+            assert_eq!(BasePicture::from_index(i as i32), *base);
+        }
+        assert_eq!(BasePicture::from_index(-1), BasePicture::Transparent);
+        assert_eq!(BasePicture::from_index(99), BasePicture::Transparent);
+    }
+}

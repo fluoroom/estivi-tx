@@ -44,7 +44,7 @@ Instant transmission has its own tab. It works while the grid is armed and idle.
 
 Activations have their own tab. They are not objects on the grid. A trigger is CW or DTMF, and any one match runs the activation. The tab edits the activation in place: its name, its trigger, and one card per action with the fields that action needs; the add menu appends an action. Actions run in order while that activation holds the PTT: CW, AX.25, DTMF, a local command, a picture, a random picture from a pool, pause, resume, or an API answer. Pause and resume do not key the radio and do not cut a transmission already on the air. A second match while that activation is queued or running does not enqueue another copy.
 
-Graphics are edited per level. The block is painted first, then the program, then the channel, each on the frame the previous step left. A later step does not refill the background. The automatic base is never a bumper: the block editor uses the first normal image of that block, the program editor uses the first normal image of that program's next block, and the channel editor uses the next image the channel will send. The editor can also stand the graphics on color bars, a grid, or a gray ramp. Text, image, and QR layers sit on that frame. A QR can be text (with the same `{fields}`), a command, or an API. If the QR cannot be built, that layer is skipped and the rest of the frame goes out. Fields, also valid in text: `{block}`, `{range}`, `{days}`, `{daysleft}`, `{next}`.
+Graphics are edited per level. The block is painted first, then the program, then the channel, each on the frame the previous step left. A later step does not refill the background. The base picture menu stands the layers on a Photoshop-style transparency checkerboard (the default), on the next picture that will go out, on color bars, a grid, or a gray ramp. The next picture follows the turn slots, so an ongoing block moves on to its next picture; bumpers never count. When nothing is scheduled ahead for that level, the editor falls back to the first normal picture the level still has. Text, image, and QR layers sit on that frame. A QR can be text (with the same `{fields}`), a command, or an API. If the QR cannot be built, that layer is skipped and the rest of the frame goes out. Fields, also valid in text: `{block}`, `{range}`, `{days}`, `{daysleft}`, `{next}`.
 
 The themes are Dark (the default; a saved Gray theme opens as Dark), Light, Dracula, Lavender, Pastel, Subte, and Subte light. Block hues stay their own colors. The interface is English or Spanish, and the first launch follows the system language when it is one of those two. Errors, warnings, and other system text stay in English.
 
@@ -92,7 +92,7 @@ cargo run -p estivi-core --example render -- ejemplo/canal-demo.estivi cuadro.pn
 cargo run -p estivi-core --example dispositivos
 ```
 
-`ejemplo/canal-demo.estivi` is a format 2 channel (callsign `LU1AQY`) with two programs, stored blocks, two activations, a lower third, a QR, and a hidden weather layer. The pictures it names are not in the repository.
+`ejemplo/canal-demo.estivi` is a format 2 channel (callsign `LU1AQY`) with two programs, stored blocks, two activations, a lower third, a QR, and a hidden weather layer. Every picture it names is inside `ejemplo/`, so the sample runs on any machine.
 
 ## Verification
 
