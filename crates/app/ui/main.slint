@@ -1,5 +1,5 @@
 import { ComboBox, CheckBox, LineEdit, SpinBox, TextEdit, ScrollView, Palette } from "std-widgets.slint";
-import { Theme, ToolButton, Field, MiniField, PanelTitle, Pill, BoundCombo } from "theme.slint";
+import { Theme, ToolButton, Field, MiniField, PanelTitle, Pill, BoundCombo, Segmented, Icon } from "theme.slint";
 import { CardItem, PicItem, StepItem, TxItem, TickItem, ActionItem } from "types.slint";
 
 component DayColumn inherits Rectangle {
@@ -13,18 +13,42 @@ component DayColumn inherits Rectangle {
     callback edge(int, bool, int);
     callback create-at(int, int);
     callback clear();
-    background: root.today ? Theme.accent.transparentize(0.9) : Theme.panel;
+    background: root.today ? Theme.accent.transparentize(0.92) : Theme.panel;
+    border-radius: Theme.radius;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.today ? Theme.accent.transparentize(0.45) : Theme.border;
     clip: true;
 
     property <int> press-minute: 12 * 60;
 
     VerticalLayout {
-        PanelTitle {
-            text: root.heading;
+        Rectangle {
             height: 18px;
-            overflow: elide;
+            background: root.today ? Theme.accent.transparentize(0.84) : Theme.panel-raised;
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border;
+            }
+            Text {
+                x: 7px;
+                width: parent.width - 20px;
+                text: root.heading;
+                font-size: 9.5px;
+                font-weight: 700;
+                letter-spacing: 0.4px;
+                color: root.today ? Theme.accent : Theme.text-dim;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if root.today : Rectangle {
+                x: parent.width - 12px;
+                y: (parent.height - 5px) / 2;
+                width: 5px;
+                height: 5px;
+                border-radius: 3px;
+                background: Theme.accent;
+            }
         }
         Rectangle {
             vertical-stretch: 1;
@@ -44,17 +68,21 @@ component DayColumn inherits Rectangle {
                 y: root.timed ? card.y * parent.height : 2px + card.stack * 22px;
                 height: root.timed ? max(18px, card.h * parent.height) : 20px;
                 visible: card.cell == root.cell;
-                border-radius: Theme.radius;
+                border-radius: 4px;
                 background: rgb(card.r, card.g, card.b).transparentize(1 - card.opacity);
                 border-width: card.selected ? 2px : 1px;
-                border-color: card.selected ? #ffe14a : Theme.border-strong;
+                border-color: card.selected ? #ffe14a
+                    : card-touch.has-hover ? (Theme.light ? #00000070 : #ffffff90)
+                    : (Theme.light ? #00000030 : #ffffff2e);
+                animate border-color { duration: 110ms; easing: ease-out; }
                 clip: true;
                 Text {
-                    x: 4px;
-                    width: parent.width - 8px;
+                    x: 6px;
+                    width: parent.width - 12px;
                     text: card.name + "  " + card.hours;
                     font-size: 11px;
-                    color: #ffffff;
+                    font-weight: 600;
+                    color: Theme.light ? #131313 : #ffffff;
                     vertical-alignment: center;
                     overflow: elide;
                 }
@@ -89,6 +117,9 @@ export component MainWindow inherits Window {
     min-height: 640px;
     background: Theme.bg;
 
+    // Set from Rust at the physical size of the header tile; the Slint default
+    // is only a fallback for the first layout pass.
+    in property <image> logo: @image-url("../assets/icon.png");
     in-out property <string> project-name;
     in-out property <string> callsign;
     in-out property <bool> dirty;
@@ -294,7 +325,19 @@ export component MainWindow inherits Window {
         HorizontalLayout {
             height: 36px;
             spacing: 6px;
-            alignment: start;
+            cross-axis-alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 8px;
+                clip: true;
+                background: Theme.accent-soft;
+                Image {
+                    source: root.logo;
+                    width: 100%;
+                    height: 100%;
+                }
+            }
             Text {
                 text: "Estivi";
                 font-size: 16px;
@@ -303,21 +346,32 @@ export component MainWindow inherits Window {
                 vertical-alignment: center;
             }
             Text {
-                text: root.project-name + (root.dirty ? " ·" : "");
-                font-size: 14px;
-                color: Theme.text;
+                text: root.project-name;
+                font-size: 13px;
+                color: Theme.text-dim;
                 vertical-alignment: center;
                 overflow: elide;
             }
+            if root.dirty : Rectangle {
+                width: 5px;
+                height: 5px;
+                border-radius: 3px;
+                background: Theme.accent;
+            }
             if root.callsign != "" : Pill { text: root.callsign; tone: Theme.accent; }
-            ToolButton { text: @tr("New"); clicked => { root.new-project(); } }
-            ToolButton { text: @tr("Open"); clicked => { root.open-project(); } }
-            ToolButton { text: @tr("Save"); primary: root.dirty; clicked => { root.save-project(); } }
-            ToolButton { text: @tr("Undo"); enabled: root.dirty; clicked => { root.undo(); } }
-            ToolButton { text: @tr("Graphics"); clicked => { root.open-editor(); } }
-            ToolButton { text: @tr("Programs"); clicked => { root.open-programs(false); } }
-            ToolButton { text: @tr("Modes"); clicked => { root.open-modes(); } }
+            Rectangle { width: 1px; height: 18px; background: Theme.border; }
+            ToolButton { text: @tr("New"); flat: true; clicked => { root.new-project(); } }
+            ToolButton { text: @tr("Open"); flat: true; clicked => { root.open-project(); } }
+            ToolButton { text: @tr("Save"); primary: root.dirty; flat: !root.dirty; clicked => { root.save-project(); } }
+            ToolButton { text: @tr("Undo"); flat: true; enabled: root.dirty; clicked => { root.undo(); } }
+            Rectangle { width: 1px; height: 18px; background: Theme.border; }
+            ToolButton { text: @tr("Graphics"); flat: true; clicked => { root.open-editor(); } }
+            ToolButton { text: @tr("Programs"); flat: true; clicked => { root.open-programs(false); } }
+            ToolButton { text: @tr("Modes"); flat: true; clicked => { root.open-modes(); } }
+            Rectangle { horizontal-stretch: 1; }
+            Rectangle { width: 1px; height: 18px; background: Theme.border; }
             ComboBox {
+                width: 150px;
                 model: root.themes;
                 current-index: root.theme-index;
                 selected => { root.theme-index = self.current-index; root.set-theme(self.current-index); }
@@ -340,13 +394,30 @@ export component MainWindow inherits Window {
                     height: 100%;
                     image-fit: contain;
                 }
-                Text {
+                Rectangle {
+                    height: 22px;
+                    background: #00000096;
+                }
+                HorizontalLayout {
                     x: 8px;
-                    y: 6px;
-                    text: @tr("Live");
-                    font-size: 11px;
-                    font-weight: 700;
-                    color: root.busy ? Theme.on-air : #ffffffcc;
+                    y: 0px;
+                    height: 22px;
+                    spacing: 6px;
+                    cross-axis-alignment: center;
+                    Rectangle {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 3px;
+                        background: root.busy ? Theme.on-air : #ffffff77;
+                    }
+                    Text {
+                        text: @tr("Live");
+                        font-size: 10px;
+                        font-weight: 700;
+                        letter-spacing: 0.8px;
+                        color: root.busy ? Theme.on-air : #ffffffdd;
+                        vertical-alignment: center;
+                    }
                 }
             }
             Rectangle {
@@ -362,11 +433,36 @@ export component MainWindow inherits Window {
                     height: 100%;
                     image-fit: contain;
                 }
-                VerticalLayout {
-                    alignment: start;
-                    padding: 6px;
-                    Text { text: @tr("Next"); font-size: 11px; font-weight: 700; color: #ffffffcc; }
-                    Text { text: root.next-caption; font-size: 11px; color: #ffffff; overflow: elide; }
+                Rectangle {
+                    height: 22px;
+                    background: #00000096;
+                }
+                Text {
+                    x: 8px;
+                    y: 0px;
+                    height: 22px;
+                    text: @tr("Next");
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
+                    color: #ffffffdd;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    y: parent.height - 24px;
+                    height: 24px;
+                    background: #000000b0;
+                }
+                Text {
+                    x: 8px;
+                    y: parent.height - 24px;
+                    width: parent.width - 16px;
+                    height: 24px;
+                    text: root.next-caption;
+                    font-size: 10px;
+                    color: #ffffff;
+                    overflow: elide;
+                    vertical-alignment: center;
                 }
             }
             Rectangle {
@@ -382,9 +478,19 @@ export component MainWindow inherits Window {
                         width: 200px;
                         spacing: 4px;
                         alignment: start;
-                        Text { text: root.on-air; font-size: 15px; font-weight: 700; color: root.busy ? Theme.on-air : Theme.text; overflow: elide; }
+                        HorizontalLayout {
+                            spacing: 7px;
+                            cross-axis-alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: root.busy ? Theme.on-air : root.agenda ? Theme.ready : Theme.text-faint;
+                            }
+                            Text { text: root.on-air; font-size: 15px; font-weight: 700; color: root.busy ? Theme.on-air : Theme.text; overflow: elide; }
+                        }
                         Text { text: root.next-up; font-size: 12px; color: Theme.text-dim; overflow: elide; }
-                        Text { text: root.clock-note; font-size: 11px; color: Theme.text; overflow: elide; }
+                        Text { text: root.clock-note; font-size: 10px; font-family: Theme.mono; color: Theme.text-dim; overflow: elide; }
                         HorizontalLayout {
                             spacing: 6px;
                             ComboBox {
@@ -415,22 +521,22 @@ export component MainWindow inherits Window {
                         spacing: 3px;
                         HorizontalLayout {
                             spacing: 4px;
-                            ToolButton {
-                                text: @tr("Channel");
+                            Segmented {
+                                width: 190px;
                                 height: 24px;
-                                active: root.gear == 0;
-                                clicked => { root.gear = 0; }
-                            }
-                            ToolButton {
-                                text: @tr("Equipment");
-                                height: 24px;
-                                active: root.gear == 1;
-                                clicked => { root.gear = 1; root.refresh-devices(); }
+                                compact: true;
+                                options: [@tr("Channel"), @tr("Equipment")];
+                                current: root.gear;
+                                chosen(i) => {
+                                    root.gear = i;
+                                    if i == 1 { root.refresh-devices(); }
+                                }
                             }
                             Rectangle { horizontal-stretch: 1; }
                             if root.gear == 1 : ToolButton {
                                 text: @tr("Refresh");
                                 height: 24px;
+                                flat: true;
                                 clicked => { root.refresh-devices(); }
                             }
                         }
@@ -545,11 +651,15 @@ export component MainWindow inherits Window {
                 spacing: 6px;
                 HorizontalLayout {
                     spacing: 6px;
-                    alignment: start;
-                    ToolButton { text: @tr("Month"); active: root.zoom == 0; clicked => { root.set-zoom(0); } }
-                    ToolButton { text: @tr("Week"); active: root.zoom == 1; clicked => { root.set-zoom(1); } }
-                    ToolButton { text: @tr("Day"); active: root.zoom == 2; clicked => { root.set-zoom(2); } }
-                    ToolButton { text: "‹"; clicked => { root.nav(-1); } }
+                    cross-axis-alignment: center;
+                    Segmented {
+                        width: 190px;
+                        height: 28px;
+                        options: [@tr("Month"), @tr("Week"), @tr("Day")];
+                        current: root.zoom;
+                        chosen(i) => { root.set-zoom(i); }
+                    }
+                    ToolButton { text: "‹"; flat: true; width: 28px; clicked => { root.nav(-1); } }
                     Text {
                         text: root.period;
                         font-size: 14px;
@@ -557,8 +667,8 @@ export component MainWindow inherits Window {
                         color: Theme.text;
                         vertical-alignment: center;
                     }
-                    ToolButton { text: "›"; clicked => { root.nav(1); } }
-                    ToolButton { text: @tr("Today"); clicked => { root.nav(0); } }
+                    ToolButton { text: "›"; flat: true; width: 28px; clicked => { root.nav(1); } }
+                    ToolButton { text: @tr("Today"); flat: true; clicked => { root.nav(0); } }
                     Rectangle { horizontal-stretch: 1; }
                 }
                 // One column width for every week. A HorizontalLayout per week
@@ -626,9 +736,11 @@ export component MainWindow inherits Window {
                     spacing: 8px;
                     HorizontalLayout {
                         spacing: 4px;
-                        ToolButton { text: @tr("Block"); active: root.side == 0; clicked => { root.side = 0; } }
-                        ToolButton { text: @tr("Instant"); active: root.side == 1; clicked => { root.side = 1; } }
-                        ToolButton { text: @tr("Activations"); active: root.side == 2; clicked => { root.side = 2; } }
+                        Segmented {
+                            options: [@tr("Block"), @tr("Instant"), @tr("Activations")];
+                            current: root.side;
+                            chosen(i) => { root.side = i; }
+                        }
                     }
                     if root.side == 1 : ToolButton {
                         text: @tr("Transmit");
@@ -644,11 +756,35 @@ export component MainWindow inherits Window {
                             spacing: 8px;
                             if root.side == 0 : VerticalLayout {
                                 spacing: 8px;
-                                if !root.has-block : Text {
-                                    text: @tr("Double-click an empty hour for a common block, or click a card. A program's days and hours are set in Programs.");
-                                    color: Theme.text-dim;
-                                    wrap: word-wrap;
-                                    font-size: 13px;
+                                if !root.has-block : VerticalLayout {
+                                    spacing: 10px;
+                                    padding-top: 18px;
+                                    padding-left: 18px;
+                                    padding-right: 18px;
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            width: 48px;
+                                            height: 48px;
+                                            border-radius: 12px;
+                                            background: Theme.accent-soft;
+                                            Icon {
+                                                x: 12px;
+                                                y: 12px;
+                                                width: 24px;
+                                                height: 24px;
+                                                name: "layers";
+                                                fill: Theme.text-faint;
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        text: @tr("Double-click an empty hour for a common block, or click a card. A program's days and hours are set in Programs.");
+                                        color: Theme.text-dim;
+                                        wrap: word-wrap;
+                                        font-size: 12px;
+                                        horizontal-alignment: center;
+                                    }
                                 }
                                 if root.has-block : VerticalLayout {
                                     spacing: 8px;
@@ -1013,8 +1149,8 @@ export component MainWindow inherits Window {
             }
         }
 
-        Text { text: root.note; font-size: 12px; color: Theme.text-dim; overflow: elide; height: 16px; }
-        Text { text: root.listen-text; font-size: 11px; color: Theme.text-dim; overflow: elide; height: 16px; }
+        Text { text: root.note; font-size: 11px; color: Theme.text-dim; overflow: elide; height: 16px; }
+        Text { text: root.listen-text; font-size: 10px; font-weight: 500; color: Theme.text-faint; overflow: elide; height: 16px; }
         if root.clips.length > 0 : Rectangle {
             height: 96px;
             background: Theme.panel;
@@ -1024,6 +1160,14 @@ export component MainWindow inherits Window {
             clip: true;
             // One clip per piece: CW, AX.25, welcome, each bumper, the picture, the bye.
             // A transmission reads as its parts instead of one opaque box.
+            Rectangle {
+                x: 0px;
+                y: 4px;
+                width: 100%;
+                height: 62px;
+                background: Theme.field;
+                border-radius: Theme.radius-sm;
+            }
             for clip in root.clips : Rectangle {
                 x: parent.width * clip.x;
                 y: 4px;
@@ -1037,7 +1181,7 @@ export component MainWindow inherits Window {
                 background: clip.selected ? Theme.accent.transparentize(0.45)
                     : clip.kind == 7 ? Theme.panel-raised
                     : tone.transparentize(0.8);
-                border-radius: 3px;
+                border-radius: 4px;
                 border-width: clip.selected ? 2px : 1px;
                 border-color: clip.selected ? #ffe14a : clip.kind == 7 ? Theme.border-strong : tone.transparentize(0.15);
                 clip: true;
@@ -1054,22 +1198,23 @@ export component MainWindow inherits Window {
                     background: #000000a8;
                 }
                 Text {
-                    x: 3px;
+                    x: 4px;
                     y: clip.has-thumb ? parent.height - 15px : 3px;
                     text: clip.label;
                     font-size: 9px;
+                    font-weight: 600;
                     color: clip.has-thumb ? #ffffff : Theme.text;
                     overflow: elide;
-                    width: parent.width - 6px;
+                    width: parent.width - 8px;
                 }
                 if !clip.has-thumb : Text {
-                    x: 3px;
+                    x: 4px;
                     y: 16px;
                     text: clip.detail;
                     font-size: 9px;
                     color: Theme.text-dim;
                     overflow: elide;
-                    width: parent.width - 6px;
+                    width: parent.width - 8px;
                 }
                 TouchArea { clicked => { root.pick-clip(clip.id); } }
             }
@@ -1077,9 +1222,9 @@ export component MainWindow inherits Window {
                 y: parent.height - 18px;
                 x: tick.x <= 0.02 ? 4px : (tick.x >= 0.98 ? parent.width - self.width - 4px : parent.width * tick.x - self.width / 2);
                 text: tick.label;
-                font-size: 10px;
+                font-size: 9px;
                 font-family: Theme.mono;
-                color: Theme.text-dim;
+                color: Theme.text-faint;
             }
             if root.playhead >= 0 && root.playhead <= 1 : Rectangle {
                 x: parent.width * root.playhead - 1px;
@@ -1096,7 +1241,7 @@ export component MainWindow inherits Window {
     if root.settings-page != 0 : Rectangle {
         width: parent.width;
         height: parent.height;
-        background: #00000088;
+        background: #000000a8;
         TouchArea { clicked => { root.settings-page = 0; } }
         VerticalLayout {
             alignment: center;
@@ -1105,24 +1250,28 @@ export component MainWindow inherits Window {
                 Rectangle {
                     width: 920px;
                     background: Theme.panel;
-                    border-radius: Theme.radius;
+                    border-radius: Theme.radius-lg;
                     border-width: 1px;
                     border-color: Theme.border-strong;
+                    drop-shadow-blur: 28px;
+                    drop-shadow-offset-y: 10px;
+                    drop-shadow-color: Theme.shadow;
                     VerticalLayout {
-                        padding: 16px;
-                        spacing: 8px;
+                        padding: 18px;
+                        spacing: 10px;
                         HorizontalLayout {
                             spacing: 8px;
                             Text {
                                 text: root.settings-page == 1 ? @tr("Channel settings") : @tr("Equipment settings");
-                                font-size: 16px;
+                                font-size: 17px;
                                 font-weight: 700;
                                 color: Theme.text;
                                 vertical-alignment: center;
                                 horizontal-stretch: 1;
                             }
-                            ToolButton { text: @tr("Close"); clicked => { root.settings-page = 0; } }
+                            ToolButton { text: @tr("Close"); flat: true; clicked => { root.settings-page = 0; } }
                         }
+                        Rectangle { height: 1px; background: Theme.border; }
                         if root.settings-page == 1 : VerticalLayout {
                             spacing: 8px;
                             HorizontalLayout {
@@ -1219,7 +1368,7 @@ export component MainWindow inherits Window {
     if root.dialog != 0 : Rectangle {
         width: parent.width;
         height: parent.height;
-        background: #00000088;
+        background: #000000a8;
         TouchArea {}
         VerticalLayout {
             alignment: center;
@@ -1228,14 +1377,17 @@ export component MainWindow inherits Window {
                 Rectangle {
                     width: 460px;
                     background: Theme.panel;
-                    border-radius: Theme.radius;
+                    border-radius: Theme.radius-lg;
                     border-width: 1px;
                     border-color: Theme.border-strong;
+                    drop-shadow-blur: 28px;
+                    drop-shadow-offset-y: 10px;
+                    drop-shadow-color: Theme.shadow;
                     VerticalLayout {
-                        padding: 16px;
+                        padding: 18px;
                         spacing: 10px;
-                        Text { text: root.dialog-title; font-size: 16px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
-                        if root.dialog-body != "" : Text { text: root.dialog-body; font-size: 13px; color: Theme.text-dim; wrap: word-wrap; }
+                        Text { text: root.dialog-title; font-size: 17px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                        if root.dialog-body != "" : Text { text: root.dialog-body; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
                         if root.dialog == 2 : VerticalLayout {
                             spacing: 8px;
                             Field { label: @tr("Name"); LineEdit { text: root.dlg-name; edited(v) => { root.dlg-name = v; } } }
@@ -1271,12 +1423,13 @@ export component MainWindow inherits Window {
                             }
                             Text { text: root.exp-note; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
                         }
+                        Rectangle { height: 1px; background: Theme.border; }
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: end;
                             if root.dialog-ok != "" : ToolButton { text: root.dialog-ok; primary: true; clicked => { root.confirm(0); } }
-                            if root.dialog-alt != "" : ToolButton { text: root.dialog-alt; clicked => { root.confirm(1); } }
-                            if root.dialog-extra != "" : ToolButton { text: root.dialog-extra; clicked => { root.confirm(2); } }
+                            if root.dialog-alt != "" : ToolButton { text: root.dialog-alt; flat: true; clicked => { root.confirm(1); } }
+                            if root.dialog-extra != "" : ToolButton { text: root.dialog-extra; flat: true; clicked => { root.confirm(2); } }
                         }
                     }
                 }

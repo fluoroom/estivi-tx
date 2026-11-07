@@ -4,6 +4,11 @@ use std::path::Path;
 
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use image::RgbaImage;
+use image::imageops::FilterType;
+
+/// Keep UI previews bicubic as well. The previews are pre-scaled to their
+/// final pixel size so the window renderer does not resample them again.
+const RESAMPLE: FilterType = FilterType::CatmullRom;
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer, SharedString};
 
 use estivi_core::graphics::{Layer, LayerKind, Rgba, qr_module_px};
@@ -108,13 +113,26 @@ pub fn reveal(src: &RgbaImage, progress: f32) -> RgbaImage {
     let h = out.height();
     let w = out.width();
     let cut = (progress.clamp(0.0, 1.0) * h as f32).round() as u32;
-    let black = image::Rgba([0, 0, 0, 255]);
-    for y in cut..h {
-        for x in 0..w {
-            out.put_pixel(x, y, black);
-        }
+    let black = [0u8, 0, 0, 255];
+    for chunk in out.as_mut().chunks_exact_mut(4).skip(cut as usize * w as usize) {
+        chunk.copy_from_slice(&black);
     }
     out
+}
+
+/// The largest bicubic version of `src` that fits `w × h`. Previews are set at
+/// their final pixel size, so the window renderer does not resample them again
+/// with its own cheaper filter.
+pub fn fit_contain(src: &RgbaImage, w: u32, h: u32) -> RgbaImage {
+    let (w, h) = (w.max(1), h.max(1));
+    let (sw, sh) = (src.width().max(1), src.height().max(1));
+    let s = (w as f32 / sw as f32).min(h as f32 / sh as f32);
+    let tw = ((sw as f32 * s).round() as u32).clamp(1, w);
+    let th = ((sh as f32 * s).round() as u32).clamp(1, h);
+    if (tw, th) == (src.width(), src.height()) {
+        return src.clone();
+    }
+    image::imageops::resize(src, tw, th, RESAMPLE)
 }
 
 /// A stand-in picture so graphics can be judged on something other than black.
@@ -275,5 +293,28 @@ mod tests {
         assert_eq!(parse_mhz("abc"), None);
         assert_eq!(duration(65_000.0), "1:05");
         assert_eq!(duration(-1500.0), "−2 s");
+    }
+
+    fn solid(w: u32, h: u32) -> RgbaImage {
+        RgbaImage::from_pixel(w, h, image::Rgba([200, 100, 50, 255]))
+    }
+
+    #[test]
+    fn preview_fit_keeps_aspect_inside_the_box() {
+        let a = fit_contain(&solid(640, 480), 200, 190);
+        assert_eq!((a.width(), a.height()), (200, 150));
+        let b = fit_contain(&solid(100, 200), 200, 190);
+        assert_eq!((b.width(), b.height()), (95, 190));
+        let c = fit_contain(&solid(100, 100), 200, 190);
+        assert_eq!((c.width(), c.height()), (190, 190));
+    }
+
+    #[test]
+    fn reveal_blacks_only_the_unscanned_part() {
+        let out = reveal(&solid(4, 4), 0.5);
+        assert_eq!(out.get_pixel(0, 0).0, [200, 100, 50, 255]);
+        assert_eq!(out.get_pixel(0, 1).0, [200, 100, 50, 255]);
+        assert_eq!(out.get_pixel(0, 2).0, [0, 0, 0, 255]);
+        assert_eq!(out.get_pixel(3, 3).0, [0, 0, 0, 255]);
     }
 }

@@ -1,5 +1,5 @@
 import { CheckBox, LineEdit, SpinBox, ScrollView, Palette } from "std-widgets.slint";
-import { Theme, ToolButton, Field, PanelTitle, BoundCombo } from "theme.slint";
+import { Theme, ToolButton, Field, PanelTitle, BoundCombo, Panel } from "theme.slint";
 
 export component ProgramsWindow inherits Window {
     title: @tr("Programs");
@@ -82,41 +82,57 @@ export component ProgramsWindow inherits Window {
             border-width: 1px;
             border-color: Theme.border;
             VerticalLayout {
-                padding: 8px;
-                spacing: 6px;
-                PanelTitle { text: @tr("Programs"); }
+                padding: 10px;
+                spacing: 8px;
+                PanelTitle { text: @tr("Programs"); height: 18px; }
                 ScrollView {
                     vertical-stretch: 1;
                     min-height: 0px;
                     VerticalLayout {
+                        spacing: 2px;
                         for name[i] in root.names : Rectangle {
-                            height: 28px;
-                            background: i == root.selected ? Theme.accent.transparentize(0.82) : transparent;
-                            border-radius: Theme.radius;
+                            height: 30px;
+                            border-radius: Theme.radius-sm;
+                            background: i == root.selected ? Theme.accent-soft
+                                : row-ta.has-hover ? Theme.panel-raised : transparent;
+                            animate background { duration: 110ms; easing: ease-out; }
                             HorizontalLayout {
                                 padding-left: 6px;
-                                padding-right: 6px;
+                                padding-right: 8px;
+                                spacing: 6px;
+                                Rectangle {
+                                    width: 2px;
+                                    height: 16px;
+                                    border-radius: 1px;
+                                    background: i == root.selected ? Theme.accent : transparent;
+                                }
                                 Text {
                                     text: name;
                                     font-size: 12px;
-                                    color: Theme.text;
+                                    font-weight: i == root.selected ? 600 : 450;
+                                    color: i == root.selected ? Theme.text : Theme.text-dim;
                                     vertical-alignment: center;
                                     overflow: elide;
                                 }
                             }
-                            TouchArea { clicked => { root.select(i); } }
+                            row-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.select(i); }
+                            }
                         }
                     }
                 }
-                ToolButton { text: @tr("New program"); clicked => { root.create(); } }
+                ToolButton { text: @tr("New program"); icon: "plus"; clicked => { root.create(); } }
             }
         }
-        ScrollView {
+        Panel {
             horizontal-stretch: 1;
-            vertical-stretch: 1;
-            min-height: 0px;
-            VerticalLayout {
-                spacing: 8px;
+            ScrollView {
+                vertical-stretch: 1;
+                min-height: 0px;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
                 if !root.has-program : Text {
                     text: @tr("No program yet. Create one, then set which days it uses and the hours of each day. The grid draws a card from that schedule.");
                     color: Theme.text-dim;
@@ -155,78 +171,111 @@ export component ProgramsWindow inherits Window {
                             LineEdit { text: root.ends; edited(v) => { root.ends = v; root.set-ends(v); } }
                         }
                     }
+                    Rectangle { height: 1px; background: Theme.border; }
                     PanelTitle { text: @tr("Weekdays"); }
-                    GridLayout {
+                    Rectangle {
+                        background: Theme.field;
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        VerticalLayout {
+                            padding: 8px;
+                            GridLayout {
                         spacing-horizontal: 6px;
                         spacing-vertical: 4px;
                         Row {
-                            Text { text: @tr("Day"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
-                            Text { text: @tr("Start"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
-                            Text { text: @tr("End"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
-                            Text { text: @tr("Every"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
+                            PanelTitle { text: @tr("Day"); }
+                            PanelTitle { text: @tr("Start"); }
+                            PanelTitle { text: @tr("End"); }
+                            PanelTitle { text: @tr("Every"); }
                         }
                         Row {
                             CheckBox { text: @tr("Monday"); checked: root.on0; toggled => { root.on0 = self.checked; root.toggle-day(0, self.checked); } }
-                            LineEdit { text: root.start0; edited(v) => { root.start0 = v; root.set-start(0, v); } }
-                            LineEdit { text: root.end0; edited(v) => { root.end0 = v; root.set-end(0, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every0; edited(v) => { root.every0 = v; root.set-every(0, v); } }
+                            LineEdit { width: 120px; text: root.start0; edited(v) => { root.start0 = v; root.set-start(0, v); } }
+                            LineEdit { width: 120px; text: root.end0; edited(v) => { root.end0 = v; root.set-end(0, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every0; edited(v) => { root.every0 = v; root.set-every(0, v); } }
                         }
                         Row {
                             CheckBox { text: @tr("Tuesday"); checked: root.on1; toggled => { root.on1 = self.checked; root.toggle-day(1, self.checked); } }
-                            LineEdit { text: root.start1; edited(v) => { root.start1 = v; root.set-start(1, v); } }
-                            LineEdit { text: root.end1; edited(v) => { root.end1 = v; root.set-end(1, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every1; edited(v) => { root.every1 = v; root.set-every(1, v); } }
+                            LineEdit { width: 120px; text: root.start1; edited(v) => { root.start1 = v; root.set-start(1, v); } }
+                            LineEdit { width: 120px; text: root.end1; edited(v) => { root.end1 = v; root.set-end(1, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every1; edited(v) => { root.every1 = v; root.set-every(1, v); } }
                         }
                         Row {
                             CheckBox { text: @tr("Wednesday"); checked: root.on2; toggled => { root.on2 = self.checked; root.toggle-day(2, self.checked); } }
-                            LineEdit { text: root.start2; edited(v) => { root.start2 = v; root.set-start(2, v); } }
-                            LineEdit { text: root.end2; edited(v) => { root.end2 = v; root.set-end(2, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every2; edited(v) => { root.every2 = v; root.set-every(2, v); } }
+                            LineEdit { width: 120px; text: root.start2; edited(v) => { root.start2 = v; root.set-start(2, v); } }
+                            LineEdit { width: 120px; text: root.end2; edited(v) => { root.end2 = v; root.set-end(2, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every2; edited(v) => { root.every2 = v; root.set-every(2, v); } }
                         }
                         Row {
                             CheckBox { text: @tr("Thursday"); checked: root.on3; toggled => { root.on3 = self.checked; root.toggle-day(3, self.checked); } }
-                            LineEdit { text: root.start3; edited(v) => { root.start3 = v; root.set-start(3, v); } }
-                            LineEdit { text: root.end3; edited(v) => { root.end3 = v; root.set-end(3, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every3; edited(v) => { root.every3 = v; root.set-every(3, v); } }
+                            LineEdit { width: 120px; text: root.start3; edited(v) => { root.start3 = v; root.set-start(3, v); } }
+                            LineEdit { width: 120px; text: root.end3; edited(v) => { root.end3 = v; root.set-end(3, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every3; edited(v) => { root.every3 = v; root.set-every(3, v); } }
                         }
                         Row {
                             CheckBox { text: @tr("Friday"); checked: root.on4; toggled => { root.on4 = self.checked; root.toggle-day(4, self.checked); } }
-                            LineEdit { text: root.start4; edited(v) => { root.start4 = v; root.set-start(4, v); } }
-                            LineEdit { text: root.end4; edited(v) => { root.end4 = v; root.set-end(4, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every4; edited(v) => { root.every4 = v; root.set-every(4, v); } }
+                            LineEdit { width: 120px; text: root.start4; edited(v) => { root.start4 = v; root.set-start(4, v); } }
+                            LineEdit { width: 120px; text: root.end4; edited(v) => { root.end4 = v; root.set-end(4, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every4; edited(v) => { root.every4 = v; root.set-every(4, v); } }
                         }
                         Row {
                             CheckBox { text: @tr("Saturday"); checked: root.on5; toggled => { root.on5 = self.checked; root.toggle-day(5, self.checked); } }
-                            LineEdit { text: root.start5; edited(v) => { root.start5 = v; root.set-start(5, v); } }
-                            LineEdit { text: root.end5; edited(v) => { root.end5 = v; root.set-end(5, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every5; edited(v) => { root.every5 = v; root.set-every(5, v); } }
+                            LineEdit { width: 120px; text: root.start5; edited(v) => { root.start5 = v; root.set-start(5, v); } }
+                            LineEdit { width: 120px; text: root.end5; edited(v) => { root.end5 = v; root.set-end(5, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every5; edited(v) => { root.every5 = v; root.set-every(5, v); } }
                         }
                         Row {
                             CheckBox { text: @tr("Sunday"); checked: root.on6; toggled => { root.on6 = self.checked; root.toggle-day(6, self.checked); } }
-                            LineEdit { text: root.start6; edited(v) => { root.start6 = v; root.set-start(6, v); } }
-                            LineEdit { text: root.end6; edited(v) => { root.end6 = v; root.set-end(6, v); } }
-                            SpinBox { minimum: 0; maximum: 180; value: root.every6; edited(v) => { root.every6 = v; root.set-every(6, v); } }
+                            LineEdit { width: 120px; text: root.start6; edited(v) => { root.start6 = v; root.set-start(6, v); } }
+                            LineEdit { width: 120px; text: root.end6; edited(v) => { root.end6 = v; root.set-end(6, v); } }
+                            SpinBox { width: 90px; minimum: 0; maximum: 180; value: root.every6; edited(v) => { root.every6 = v; root.set-every(6, v); } }
+                        }
+                            }
                         }
                     }
-                    ToolButton { text: @tr("Graphics"); clicked => { root.edit-graphics(); } }
-                    Text { text: @tr("Welcome") + ": " + root.welcome; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        ToolButton { text: @tr("Set welcome"); clicked => { root.pick-still(true); } }
-                        ToolButton { text: @tr("Mode"); clicked => { root.mode-still(true); } }
-                        ToolButton { text: @tr("Clear"); clicked => { root.clear-still(true); } }
+                    Rectangle { height: 1px; background: Theme.border; }
+                    ToolButton { text: @tr("Graphics"); icon: "layers"; clicked => { root.edit-graphics(); } }
+                    Rectangle {
+                        background: Theme.field;
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 7px;
+                            Text { text: @tr("Welcome") + ": " + root.welcome; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                ToolButton { text: @tr("Set welcome"); horizontal-stretch: 1; clicked => { root.pick-still(true); } }
+                                ToolButton { text: @tr("Mode"); horizontal-stretch: 1; clicked => { root.mode-still(true); } }
+                                ToolButton { text: @tr("Clear"); horizontal-stretch: 1; clicked => { root.clear-still(true); } }
+                            }
+                        }
                     }
-                    Text { text: @tr("Bye") + ": " + root.bye; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        ToolButton { text: @tr("Set bye"); clicked => { root.pick-still(false); } }
-                        ToolButton { text: @tr("Mode"); clicked => { root.mode-still(false); } }
-                        ToolButton { text: @tr("Clear"); clicked => { root.clear-still(false); } }
+                    Rectangle {
+                        background: Theme.field;
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 7px;
+                            Text { text: @tr("Bye") + ": " + root.bye; font-size: 12px; color: Theme.text-dim; wrap: word-wrap; }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                ToolButton { text: @tr("Set bye"); horizontal-stretch: 1; clicked => { root.pick-still(false); } }
+                                ToolButton { text: @tr("Mode"); horizontal-stretch: 1; clicked => { root.mode-still(false); } }
+                                ToolButton { text: @tr("Clear"); horizontal-stretch: 1; clicked => { root.clear-still(false); } }
+                            }
+                        }
                     }
-                    ToolButton { text: @tr("Import folder"); clicked => { root.import-folder(); } }
-                    ToolButton { text: @tr("Delete program"); danger: true; clicked => { root.remove(); } }
+                    Rectangle { height: 1px; background: Theme.border; }
+                    ToolButton { text: @tr("Import folder"); icon: "folder"; clicked => { root.import-folder(); } }
+                    ToolButton { text: @tr("Delete program"); icon: "trash"; danger: true; clicked => { root.remove(); } }
                 }
             }
         }
     }
+}
 }

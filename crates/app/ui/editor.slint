@@ -1,5 +1,5 @@
 import { ComboBox, CheckBox, LineEdit, SpinBox, Slider, TextEdit, ScrollView, ListView, Palette } from "std-widgets.slint";
-import { Theme, ToolButton, Field, PanelTitle, ColorField, Icon, Panel } from "theme.slint";
+import { Theme, ToolButton, Field, PanelTitle, ColorField, Icon, Panel, Segmented } from "theme.slint";
 import { FileDrop, Files } from "files.slint";
 import { LayerItem } from "types.slint";
 
@@ -15,19 +15,6 @@ component Section inherits VerticalLayout {
         text: root.title;
     }
     @children
-}
-
-component Segmented inherits HorizontalLayout {
-    in property <[string]> options;
-    in property <int> current;
-    callback chosen(int);
-    spacing: 2px;
-    for o[i] in root.options : ToolButton {
-        text: o;
-        horizontal-stretch: 1;
-        active: i == root.current;
-        clicked => { root.chosen(i); }
-    }
 }
 
 component NumberField inherits Field {
@@ -79,6 +66,10 @@ export component EditorWindow inherits Window {
     // Snap guides while dragging (fractions of the canvas, -1 = none).
     in property <float> guide-x: -1;
     in property <float> guide-y: -1;
+    // Physical canvas size after the layout fits it. Rust resizes the frame to
+    // exactly this many pixels with a bicubic filter before setting it.
+    out property <length> frame-display-w: canvas.iw;
+    out property <length> frame-display-h: canvas.ih;
 
     callback add-text();
     callback add-image();
@@ -101,7 +92,10 @@ export component EditorWindow inherits Window {
     callback pick-image();
     callback drop-image([string]);
     callback api-test();
-    init => { Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark; }
+    public function sync-palette() {
+        Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark;
+    }
+    init => { root.sync-palette(); }
 
     VerticalLayout {
         padding: 12px;
@@ -111,46 +105,55 @@ export component EditorWindow inherits Window {
         HorizontalLayout {
             height: 34px;
             spacing: 6px;
+            cross-axis-alignment: center;
             ToolButton {
                 icon: "text";
                 text: @tr("Text");
+                flat: true;
                 clicked => { root.add-text(); }
             }
             ToolButton {
                 icon: "image";
                 text: @tr("PNG image");
+                flat: true;
                 clicked => { root.add-image(); }
             }
             ToolButton {
                 icon: "qr";
                 text: @tr("QR");
+                flat: true;
                 clicked => { root.add-qr(); }
             }
             Rectangle {
                 width: 1px;
+                height: 18px;
                 background: Theme.border;
             }
             ToolButton {
                 icon: "up";
                 text: @tr("Bring forward");
+                flat: true;
                 enabled: root.selected >= 0 && root.selected < root.layers.length - 1;
                 clicked => { root.move-layer(1); }
             }
             ToolButton {
                 icon: "down";
                 text: @tr("Send back");
+                flat: true;
                 enabled: root.selected > 0;
                 clicked => { root.move-layer(-1); }
             }
             ToolButton {
                 icon: "copy";
                 text: @tr("Duplicate");
+                flat: true;
                 enabled: root.selected >= 0;
                 clicked => { root.duplicate(); }
             }
             ToolButton {
                 icon: "trash";
                 text: @tr("Delete");
+                flat: true;
                 enabled: root.selected >= 0;
                 clicked => { root.remove(); }
             }
@@ -161,8 +164,8 @@ export component EditorWindow inherits Window {
                 alignment: center;
                 Text {
                     text: @tr("Preview with program");
-                    font-size: 12px;
-                    color: Theme.text-dim;
+                    font-size: 11px;
+                    color: Theme.text-faint;
                 }
             }
             ComboBox {
@@ -171,7 +174,7 @@ export component EditorWindow inherits Window {
                 current-index: root.preview-index;
                 selected => { root.preview-selected(self.current-index); }
             }
-            Text { text: @tr("Base picture"); font-size: 12px; color: Theme.text-dim; vertical-alignment: center; }
+            Text { text: @tr("Base picture"); font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
             ComboBox {
                 width: 160px;
                 model: root.base-names;
@@ -200,37 +203,57 @@ export component EditorWindow inherits Window {
                             // Listed top-most first.
                             property <int> idx: root.layers.length - 1 - i;
                             property <LayerItem> item: root.layers[self.idx];
-                            height: 40px;
-                            border-radius: 5px;
-                            background: self.idx == root.selected ? Theme.accent.transparentize(0.75) : row-ta.has-hover ? Theme.panel-raised : transparent;
+                            height: 42px;
+                            border-radius: Theme.radius-sm;
+                            background: self.idx == root.selected ? Theme.accent-soft
+                                : row-ta.has-hover ? Theme.panel-raised : transparent;
+                            animate background { duration: 110ms; easing: ease-out; }
                             row-ta := TouchArea {
                                 clicked => { root.select(parent.idx); }
                             }
                             HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
-                                spacing: 8px;
+                                padding-left: 5px;
+                                padding-right: 8px;
+                                spacing: 7px;
+                                cross-axis-alignment: center;
                                 Rectangle {
-                                    width: 26px;
+                                    width: 2px;
+                                    height: 18px;
+                                    border-radius: 1px;
+                                    background: (root.layers.length - 1 - i) == root.selected ? Theme.accent : transparent;
+                                }
+                                Rectangle {
+                                    width: 24px;
+                                    height: 24px;
+                                    border-radius: 5px;
+                                    background: eye-ta.has-hover ? Theme.accent-hover : Theme.panel-raised;
                                     Icon {
+                                        x: 4px;
+                                        y: 4px;
                                         name: item.visible ? "eye" : "eye-off";
                                         fill: item.visible ? Theme.text-dim : Theme.text-faint;
                                     }
-                                    TouchArea {
+                                    eye-ta := TouchArea {
                                         mouse-cursor: pointer;
                                         clicked => { root.toggle-visible(idx); }
                                     }
                                 }
-                                VerticalLayout {
-                                    alignment: center;
+                                Rectangle {
+                                    width: 24px;
+                                    height: 24px;
+                                    border-radius: 5px;
+                                    background: Theme.accent-soft;
                                     Icon {
+                                        x: 4px;
+                                        y: 4px;
                                         name: item.is-qr ? "qr" : item.is-text ? "text" : "image";
-                                        fill: Theme.text-faint;
+                                        fill: item.visible ? Theme.text-dim : Theme.text-faint;
                                     }
                                 }
                                 Text {
                                     text: item.name;
-                                    font-size: 13px;
+                                    font-size: 12px;
+                                    font-weight: (root.layers.length - 1 - i) == root.selected ? 600 : 450;
                                     color: item.visible ? Theme.text : Theme.text-faint;
                                     vertical-alignment: center;
                                     overflow: elide;
@@ -241,36 +264,51 @@ export component EditorWindow inherits Window {
                     }
                     // The program picture is always the bottom layer.
                     Rectangle {
-                        height: 44px;
-                        border-radius: 5px;
-                        background: root.selected == -1 ? Theme.accent.transparentize(0.75) : base-ta.has-hover ? Theme.panel-raised : Theme.field;
+                        height: 48px;
+                        border-radius: Theme.radius-sm;
+                        background: root.selected == -1 ? Theme.accent-soft : base-ta.has-hover ? Theme.panel-raised : Theme.field;
                         border-width: 1px;
-                        border-color: Theme.border;
+                        border-color: root.selected == -1 ? Theme.accent.transparentize(0.45) : Theme.border;
                         base-ta := TouchArea {
                             clicked => { root.select(-1); }
                         }
                         HorizontalLayout {
-                            padding-left: 10px;
-                            spacing: 8px;
-                            VerticalLayout {
-                                alignment: center;
+                            padding-left: 5px;
+                            padding-right: 8px;
+                            spacing: 7px;
+                            cross-axis-alignment: center;
+                            Rectangle {
+                                width: 2px;
+                                height: 20px;
+                                border-radius: 1px;
+                                background: root.selected == -1 ? Theme.accent : transparent;
+                            }
+                            Rectangle {
+                                width: 26px;
+                                height: 26px;
+                                border-radius: 5px;
+                                background: Theme.panel-raised;
                                 Icon {
+                                    x: 5px;
+                                    y: 5px;
                                     name: "image";
                                     fill: Theme.text-dim;
                                 }
                             }
                             VerticalLayout {
                                 alignment: center;
+                                spacing: 1px;
                                 Text {
                                     text: @tr("Base picture");
-                                    font-size: 13px;
+                                    font-size: 12px;
                                     font-weight: 600;
                                     color: Theme.text;
                                 }
                                 Text {
                                     text: @tr("the picture under the graphics");
-                                    font-size: 11px;
+                                    font-size: 10px;
                                     color: Theme.text-faint;
+                                    overflow: elide;
                                 }
                             }
                         }
@@ -281,14 +319,14 @@ export component EditorWindow inherits Window {
             // Canvas
             canvas := Rectangle {
                 horizontal-stretch: 1;
-                background: #07090c;
+                background: @linear-gradient(180deg, #0b0e14 0%, #05070a 100%);
                 border-radius: Theme.radius;
                 border-width: 1px;
                 border-color: Theme.border;
                 clip: true;
                 property <float> scale: min((self.width - 48px) / (root.canvas-w * 1px), (self.height - 64px) / (root.canvas-h * 1px));
-                property <length> iw: root.canvas-w * 1px * self.scale;
-                property <length> ih: root.canvas-h * 1px * self.scale;
+                property <length> iw: round(root.canvas-w * self.scale) * 1px;
+                property <length> ih: round(root.canvas-h * self.scale) * 1px;
                 property <length> ix: (self.width - self.iw) / 2;
                 property <length> iy: (self.height - 20px - self.ih) / 2;
 
@@ -298,8 +336,7 @@ export component EditorWindow inherits Window {
                     width: canvas.iw;
                     height: canvas.ih;
                     source: root.frame;
-                    image-fit: fill;
-                    image-rendering: pixelated;
+                    image-fit: contain;
                 }
                 Rectangle {
                     x: canvas.ix - 1px;
@@ -351,9 +388,12 @@ export component EditorWindow inherits Window {
                 Text {
                     x: canvas.ix;
                     y: canvas.iy + canvas.ih + 8px;
+                    width: canvas.iw;
                     text: @tr("{} × {} px · {} · drag to move, corners to resize, arrows to nudge", root.canvas-w, root.canvas-h, root.mode-name);
-                    font-size: 11px;
+                    font-size: 10px;
                     color: Theme.text-faint;
+                    letter-spacing: 0.2px;
+                    overflow: elide;
                 }
                 keys := FocusScope {
                     key-pressed(e) => {
@@ -387,7 +427,7 @@ export component EditorWindow inherits Window {
                 width: 330px;
                 ScrollView {
                     VerticalLayout {
-                        padding: 12px;
+                        padding: 14px;
                         spacing: 10px;
                         alignment: start;
 

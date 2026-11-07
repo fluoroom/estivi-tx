@@ -1,5 +1,5 @@
 import { Palette, ScrollView } from "std-widgets.slint";
-import { Theme, ToolButton, PanelTitle } from "theme.slint";
+import { Theme, ToolButton, PanelTitle, Panel } from "theme.slint";
 import { ModeCheat } from "types.slint";
 
 export component UtilsDialog inherits Window {
@@ -11,85 +11,97 @@ export component UtilsDialog inherits Window {
     in property <[ModeCheat]> modes;
     callback dismiss();
     callback sort(int);
-    init => { Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark; }
+    public function sync-palette() {
+        Palette.color-scheme = Theme.light ? ColorScheme.light : ColorScheme.dark;
+    }
+    init => { root.sync-palette(); }
 
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
         Text {
             text: @tr("SSTV mode cheat sheet");
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 18px;
+            font-weight: 700;
             color: Theme.text;
         }
         Text {
             text: @tr("The project mode is the default for a picture that has none. Bumpers, the welcome and the bye each keep their own mode. Channel graphics, including a QR layer, scale to the canvas of the mode that goes on air.");
-            font-size: 12px;
+            font-size: 11px;
             color: Theme.text-dim;
             wrap: word-wrap;
         }
         Text {
             text: "Robot 72  320×240 YCrCb 4:2:2   ·   Robot 36  320×240 YCrCb 4:2:0   ·   M1  320×256 RGB   ·   M2  160(320)×256 RGB";
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             color: Theme.text;
             wrap: word-wrap;
         }
-        HorizontalLayout {
-            padding-left: 4px;
-            padding-right: 4px;
-            padding-top: 4px;
-            padding-bottom: 4px;
-            spacing: 8px;
-            Rectangle {
-                width: 120px;
-                Text { text: @tr("Mode"); font-size: 11px; font-weight: 600; color: Theme.text-faint; vertical-alignment: center; }
-                TouchArea { mouse-cursor: pointer; clicked => { root.sort(0); } }
-            }
-            Rectangle {
-                width: 110px;
-                Text { text: @tr("Canvas"); font-size: 11px; font-weight: 600; color: Theme.text-faint; vertical-alignment: center; }
-                TouchArea { mouse-cursor: pointer; clicked => { root.sort(1); } }
-            }
-            Rectangle {
-                horizontal-stretch: 1;
-                Text { text: @tr("Color"); font-size: 11px; font-weight: 600; color: Theme.text-faint; vertical-alignment: center; }
-                TouchArea { mouse-cursor: pointer; clicked => { root.sort(2); } }
-            }
-            Rectangle {
-                width: 70px;
-                Text { text: @tr("Picture"); font-size: 11px; font-weight: 600; color: Theme.text-faint; vertical-alignment: center; }
-                TouchArea { mouse-cursor: pointer; clicked => { root.sort(3); } }
-            }
-            Rectangle {
-                width: 48px;
-                Text { text: "VIS"; font-size: 11px; font-weight: 600; color: Theme.text-faint; vertical-alignment: center; }
-                TouchArea { mouse-cursor: pointer; clicked => { root.sort(4); } }
-            }
-        }
-        Rectangle { height: 1px; background: Theme.border; }
-        Rectangle {
+        Panel {
             vertical-stretch: 1;
             min-height: 120px;
-            clip: true;
-            ScrollView {
-                width: 100%;
-                height: 100%;
-                VerticalLayout {
-                    spacing: 0px;
-                    alignment: start;
-                    for m[i] in root.modes : Rectangle {
-                        height: 32px;
-                        background: mod(i, 2) == 0 ? Theme.panel : transparent;
-                        HorizontalLayout {
-                            padding-left: 4px;
-                            padding-right: 4px;
-                            spacing: 8px;
-                            Text { text: m.name; width: 120px; font-size: 12px; color: Theme.text; vertical-alignment: center; overflow: elide; }
-                            Text { text: m.size; width: 110px; font-size: 12px; font-family: Theme.mono; color: Theme.text; vertical-alignment: center; overflow: elide; }
-                            Text { text: m.color; horizontal-stretch: 1; font-size: 12px; color: Theme.text; vertical-alignment: center; overflow: elide; }
-                            Text { text: m.time; width: 70px; font-size: 12px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
-                            Text { text: m.vis; width: 48px; font-size: 12px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+            VerticalLayout {
+                Rectangle {
+                    height: 32px;
+                    background: Theme.panel-raised;
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+                        cross-axis-alignment: center;
+                        Rectangle {
+                            width: 120px;
+                            PanelTitle { text: @tr("Mode"); }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.sort(0); } }
+                        }
+                        Rectangle {
+                            width: 110px;
+                            PanelTitle { text: @tr("Canvas"); }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.sort(1); } }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            PanelTitle { text: @tr("Color"); }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.sort(2); } }
+                        }
+                        Rectangle {
+                            width: 70px;
+                            PanelTitle { text: @tr("Picture"); }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.sort(3); } }
+                        }
+                        Rectangle {
+                            width: 48px;
+                            PanelTitle { text: "VIS"; }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.sort(4); } }
+                        }
+                    }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    min-height: 0px;
+                    VerticalLayout {
+                        spacing: 0px;
+                        alignment: start;
+                        for m[i] in root.modes : Rectangle {
+                            height: 30px;
+                            background: mod(i, 2) == 0 ? Theme.field.transparentize(0.45) : transparent;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 8px;
+                                cross-axis-alignment: center;
+                                Text { text: m.name; width: 120px; font-size: 11px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                Text { text: m.size; width: 110px; font-size: 11px; font-family: Theme.mono; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                Text { text: m.color; horizontal-stretch: 1; font-size: 11px; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                                Text { text: m.time; width: 70px; font-size: 11px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+                                Text { text: m.vis; width: 48px; font-size: 11px; font-family: Theme.mono; color: Theme.text-dim; vertical-alignment: center; }
+                            }
                         }
                     }
                 }
@@ -97,7 +109,7 @@ export component UtilsDialog inherits Window {
         }
         Text {
             text: @tr("M2, M4 and S2 scan in half the time of M1/S1: the canvas stays 320 px, written as 160(320). Robot 36 alternates R-Y/B-Y (4:2:0); Robot 72 sends both chromas on every line (4:2:2). Martin and Scottie send G, B, R in sequence.");
-            font-size: 11px;
+            font-size: 10px;
             color: Theme.text-faint;
             wrap: word-wrap;
         }

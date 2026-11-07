@@ -86,7 +86,7 @@ pub struct Status {
     pub next: Option<NextUp>,
     pub serial: u64,
     pub error: Option<String>,
-    pub log: Vec<LogEntry>,
+    pub last_log: Option<LogEntry>,
     pub log_rev: u64,
     pub listen: ListenStatus,
     pub last_cw: String,
@@ -319,9 +319,9 @@ impl Worker {
                 if path_changed {
                     self.log = aslog::tail(&self.log_path(), LOG_KEEP);
                     self.serial = self.log.last().map_or(0, |e| e.serial);
-                    let (log, serial) = (self.log.clone(), self.serial);
+                    let (last_log, serial) = (self.log.last().cloned(), self.serial);
                     self.set_status(|s| {
-                        s.log = log;
+                        s.last_log = last_log;
                         s.log_rev += 1;
                         s.serial = serial;
                     });
@@ -966,10 +966,10 @@ impl Worker {
         if self.log.len() > LOG_KEEP {
             self.log.remove(0);
         }
-        let log = self.log.clone();
+        let last_log = self.log.last().cloned();
         let serial = self.serial;
         self.set_status(|s| {
-            s.log = log;
+            s.last_log = last_log;
             s.log_rev += 1;
             s.serial = serial;
         });

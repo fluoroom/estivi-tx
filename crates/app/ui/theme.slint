@@ -1,4 +1,6 @@
-// Flat utility chrome. `light` is set from Equipo → General and follows every window.
+// Flat utility chrome with a little more depth. `light` is set from Equipo →
+// General and follows every window. Colors still come from Rust (app.rs), so
+// every derived tone below follows the selected theme.
 
 import { ComboBox, Palette } from "std-widgets.slint";
 import "../../core/assets/fonts/NotoSansMono-Bold.ttf";
@@ -25,14 +27,23 @@ export global Theme {
     in-out property <color> tx-ax: #fbbf24;
     in-out property <color> tx-welcome: #4ade80;
     in-out property <color> tx-bumper: #c084fc;
-    out property <length> radius: 3px;
+    out property <length> radius: 6px;
+    out property <length> radius-sm: 4px;
+    out property <length> radius-lg: 10px;
     out property <length> gap: 8px;
     out property <string> mono: "Noto Sans Mono";
+    // Derived tones. They follow whichever palette Rust installed.
+    out property <color> accent-soft: accent.transparentize(0.86);
+    out property <color> accent-hover: accent.transparentize(0.92);
+    out property <color> shadow: light ? #00000030 : #00000070;
+    out property <color> button-hover: light ? panel-raised.darker(0.035) : panel-raised.brighter(0.07);
+    out property <color> button-pressed: light ? panel-raised.darker(0.075) : panel-raised.darker(0.14);
 }
 
 export component PanelTitle inherits Text {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
     color: Theme.text-faint;
     vertical-alignment: center;
 }
@@ -85,34 +96,47 @@ export component ToolButton inherits Rectangle {
     in property <bool> primary: false;
     in property <bool> danger: false;
     in property <bool> active: false;
+    // A button with no chrome until it is hovered, selected or pressed.
+    in property <bool> flat: false;
     in property <string> tooltip;
     callback clicked();
     height: 28px;
     border-radius: Theme.radius;
-    background: !root.enabled ? Theme.panel-raised
-        : root.primary ? (ta.pressed ? Theme.accent.darker(0.2) : ta.has-hover ? Theme.accent.brighter(0.1) : Theme.accent)
-        : root.danger ? (ta.pressed ? Theme.on-air.darker(0.2) : ta.has-hover ? Theme.on-air.brighter(0.1) : Theme.on-air)
-        : root.active ? Theme.accent.transparentize(0.8)
-        : ta.pressed ? Theme.border-strong : ta.has-hover ? Theme.border : Theme.panel-raised;
+    property <color> fg: !root.enabled ? Theme.text-faint
+        : root.primary ? Theme.on-accent
+        : root.danger ? #ffffff
+        : Theme.text;
+    background: !root.enabled ? (root.flat ? transparent : Theme.panel-raised.transparentize(0.55))
+        : root.primary ? (ta.pressed ? Theme.accent.darker(0.12) : ta.has-hover ? Theme.accent.brighter(0.06) : Theme.accent)
+        : root.danger ? (ta.pressed ? Theme.on-air.darker(0.14) : ta.has-hover ? Theme.on-air.brighter(0.06) : Theme.on-air)
+        : root.active ? Theme.accent.transparentize(ta.pressed ? 0.78 : 0.86)
+        : ta.pressed ? Theme.button-pressed
+        : ta.has-hover ? (root.flat ? Theme.accent-hover : Theme.button-hover)
+        : root.flat ? transparent : Theme.panel-raised;
     border-width: 1px;
-    border-color: root.active ? Theme.accent : (root.primary || root.danger) ? transparent : Theme.border;
+    border-color: !root.enabled ? transparent
+        : root.active ? Theme.accent.transparentize(0.35)
+        : root.flat ? (ta.has-hover ? Theme.border : transparent)
+        : (root.primary || root.danger) ? transparent
+        : ta.has-hover ? Theme.border-strong : Theme.border;
+    animate background, border-color { duration: 110ms; easing: ease-out; }
     HorizontalLayout {
-        padding-left: root.text == "" ? 6px : 8px;
-        padding-right: root.text == "" ? 6px : 10px;
+        padding-left: root.text == "" ? 6px : 9px;
+        padding-right: root.text == "" ? 6px : 11px;
         spacing: 6px;
         alignment: center;
         if root.icon != "" : VerticalLayout {
             alignment: center;
             Icon {
                 name: root.icon;
-                fill: root.enabled ? Theme.text : Theme.text-faint;
+                fill: root.fg;
             }
         }
         if root.text != "" : Text {
             text: root.text;
-            color: !root.enabled ? Theme.text-faint : root.primary ? Theme.on-accent : root.danger ? #ffffff : Theme.text;
+            color: root.fg;
             font-size: 12px;
-            font-weight: (root.primary || root.danger) ? 600 : 400;
+            font-weight: (root.primary || root.danger || root.active) ? 600 : 450;
             vertical-alignment: center;
         }
     }
@@ -120,6 +144,43 @@ export component ToolButton inherits Rectangle {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
+    }
+}
+
+// A compact group of mutually exclusive buttons. Used for tabs and for the
+// editor's alignment choices.
+export component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    in property <bool> compact: false;
+    callback chosen(int);
+    height: root.compact ? 26px : 30px;
+    border-radius: Theme.radius;
+    background: Theme.light ? Theme.panel-raised.transparentize(0.35) : Theme.field;
+    border-width: 1px;
+    border-color: Theme.border;
+    HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+        for o[i] in root.options : Rectangle {
+            horizontal-stretch: 1;
+            border-radius: Theme.radius-sm;
+            background: i == root.current ? Theme.accent.transparentize(0.84)
+                : seg-ta.has-hover ? Theme.accent.transparentize(0.93) : transparent;
+            animate background { duration: 110ms; easing: ease-out; }
+            Text {
+                text: o;
+                font-size: 11px;
+                font-weight: i == root.current ? 600 : 450;
+                color: i == root.current ? Theme.text : Theme.text-dim;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            seg-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.chosen(i); }
+            }
+        }
     }
 }
 
@@ -139,10 +200,11 @@ export component BoundCombo inherits VerticalLayout {
 
 export component Field inherits VerticalLayout {
     in property <string> label;
-    spacing: 3px;
+    spacing: 4px;
     Text {
         text: root.label;
-        font-size: 12px;
+        font-size: 11px;
+        font-weight: 500;
         color: Theme.text-dim;
     }
     @children
@@ -153,12 +215,13 @@ export component Field inherits VerticalLayout {
 export component MiniField inherits HorizontalLayout {
     in property <string> label;
     in property <length> label-width: 78px;
-    spacing: 4px;
+    spacing: 6px;
     height: 26px;
     Text {
         width: root.label-width;
         text: root.label;
         font-size: 10px;
+        font-weight: 500;
         color: Theme.text-dim;
         vertical-alignment: center;
         overflow: elide;
@@ -174,9 +237,10 @@ export component ColorField inherits HorizontalLayout {
     height: 28px;
     swatch := Rectangle {
         width: 28px;
-        border-radius: Theme.radius;
+        border-radius: Theme.radius-sm;
         border-width: 1px;
-        border-color: Theme.border-strong;
+        border-color: swatch-ta.has-hover ? Theme.accent : Theme.border-strong;
+        clip: true;
         Rectangle {
             x: 0; y: 0; width: 50%; height: 50%;
             background: #88888830;
@@ -186,19 +250,20 @@ export component ColorField inherits HorizontalLayout {
             background: #88888830;
         }
         Rectangle {
-            border-radius: Theme.radius;
+            border-radius: Theme.radius-sm;
             background: root.value;
         }
-        TouchArea {
+        swatch-ta := TouchArea {
             mouse-cursor: pointer;
             clicked => { palette.show(); }
         }
     }
     hex-edit := Rectangle {
         background: Theme.field;
-        border-radius: Theme.radius;
+        border-radius: Theme.radius-sm;
         border-width: 1px;
         border-color: input.has-focus ? Theme.accent : Theme.border;
+        animate border-color { duration: 110ms; }
         input := TextInput {
             x: 8px;
             width: parent.width - 16px;
@@ -226,6 +291,9 @@ export component ColorField inherits HorizontalLayout {
             border-radius: Theme.radius;
             border-width: 1px;
             border-color: Theme.border-strong;
+            drop-shadow-blur: 18px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: Theme.shadow;
         }
         VerticalLayout {
             padding: 6px;
@@ -242,7 +310,7 @@ export component ColorField inherits HorizontalLayout {
                 for sw in row : Rectangle {
                     width: 24px;
                     height: 24px;
-                    border-radius: 2px;
+                    border-radius: 3px;
                     border-width: 1px;
                     border-color: Theme.border-strong;
                     background: sw.c;
@@ -260,19 +328,28 @@ export component Pill inherits Rectangle {
     in property <string> text;
     in property <color> tone: Theme.ready;
     in property <bool> filled: false;
-    height: 22px;
-    border-radius: Theme.radius;
-    background: root.filled ? root.tone : transparent;
+    in property <bool> dot: false;
+    height: 20px;
+    border-radius: 10px;
+    background: root.filled ? root.tone : root.tone.transparentize(0.86);
     border-width: 1px;
-    border-color: root.tone;
+    border-color: root.filled ? root.tone : root.tone.transparentize(0.55);
     HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
+        spacing: 5px;
         alignment: center;
+        if root.dot : Rectangle {
+            width: 5px;
+            height: 5px;
+            border-radius: 3px;
+            background: root.filled ? #ffffff : root.tone;
+        }
         Text {
             text: root.text;
-            font-size: 11px;
-            font-weight: 600;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
             color: root.filled ? #ffffff : root.tone;
             vertical-alignment: center;
         }

@@ -74,6 +74,7 @@ pub struct Editor {
     layers: Rc<VecModel<LayerItem>>,
     current: Rc<VecModel<LayerItem>>,
     last_render: Instant,
+    last_frame_px: (u32, u32),
     api_updated: Arc<AtomicBool>,
 }
 
@@ -150,6 +151,7 @@ pub fn open(app: &Shared) {
     }
     let mut ed = a.editor.take().expect("just created");
     apply_theme_to(&ed.win.global::<crate::Theme>(), &a.config.ui.theme, a.config.ui.light);
+    ed.win.invoke_sync_palette();
     ed.visible = true;
     if ed.preview.is_none() {
         ed.preview = a.project.programs.iter().find(|p| p.enabled).map(|p| p.id);
@@ -162,6 +164,7 @@ pub fn open(app: &Shared) {
 impl Editor {
     pub fn apply_theme(&self, id: &str, light: bool) {
         apply_theme_to(&self.win.global::<crate::Theme>(), id, light);
+        self.win.invoke_sync_palette();
     }
 
     fn new(w: Weak<RefCell<App>>) -> Result<Editor, slint::PlatformError> {
@@ -386,6 +389,7 @@ impl Editor {
             layers,
             current,
             last_render: Instant::now(),
+            last_frame_px: (0, 0),
             api_updated: Arc::new(AtomicBool::new(false)),
         })
     }
@@ -479,6 +483,15 @@ impl Editor {
         item
     }
 
+    /// The physical pixel size of the canvas image, once the window has been
+    /// laid out. `None` before the first layout.
+    fn frame_px(&self) -> Option<(u32, u32)> {
+        let scale = self.win.window().scale_factor().max(1.0);
+        let w = self.win.get_frame_display_w();
+        let h = self.win.get_frame_display_h();
+        (w > 0.5 && h > 0.5).then(|| ((w * scale).round().max(1.0) as u32, (h * scale).round().max(1.0) as u32))
+    }
+
     fn render(&mut self, a: &mut App) {
         let program = self.preview.and_then(|id| a.project.program(id)).cloned();
         let mode = preview_mode(a);
@@ -494,6 +507,12 @@ impl Editor {
         let (block, program) = chain_of(a);
         let dir = a.dir();
         let frame = a.composer.frame_chain(&a.project, dir.as_deref(), path.as_deref(), baked.as_ref(), block.as_ref(), program.as_ref(), mode, &ctx);
+        let px = self.frame_px();
+        let frame = match px {
+            Some((w, h)) => view::fit_contain(&frame, w, h),
+            None => frame,
+        };
+        self.last_frame_px = px.unwrap_or((0, 0));
         self.win.set_frame(view::to_image(&frame));
         self.last_render = Instant::now();
     }
@@ -501,7 +520,8 @@ impl Editor {
     pub fn tick(&mut self, a: &mut App) {
         // Keep clock data and fresh API values current while the window is open.
         let api = self.api_updated.swap(false, Ordering::Relaxed);
-        if self.visible && self.drag.is_none() && (api || self.last_render.elapsed() > Duration::from_secs(10)) {
+        let resized = self.frame_px().unwrap_or((0, 0)) != self.last_frame_px;
+        if self.visible && self.drag.is_none() && (api || resized || self.last_render.elapsed() > Duration::from_secs(10)) {
             self.render(a);
         }
     }

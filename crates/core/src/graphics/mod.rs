@@ -8,7 +8,7 @@ mod render;
 mod text;
 
 pub use fonts::FontBook;
-pub use render::{ImageCache, RenderInput, paint_layers, qr_module_px, render};
+pub use render::{ImageCache, RenderInput, paint_layers, qr_module_px, render, render_base};
 
 use serde::{Deserialize, Serialize};
 

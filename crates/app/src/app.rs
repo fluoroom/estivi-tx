@@ -16,6 +16,7 @@ use estivi_core::config::{Config, Lang, LineLevel, PttMethod};
 use estivi_core::dynamic::ApiCache;
 use estivi_core::engine::{Command, Engine, Phase, Status};
 use estivi_core::export::{self, AudioFormat, ExportRequest, Shape};
+use estivi_core::graphics::Fit;
 use estivi_core::modes::Mode;
 use estivi_core::playlist::{self};
 use estivi_core::project::{
@@ -33,6 +34,18 @@ use crate::{ActionItem, CardItem, Files, MainWindow, ModeCheat, PicItem, Program
 pub type Shared = Rc<RefCell<App>>;
 
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+
+// Logical sizes of the fixed image widgets in main.slint. Thumbnails are
+// pre-scaled to these boxes (times the window scale factor) so the UI can
+// paint them 1:1 instead of resampling them with a cheaper filter.
+const LIVE_W: f32 = 200.0;
+const LIVE_H: f32 = 190.0;
+const NEXT_W: f32 = 200.0;
+const NEXT_H: f32 = 190.0;
+const LIST_W: u32 = 34;
+const LIST_H: u32 = 24;
+const CLIP_H: u32 = 62;
+const INSTANT_H: u32 = 120;
 
 fn weekday_name(day: usize, spanish: bool) -> &'static str {
     let en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -215,6 +228,15 @@ fn rgb(hex: u32) -> slint::Color {
     slint::Color::from_argb_u8(0xff, (hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
 
+/// The header logo at the pixel size of its 28 logical px tile. The default
+/// Slint image would be resampled by the renderer; this one is bicubic and 1:1.
+fn set_logo(ui: &MainWindow) {
+    let Ok(icon) = image::load_from_memory(include_bytes!("../assets/icon.png")) else { return };
+    let side = (28.0 * ui.window().scale_factor().max(1.0)).round().max(1.0) as u32;
+    let logo = icon.resize_exact(side, side, image::imageops::FilterType::CatmullRom).to_rgba8();
+    ui.set_logo(view::to_image(&logo));
+}
+
 struct Palette {
     light: bool,
     bg: u32,
@@ -383,6 +405,12 @@ struct NextFrame {
     frame: image::RgbaImage,
 }
 
+/// Thumbnail cache keys: path, requested width, requested height, kind. The
+/// dimensions are physical pixels, so a scale-factor change makes a new entry.
+type ThumbKey = (String, u32, u32, u8);
+const THUMB_BOX: u8 = 0;
+const THUMB_HEIGHT: u8 = 1;
+
 struct NextPick {
     at: chrono::DateTime<Utc>,
     path: String,
@@ -421,9 +449,11 @@ pub struct App {
     instant: InstantHold,
     seen_air: u64,
     seen_log: u64,
-    live_full: Option<image::RgbaImage>,
+    live_preview: Option<image::RgbaImage>,
     next_key: String,
-    thumbs: HashMap<String, slint::Image>,
+    next_valid_until: Option<chrono::DateTime<Utc>>,
+    next_offset_ms: i64,
+    thumbs: HashMap<ThumbKey, slint::Image>,
     /// Graphics choices shown in the instant tab, in the same order as the combo.
     instant_choices: Vec<GraphicsLevel>,
     /// Devices found by the last scan. Equipment maps a combo index back to these.
@@ -441,6 +471,17 @@ pub struct App {
 impl App {
     pub fn ui(&self) -> MainWindow {
         self.main.upgrade().expect("main window")
+    }
+
+    fn ui_scale(&self) -> f32 {
+        self.ui().window().scale_factor().max(1.0)
+    }
+
+    /// The next preview is cached until its turn starts. Any edit that could
+    /// change what comes next (or how it is painted) drops that cache.
+    fn invalidate_next(&mut self) {
+        self.next_key.clear();
+        self.next_valid_until = None;
     }
 
     pub fn dir(&self) -> Option<PathBuf> {
@@ -472,6 +513,7 @@ impl App {
     }
 
     fn save_config(&mut self) {
+        self.invalidate_next();
         if let Err(e) = self.config.save(&self.config_path) {
             log::warn!("config: {e:#}");
         }
@@ -492,6 +534,7 @@ impl App {
 
     pub fn graphics_changed(&mut self, notify: bool) {
         self.dirty = true;
+        self.invalidate_next();
         if notify {
         self.send_project();
         }
@@ -500,6 +543,7 @@ impl App {
 
     fn changed(&mut self) {
         self.dirty = true;
+        self.invalidate_next();
             self.send_project();
         self.ui().set_dirty(true);
         self.refresh_cards();
@@ -509,6 +553,8 @@ impl App {
     }
 
     pub fn loaded(&mut self) {
+        self.invalidate_next();
+        self.thumbs.clear();
         self.baseline = self.project.clone();
         self.dirty = false;
         self.composer.set_project_dir(self.dir().as_deref());
@@ -601,13 +647,17 @@ impl App {
         }
         if s.on_air_rev != self.seen_air {
             self.seen_air = s.on_air_rev;
-            self.live_full = s.on_air.as_ref().and_then(|a| a.image.as_ref().map(|img| (**img).clone()));
+            let scale = self.ui_scale();
+            let box_w = (LIVE_W * scale).round().max(1.0) as u32;
+            let box_h = (LIVE_H * scale).round().max(1.0) as u32;
+            self.live_preview = s.on_air.as_ref().and_then(|a| a.image.as_ref()).map(|img| view::fit_contain(img, box_w, box_h));
         }
-        if let (Some(full), Some(air)) = (self.live_full.clone(), s.on_air.as_ref()) {
+        if let (Some(preview), Some(air)) = (self.live_preview.as_ref(), s.on_air.as_ref()) {
             let progress = if air.scan_ms <= 1.0 { 1.0 } else { ((air.elapsed_ms - air.scan_at) / air.scan_ms).clamp(0.0, 1.0) };
-            ui.set_on_air_image(view::to_image(&view::reveal(&full, progress as f32)));
+            ui.set_on_air_image(view::to_image(&view::reveal(preview, progress as f32)));
             ui.set_has_image(true);
         } else if s.on_air.is_none() {
+            self.live_preview = None;
             ui.set_has_image(false);
         }
         let now = Utc::now() + TimeDelta::milliseconds(s.clock_offset_ms);
@@ -621,7 +671,7 @@ impl App {
         ui.set_playhead(head.unwrap_or(-1.0));
         if s.log_rev != self.seen_log {
             self.seen_log = s.log_rev;
-            let line = s.log.last().map(|e| format!("#{} {} {}", e.serial, e.program, log_result(&e.result))).unwrap_or_default();
+            let line = s.last_log.as_ref().map(|e| format!("#{} {} {}", e.serial, e.program, log_result(&e.result))).unwrap_or_default();
             ui.set_log_text(line.as_str().into());
             ui.set_last_log(line.into());
         }
@@ -911,7 +961,7 @@ impl App {
                 detail.push_str(" · ");
                 detail.push_str(i18n::ts("off", "apagada"));
             }
-            let thumb = self.thumb(&image.path);
+            let thumb = self.thumb(&image.path, LIST_W, LIST_H, THUMB_BOX);
             rows.push(PicItem {
                 id: image.id as i32,
                 label: view::file_name(&image.path).into(),
@@ -960,7 +1010,7 @@ impl App {
                     PieceKind::Image => format!("{}  ·  {}", view::file_name(&piece.path), view::span(piece.ms)),
                     PieceKind::Bye => i18n::t("Bye", "Despedida"),
                 };
-                let thumb = if piece.kind == PieceKind::Image { self.thumb(&piece.path) } else { None };
+                let thumb = if piece.kind == PieceKind::Image { self.thumb(&piece.path, 0, CLIP_H, THUMB_HEIGHT) } else { None };
                 let x = (cursor / span).clamp(0.0, 1.0) as f32;
                 let w = (piece.ms / span).clamp(0.0015, 1.0) as f32;
                 rows.push(TxItem {
@@ -1055,21 +1105,46 @@ impl App {
         (steps, caption, total)
     }
 
-    fn thumb(&mut self, path: &str) -> Option<slint::Image> {
+    /// A thumbnail pre-scaled with a bicubic filter to the physical size the
+    /// widget uses, so the renderer does not resample it again. `kind` is a box
+    /// (contain) or a fixed height (aspect kept).
+    fn thumb(&mut self, path: &str, box_w: u32, box_h: u32, kind: u8) -> Option<slint::Image> {
         if path.trim().is_empty() {
             return None;
         }
-        if let Some(img) = self.thumbs.get(path) {
+        let scale = self.ui_scale();
+        let (tw, th) = match kind {
+            THUMB_BOX => (((box_w as f32) * scale).round().max(1.0) as u32, ((box_h as f32) * scale).round().max(1.0) as u32),
+            _ => (0, ((box_h as f32) * scale).round().max(1.0) as u32),
+        };
+        let key = (path.to_string(), tw, th, kind);
+        if let Some(img) = self.thumbs.get(&key) {
             return Some(img.clone());
         }
-        let opened = image::open(self.resolve(path)).ok()?.thumbnail(64, 48).to_rgba8();
-        let img = view::to_image(&opened);
-        self.thumbs.insert(path.to_string(), img.clone());
+        let path_buf = self.resolve(path);
+        let fitted = if kind == THUMB_BOX {
+            self.composer.cache.fitted(&path_buf, tw, th, Fit::Contain).ok()?
+        } else {
+            let src = self.composer.cache.original(&path_buf).ok()?;
+            let tw = ((src.width() as f32 * th as f32) / src.height().max(1) as f32).round().max(1.0) as u32;
+            self.composer.cache.fitted(&path_buf, tw, th, Fit::Stretch).ok()?
+        };
+        let img = view::to_image(&fitted);
+        self.thumbs.insert(key, img.clone());
         Some(img)
     }
 
     fn refresh_next(&mut self) {
-        let Some(found) = self.upcoming_frame() else {
+        let now = self.now();
+        if self.next_offset_ms != self.status.clock_offset_ms {
+            self.next_valid_until = None;
+        }
+        if self.next_valid_until.is_some_and(|until| now < until) {
+            return;
+        }
+        self.next_offset_ms = self.status.clock_offset_ms;
+        let Some(best) = self.upcoming_pick() else {
+            self.next_valid_until = Some(now + TimeDelta::seconds(1));
             let ui = self.ui();
             if !self.next_key.is_empty() || ui.get_has_next() || ui.get_next_caption().is_empty() {
                 self.next_key.clear();
@@ -1078,9 +1153,15 @@ impl App {
             }
             return;
         };
-        if found.key == self.next_key {
+        self.next_valid_until = Some(best.at);
+        let key = self.next_key(&best);
+        if key == self.next_key {
             return;
         }
+        let scale = self.ui_scale();
+        let box_w = (NEXT_W * scale).round().max(1.0) as u32;
+        let box_h = (NEXT_H * scale).round().max(1.0) as u32;
+        let found = self.next_frame(&best, key, box_w, box_h);
         self.next_key = found.key;
         let ui = self.ui();
         ui.set_next_caption(found.caption.into());
@@ -1088,10 +1169,10 @@ impl App {
         ui.set_has_next(true);
     }
 
-    /// The next picture that will actually go out: the first future turn, with the
-    /// graphics of that block, its program, and the channel. Editing any of those,
-    /// or moving another block in front, changes the key and redraws the pane.
-    fn upcoming_frame(&mut self) -> Option<NextFrame> {
+    /// The next picture that will actually go out: the first future turn, with
+    /// the graphics of that block, its program, and the channel. Editing any of
+    /// those, or moving another block in front, changes the key and redraws the pane.
+    fn upcoming_pick(&self) -> Option<NextPick> {
         let today = self.today();
         let now = self.now();
         let occs = schedule::occurrences(&self.project, today - TimeDelta::days(1), today + TimeDelta::days(14), today);
@@ -1121,8 +1202,11 @@ impl App {
                 program: occ.program_id.and_then(|id| self.project.program(id)).map(|p| p.graphics.clone()),
             });
         }
-        let best = best?;
-        let key = format!(
+        best
+    }
+
+    fn next_key(&self, best: &NextPick) -> String {
+        format!(
             "{}|{}|{}|{}|{}|{}|{}",
             best.path,
             best.mode.name(),
@@ -1131,20 +1215,33 @@ impl App {
             best.block.as_ref().map(gfx_stamp).unwrap_or(0),
             best.program.as_ref().map(gfx_stamp).unwrap_or(0),
             gfx_stamp(&self.project.graphics)
-        );
+        )
+    }
+
+    fn next_frame(&mut self, best: &NextPick, key: String, box_w: u32, box_h: u32) -> NextFrame {
         let live = estivi_core::compose::LiveText { program: best.name.clone(), block: best.name.clone(), ..Default::default() };
-        let ctx = estivi_core::compose::data_ctx(&self.project, best.at, self.status.serial + 1, best.mode, &live, self.project.freq_hz, &self.status.last_cw, &self.status.last_dtmf);
+        let ctx = estivi_core::compose::data_ctx(
+            &self.project,
+            best.at,
+            self.status.serial + 1,
+            best.mode,
+            &live,
+            self.project.freq_hz,
+            &self.status.last_cw,
+            &self.status.last_dtmf,
+        );
         let dir = self.dir();
-        let frame = self.composer.frame_chain(&self.project, dir.as_deref(), Some(&best.path), None, best.block.as_ref(), best.program.as_ref(), best.mode, &ctx);
+        let full = self.composer.frame_chain(&self.project, dir.as_deref(), Some(&best.path), None, best.block.as_ref(), best.program.as_ref(), best.mode, &ctx);
+        let frame = view::fit_contain(&full, box_w, box_h);
         let caption = format!("{}  {}  {}", best.name, view::clock_hm(best.at, self.project.grid.timezone), view::file_name(&best.path));
-        Some(NextFrame { key, caption, frame })
+        NextFrame { key, caption, frame }
     }
 
     fn undo(&mut self) {
         self.project = self.baseline.clone();
         self.dirty = false;
         self.thumbs.clear();
-        self.next_key.clear();
+        self.invalidate_next();
         self.composer.set_project_dir(self.dir().as_deref());
         self.send_project();
         self.push_channel();
@@ -1240,6 +1337,7 @@ impl App {
         }
         if let Some(win) = &self.modes {
             apply_theme_to(&win.global::<Theme>(), id, light);
+            win.invoke_sync_palette();
         }
     }
 
@@ -1260,7 +1358,7 @@ impl App {
     fn push_instant(&mut self) {
         let ui = self.ui();
         let path = ui.get_instant_path().to_string();
-        let thumb = self.thumb(&path);
+        let thumb = self.thumb(&path, 0, INSTANT_H, THUMB_HEIGHT);
         ui.set_instant_file(view::file_name(&path).into());
         ui.set_instant_has_thumb(thumb.is_some());
         ui.set_instant_thumb(thumb.unwrap_or_default());
@@ -2551,11 +2649,13 @@ impl App {
                 })
             });
             apply_theme_to(&win.global::<Theme>(), &self.config.ui.theme, self.config.ui.light);
+            win.invoke_sync_palette();
             self.modes = Some(win);
             self.fill_modes();
         }
         if let Some(win) = &self.modes {
             apply_theme_to(&win.global::<Theme>(), &self.config.ui.theme, self.config.ui.light);
+            win.invoke_sync_palette();
             let _ = win.show();
         }
     }
@@ -3026,6 +3126,7 @@ fn ensure_ext(path: &Path) -> PathBuf {
 
 pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
     let ui = MainWindow::new()?;
+    set_logo(&ui);
     i18n::apply_slint(Lang::resolve(&config.ui.lang));
     let api = ApiCache::default();
     let engine = Engine::start(config.clone(), config_path.clone(), config_path.with_file_name("estivi-registro.csv"), api.clone());
@@ -3059,8 +3160,10 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
             instant: InstantHold::default(),
             seen_air: 0,
         seen_log: 0,
-            live_full: None,
+            live_preview: None,
             next_key: String::new(),
+            next_valid_until: None,
+            next_offset_ms: 0,
             thumbs: HashMap::new(),
             instant_choices: Vec::new(),
             audio_outputs: Vec::new(),

@@ -8,6 +8,10 @@ use std::time::SystemTime;
 use image::imageops::FilterType;
 use image::{Rgba as Px, RgbaImage};
 
+/// Every scaling step in the graphics pipeline is bicubic (Catmull-Rom):
+/// pictures fitted to the mode, cropped, or resized for a layer.
+const RESAMPLE: FilterType = FilterType::CatmullRom;
+
 use super::text::{Mask, TextLayout};
 use super::{Fit, FontBook, Graphics, LayerKind, QrLayer, Rgba, TextLayer};
 
@@ -52,11 +56,11 @@ impl ImageCache {
         let (w, h) = (key.1, key.2);
         let (sw, sh) = (src.width() as f64, src.height() as f64);
         let out = match fit {
-            Fit::Stretch => image::imageops::resize(&*src, w, h, FilterType::CatmullRom),
+            Fit::Stretch => image::imageops::resize(&*src, w, h, RESAMPLE),
             Fit::Contain => {
                 let s = (w as f64 / sw).min(h as f64 / sh);
                 let (tw, th) = (((sw * s).round() as u32).max(1), ((sh * s).round() as u32).max(1));
-                image::imageops::resize(&*src, tw.min(w), th.min(h), FilterType::CatmullRom)
+                image::imageops::resize(&*src, tw.min(w), th.min(h), RESAMPLE)
             }
             Fit::Cover => {
                 let s = (w as f64 / sw).max(h as f64 / sh);
@@ -64,7 +68,7 @@ impl ImageCache {
                 let cx = ((sw - cw) / 2.0).max(0.0) as u32;
                 let cy = ((sh - ch) / 2.0).max(0.0) as u32;
                 let crop = image::imageops::crop_imm(&*src, cx, cy, (cw as u32).min(src.width()), (ch as u32).min(src.height()));
-                image::imageops::resize(&*crop, w, h, FilterType::CatmullRom)
+                image::imageops::resize(&*crop, w, h, RESAMPLE)
             }
         };
         if self.fitted.len() > 64 {
@@ -93,7 +97,10 @@ pub struct RenderInput<'a> {
     pub baked: Option<&'a RgbaImage>,
 }
 
-pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
+/// Paint the background color and the base picture, without the layers. The
+/// cascade in `Composer` paints every level's layers once, so it can use this
+/// entry point and avoid cloning each `Graphics` just to clear its layer list.
+pub fn render_base(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
     let (w, h) = (input.width, input.height);
     let g = input.graphics;
     let [r, gr, b, _] = g.background.0;
@@ -114,8 +121,12 @@ pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
             Err(e) => log::warn!("program picture: {e}"),
         }
     }
+    canvas
+}
 
-    paint_layers(&mut canvas, g, input.resolve, input.text_of, input.qr_of, input.fonts, cache);
+pub fn render(input: &RenderInput, cache: &mut ImageCache) -> RgbaImage {
+    let mut canvas = render_base(input, cache);
+    paint_layers(&mut canvas, input.graphics, input.resolve, input.text_of, input.qr_of, input.fonts, cache);
     canvas
 }
 
@@ -167,11 +178,11 @@ fn fit_image(src: &RgbaImage, w: u32, h: u32, fit: Fit) -> RgbaImage {
     let (w, h) = (w.max(1), h.max(1));
     let (sw, sh) = (src.width() as f64, src.height() as f64);
     match fit {
-        Fit::Stretch => image::imageops::resize(src, w, h, FilterType::CatmullRom),
+        Fit::Stretch => image::imageops::resize(src, w, h, RESAMPLE),
         Fit::Contain => {
             let s = (w as f64 / sw).min(h as f64 / sh);
             let (tw, th) = (((sw * s).round() as u32).max(1), ((sh * s).round() as u32).max(1));
-            image::imageops::resize(src, tw.min(w), th.min(h), FilterType::CatmullRom)
+            image::imageops::resize(src, tw.min(w), th.min(h), RESAMPLE)
         }
         Fit::Cover => {
             let s = (w as f64 / sw).max(h as f64 / sh);
@@ -179,7 +190,7 @@ fn fit_image(src: &RgbaImage, w: u32, h: u32, fit: Fit) -> RgbaImage {
             let cx = ((sw - cw) / 2.0).max(0.0) as u32;
             let cy = ((sh - ch) / 2.0).max(0.0) as u32;
             let crop = image::imageops::crop_imm(src, cx, cy, (cw as u32).min(src.width()), (ch as u32).min(src.height()));
-            image::imageops::resize(&*crop, w, h, FilterType::CatmullRom)
+            image::imageops::resize(&*crop, w, h, RESAMPLE)
         }
     }
 }

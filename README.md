@@ -1,6 +1,6 @@
 # Estivi
 
-Version 0.2.0. Project format 2.
+Version 0.2.1. Project format 2.
 
 Estivi runs an SSTV channel the way a station runs a schedule. One window, no browser: a grid of programs and common blocks, the picture list of the block you are on, graphics on the block, the program, and the channel, a live view and the next transmission, an instant transmission, and activations that answer what the radio hears. It is a single executable for Linux and Windows (Rust + Slint).
 
@@ -98,6 +98,8 @@ cargo run -p estivi-core --example dispositivos
 
 `cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, the ALSA/PipeWire device filter, bumper linking and `block02` import, export durations for the five shapes, and one short FLAC file.
 
+`cargo test -p estivi`: preview fitting keeps the aspect ratio inside its box, and the Live reveal blacks only the rows that have not been scanned.
+
 Decoded with QSSTV 9 over real audio, except where noted:
 
 | Mode | Result |
@@ -115,7 +117,7 @@ The color range default is full range, which is what QSSTV decodes as a normal p
 
 Serial PTT and CAT (`rigctld`) are implemented and have not been tried on a radio. RTS and DTR are chosen apart: off, positive (high while keyed), or negative (high at rest). On Linux, the `front` PCM of some cards goes through a software mixer: if the level is very low, pick the `plughw` device or raise that control.
 
-The window was exercised headlessly against `ejemplo/canal-demo.estivi`: a card selected from the grid, the flat picture list with thumbnails, the timing breakdown, the per-piece timeline, a picture copied into the instant tab with its bumper toggles and graphics levels, the graphics editor opened from that tab, and the audio and serial device lists. Creating a program in its window, rejecting an overlap, exporting a FLAC, and a real transmission were not exercised in that run.
+The window was exercised headlessly against `ejemplo/canal-demo.estivi`: a card selected from the grid, the flat picture list with thumbnails, the timing breakdown, the per-piece timeline, a picture copied into the instant tab with its bumper toggles and graphics levels, the graphics editor opened from that tab, and the audio and serial device lists. The editor canvas was checked at its normal size and at the 1000×640 minimum, and a temporary future block with a picture exercised the Next preview. Creating a program in its window, rejecting an overlap, exporting a FLAC, and a real transmission were not exercised in that run.
 
 ## Licenses
 

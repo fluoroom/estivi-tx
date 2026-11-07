@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use image::RgbaImage;
 
 use crate::dynamic::{ApiCache, DataCtx, expand};
-use crate::graphics::{FontBook, Graphics, ImageCache, QrLayer, RenderInput, paint_layers, render};
+use crate::graphics::{FontBook, Graphics, ImageCache, QrLayer, RenderInput, paint_layers, render_base};
 use crate::project::{Project, resolve};
 use crate::shell;
 
@@ -93,27 +93,27 @@ impl Composer {
         mode: crate::modes::Mode,
         ctx: &DataCtx,
     ) -> RgbaImage {
-        let block_g = block.cloned().unwrap_or_default();
-        let program_g = program.cloned().unwrap_or_default();
-        let channel = if use_channel { project.graphics.clone() } else { Graphics::default() };
-        let mut base = if !block_g.is_plain() {
-            block_g.clone()
+        let empty = Graphics::default();
+        let block_g = block.unwrap_or(&empty);
+        let program_g = program.unwrap_or(&empty);
+        let channel = if use_channel { &project.graphics } else { &empty };
+        let base = if !block_g.is_plain() {
+            block_g
         } else if !program_g.is_plain() {
-            program_g.clone()
+            program_g
         } else {
-            channel.clone()
+            channel
         };
-        base.layers.clear();
         let spec = mode.spec();
         let program_path = image.filter(|p| !p.trim().is_empty()).map(|p| resolve(dir, p));
         let levels = [block_g, program_g, channel];
         let maps: Vec<HashMap<u64, String>> = levels.iter().map(|g| self.qr_map(g, ctx)).collect();
         let api = &self.api;
-        let mut canvas = render(
+        let mut canvas = render_base(
             &RenderInput {
                 width: spec.width,
                 height: spec.height,
-                graphics: &base,
+                graphics: base,
                 program: program_path.as_deref(),
                 resolve: &|stored| resolve(dir, stored),
                 text_of: &|tl| expand(&tl.text, ctx, tl.api.as_ref().and_then(|a| api.value(a)).as_deref()),
