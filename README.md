@@ -1,8 +1,14 @@
 # Estivi
 
-Version 0.2.1. Project format 2.
+Version 0.2.2. Project format 2.
 
-Estivi runs an SSTV channel the way a station runs a schedule. One window, no browser: a grid of programs and common blocks, the picture list of the block you are on, graphics on the block, the program, and the channel, a live view and the next transmission, an instant transmission, and activations that answer what the radio hears. It is a single executable for Linux and Windows (Rust + Slint).
+Estivi runs an SSTV channel the way a station runs a schedule. One window, no browser: a grid of programs and common blocks, the picture list of the block you are on, graphics on the block, the program, and the channel, a live view and the next transmission, an instant transmission, and activations that answer what the radio hears. It is a single executable for Linux, Windows, and macOS (Rust + Slint).
+
+<p align="center">
+  <img src="docs/screenshots/main.png" alt="Estivi main window: the grid, the next transmission, and the selected block" width="920">
+</p>
+
+<p align="center"><em>November, dark theme: the next transmission is already loaded and the selected block carries its timeline.</em></p>
 
 The channel is one frequency and one timezone, UTC or local. That timezone drives the clock, the grid, the block ends, and the times written into export names. The offset that shifts every start belongs to the whole project and does not move the written end. The interval does not belong to the project. Each common block has its own, in whole minutes. A program has one per weekday: Monday can be 14:00–14:30 every 6 minutes and Saturday 22:00–22:30 every 10, and changing one day leaves the others. Zero means one start in that block. Turning a weekday on copies the hours and interval from a day that already has them, and from then on that day can be changed on its own. A program repeats on the weekdays you mark, until a date or forever. A common block is one date and does not repeat. Pictures belong to that occurrence. A program day is stored once it has a picture, its own graphics, or its own SSTV mode, and it becomes a prediction again when all three are gone. An empty common block stays until you delete the card.
 
@@ -30,6 +36,12 @@ The grid is the center: month, week, or day, with Today and the period kept to t
 
 Programs are a separate window. A new program has no days and no hours until you set them there: each weekday can be on or off, and each day has its own start, end, and interval. The grid draws a card from that schedule. The card does not store the day or the hours, and its panel does not edit them. An empty card is a prediction until it has a picture, its own graphics, or its own SSTV mode. Double-click an empty hour to create a common block on that date only. Nothing is created until you confirm. The dialog starts the interval at 6 minutes and proposes an end one interval after the click; you can lengthen the end, and changing the interval rewrites that proposal from the start. Dragging a common card changes only that card. Dragging a program card does not change the hours. A common block can be deleted. A program is deleted only after you choose what happens to its blocks: drop them, keep the ones with pictures as common blocks, or also keep the empty days up to a date you pick (three years at most). Turning a weekday off asks the same question for that day's future blocks. Past blocks stay.
 
+<p align="center">
+  <img src="docs/screenshots/programs.png" alt="Programs window: each weekday with its own start, end, and interval" width="620">
+</p>
+
+<p align="center"><em>Programs: each weekday keeps its own start, end, and interval; turning one on copies the last schedule.</em></p>
+
 “Transmit this date” turns that occurrence off. On a program card the other days stay as they are. On a common block the card stays on the grid, in gray. Start grid and Stop grid arm and disarm the schedule. Cut aborts the transmission that is on the air. Undo puts the channel back to the last load or save and does not write the file.
 
 Channel and Equipment live in the free right side of the top card, as two tabs with the fields used every day. More channel settings and More equipment settings open the full configuration in a card over the window; nothing scrolls. They are not sidebar tabs; the sidebar keeps Block, Instant and Activations.
@@ -45,6 +57,12 @@ Instant transmission has its own tab. It works while the grid is armed and idle.
 Activations have their own tab. They are not objects on the grid. A trigger is CW or DTMF, and any one match runs the activation. The tab edits the activation in place: its name, its trigger, and one card per action with the fields that action needs; the add menu appends an action. Actions run in order while that activation holds the PTT: CW, AX.25, DTMF, a local command, a picture, a random picture from a pool, pause, resume, or an API answer. Pause and resume do not key the radio and do not cut a transmission already on the air. A second match while that activation is queued or running does not enqueue another copy.
 
 Graphics are edited per level. The block is painted first, then the program, then the channel, each on the frame the previous step left. A later step does not refill the background. The base picture menu stands the layers on a Photoshop-style transparency checkerboard (the default), on the next picture that will go out, on color bars, a grid, or a gray ramp. The next picture follows the turn slots, so an ongoing block moves on to its next picture; bumpers never count. When nothing is scheduled ahead for that level, the editor falls back to the first normal picture the level still has. Text, image, and QR layers sit on that frame. A QR can be text (with the same `{fields}`), a command, or an API. If the QR cannot be built, that layer is skipped and the rest of the frame goes out. Fields, also valid in text: `{block}`, `{range}`, `{days}`, `{daysleft}`, `{next}`.
+
+<p align="center">
+  <img src="docs/screenshots/editor.png" alt="Graphics editor: channel layers over the next live picture" width="840">
+</p>
+
+<p align="center"><em>Graphics: channel, program, and block layers stand on the next live picture, a checkerboard, color bars, a grid, or a gray ramp.</em></p>
 
 The themes are Dark (the default; a saved Gray theme opens as Dark), Light, Dracula, Lavender, Pastel, Subte, and Subte light. Block hues stay their own colors. The interface is English or Spanish, and the first launch follows the system language when it is one of those two. Errors, warnings, and other system text stay in English.
 
@@ -83,9 +101,12 @@ cargo build --release
 # target/release/estivi  (estivi.exe on Windows)
 ```
 
-- **Linux**: ALSA and fontconfig (`alsa-lib` and `fontconfig` on Arch; `libasound2-dev` and `libfontconfig1-dev` on Debian or Ubuntu).
+- **Linux**: ALSA, fontconfig, and GTK 3 (`alsa-lib`, `fontconfig`, and `gtk3` on Arch; `libasound2-dev`, `libfontconfig1-dev`, and `libgtk-3-dev` on Debian or Ubuntu).
 - **Windows**: build on Windows with the MSVC toolchain. Release builds do not open a console.
+- **macOS**: build on macOS with the Xcode command line tools (`xcode-select --install`). The release archive wraps the universal binary in `Estivi.app`.
 - The UI draws in software (about 50 MB of RAM, no GPU driver). Equipment can switch the renderer only by the setting that was already in the config (`gpu_render`); the default stays the CPU renderer.
+
+Pushing a tag such as `v0.2.2` runs the release workflow. The tag must match the workspace version in `Cargo.toml`; it builds Linux x86_64, Windows x86_64 and i686, and a macOS universal app, then attaches the archives and their checksums to the GitHub release.
 
 ```sh
 cargo run -p estivi-core --example render -- ejemplo/canal-demo.estivi cuadro.png [audio.wav] [programa] [modo]

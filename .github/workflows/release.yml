@@ -1,0 +1,237 @@
+# Build Estivi for Linux, Windows, and macOS on every version tag, then attach
+# the archives to that tag's GitHub release.
+#
+# The tag must match the workspace version in Cargo.toml (v0.2.1 <-> 0.2.1),
+# so an asset never claims a version the binary does not have.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  version:
+    name: Check tag against Cargo.toml
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Read the version and compare it with the tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          declared="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+          if [ "$version" != "$declared" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match the workspace version ${declared} in Cargo.toml"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Linux x86_64
+    needs: version
+    runs-on: ubuntu-latest
+    # Ubuntu 22.04 keeps the glibc floor at 2.35, so the release runs on
+    # Ubuntu 22.04+, Debian 12+, and newer. That runner image is being
+    # retired, so the old userland comes from a container instead.
+    container: ubuntu:22.04
+    steps:
+      - name: Install the system dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates curl git pkg-config zstd \
+            libasound2-dev libfontconfig1-dev libgtk-3-dev
+          rm -rf /var/lib/apt/lists/*
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-x86_64
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Build
+        run: cargo build --release --locked -p estivi
+      - name: Package
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="estivi-${VERSION}-linux-x86_64"
+          mkdir -p "dist/${name}"
+          install -m 755 target/release/estivi "dist/${name}/estivi"
+          cp README.md AX25.md "dist/${name}/"
+          cp -R ejemplo "dist/${name}/ejemplo"
+          tar -C dist -czf "${name}.tar.gz" "${name}"
+          tar -tzf "${name}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: estivi-*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    needs: version
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            arch: x86_64
+          - target: i686-pc-windows-msvc
+            arch: i686
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-${{ matrix.arch }}
+      - name: Build
+        run: cargo build --release --locked -p estivi --target ${{ matrix.target }}
+      - name: Package
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          $name = "estivi-$env:VERSION-windows-$env:ARCH"
+          New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
+          Copy-Item "target/$env:TARGET/release/estivi.exe" "dist/$name/"
+          Copy-Item README.md, AX25.md "dist/$name/"
+          Copy-Item -Recurse ejemplo "dist/$name/ejemplo"
+          Compress-Archive -Path "dist/$name" -DestinationPath "$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: estivi-*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: macOS universal
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-universal
+      - name: Build Apple Silicon
+        run: cargo build --release --locked -p estivi --target aarch64-apple-darwin
+      - name: Build Intel
+        run: cargo build --release --locked -p estivi --target x86_64-apple-darwin
+      - name: Package
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="estivi-${VERSION}-macos-universal"
+          app="dist/${name}/Estivi.app"
+          mkdir -p "${app}/Contents/MacOS" "${app}/Contents/Resources"
+          lipo -create \
+            target/aarch64-apple-darwin/release/estivi \
+            target/x86_64-apple-darwin/release/estivi \
+            -output "${app}/Contents/MacOS/estivi"
+          chmod 755 "${app}/Contents/MacOS/estivi"
+          lipo -info "${app}/Contents/MacOS/estivi"
+          if sips -s format icns crates/app/assets/icon.png \
+              --out "${app}/Contents/Resources/icon.icns" >/dev/null 2>&1; then
+            echo "icon: icon.icns"
+          else
+            echo "icon: conversion failed, bundling without an icon"
+            rm -f "${app}/Contents/Resources/icon.icns"
+          fi
+          cat > "${app}/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>Estivi</string>
+            <key>CFBundleDisplayName</key>
+            <string>Estivi</string>
+            <key>CFBundleIdentifier</key>
+            <string>io.github.fluoroom.estivi</string>
+            <key>CFBundleExecutable</key>
+            <string>estivi</string>
+            <key>CFBundleIconFile</key>
+            <string>icon.icns</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>LSApplicationCategoryType</key>
+            <string>public.app-category.utilities</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          # Ad-hoc signing keeps the arm64 half valid after lipo; it is not
+          # notarization, so a quarantined download still needs "Open" once.
+          codesign --force --sign - "${app}"
+          codesign --verify --verbose "${app}"
+          cp README.md AX25.md "dist/${name}/"
+          cp -R ejemplo "dist/${name}/ejemplo"
+          tar -C dist -czf "${name}.tar.gz" "${name}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: estivi-*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the release
+    needs: [version, linux, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write the checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ./* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Estivi ${{ needs.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/*
