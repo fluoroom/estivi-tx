@@ -1,5 +1,7 @@
 # Estivi
 
+**English** · [Español](README_ES.md)
+
 **SSTV, on a schedule.**
 
 Estivi runs an SSTV channel the way a station runs a schedule. One window, no browser: programs that repeat every week, one-off blocks, pictures with bumpers, graphics, PTT, CW, AX.25, and a transmission log. Set the week, arm the grid, and the station runs itself.
