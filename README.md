@@ -49,6 +49,10 @@ Download the [latest release](https://github.com/fluoroom/estivi-tx/releases/lat
 
 Extract it, run `estivi`, and open [`ejemplo/canal-demo.estivi`](ejemplo/canal-demo.estivi) to see a full channel: two programs, stored blocks, activations, a lower third, a QR, and a hidden weather layer. Every picture it uses is inside `ejemplo/`, so the sample runs anywhere.
 
+## Receive
+
+The other half is the listener: open **[estivi-rx.lu1aqy.radio](https://estivi-rx.lu1aqy.radio)**, allow the microphone, and point it at your receiver's speaker. Decoding happens in the page; the server only serves static files.
+
 ## Build
 
 Stable Rust 1.85 or newer.

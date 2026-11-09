@@ -49,6 +49,10 @@ Descargá la [última versión](https://github.com/fluoroom/estivi-tx/releases/l
 
 Descomprimilo, ejecutá `estivi` y abrí [`ejemplo/canal-demo.estivi`](ejemplo/canal-demo.estivi) para ver un canal completo: dos programas, bloques guardados, activaciones, un zócalo, un QR y una capa de clima oculta. Todas las imágenes que usa están dentro de `ejemplo/`, así que la muestra corre en cualquier máquina.
 
+## Escuchar
+
+La otra mitad es el receptor: abrí **[estivi-rx.lu1aqy.radio](https://estivi-rx.lu1aqy.radio)**, permití el micrófono y apuntalo al parlante de tu receptor. La decodificación ocurre en la página; el servidor solo sirve archivos estáticos.
+
 ## Compilar
 
 Rust estable 1.85 o superior.
