@@ -123,10 +123,16 @@ jobs:
           Copy-Item README.md, AX25.md "dist/$name/"
           Copy-Item -Recurse ejemplo "dist/$name/ejemplo"
           Compress-Archive -Path "dist/$name" -DestinationPath "$name.zip"
+          # The updater reads the .tar.gz on every system; the .zip stays for
+          # people who download and extract the release by hand.
+          tar -czf "$name.tar.gz" -C dist "$name"
+          tar -tzf "$name.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
-          path: estivi-*.zip
+          path: |
+            estivi-*.zip
+            estivi-*.tar.gz
           if-no-files-found: error
           retention-days: 7
 

@@ -12,7 +12,7 @@ Estivi runs an SSTV channel the way a station runs a schedule. One window, no br
 
 <p align="center"><em>The grid, the next transmission, and the selected block's timeline.</em></p>
 
-`Version 0.2.2` · project format 2 · Linux, Windows, macOS · Rust + Slint
+`Version 0.2.3` · project format 2 · Linux, Windows, macOS · Rust + Slint
 
 ## What it does
 
@@ -49,6 +49,8 @@ Download the [latest release](https://github.com/fluoroom/estivi-tx/releases/lat
 
 Extract it, run `estivi`, and open [`ejemplo/canal-demo.estivi`](ejemplo/canal-demo.estivi) to see a full channel: two programs, stored blocks, activations, a lower third, a QR, and a hidden weather layer. Every picture it uses is inside `ejemplo/`, so the sample runs anywhere.
 
+Estivi asks the GitHub release page at most once a day and can download and install the next build from inside the app. The automatic check lives under Equipment; a copy in a read-only folder offers the release page instead.
+
 ## Receive
 
 The other half is the listener: open **[estivi-rx.lu1aqy.radio](https://estivi-rx.lu1aqy.radio)**, allow the microphone, and point it at your receiver's speaker. Decoding happens in the page; the server only serves static files.
@@ -66,7 +68,7 @@ cargo build --release
 - **macOS**: Xcode command line tools (`xcode-select --install`).
 - **Windows**: MSVC toolchain. Release builds do not open a console.
 
-Pushing a tag such as `v0.2.2` builds Linux x86_64, Windows x86_64 and i686, and a macOS universal app in CI, then attaches the archives and checksums to the GitHub release. The tag must match the workspace version in `Cargo.toml`.
+Pushing a tag such as `v0.2.3` builds Linux x86_64, Windows x86_64 and i686, and a macOS universal app in CI, then attaches the archives and checksums to the GitHub release. The tag must match the workspace version in `Cargo.toml`.
 
 ## Under the hood
 

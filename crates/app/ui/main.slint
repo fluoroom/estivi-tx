@@ -221,6 +221,9 @@ export component MainWindow inherits Window {
     in-out property <int> audio-in-index;
     in-out property <int> serial-index;
     in-out property <int> lang-index;
+    in-out property <string> app-version;
+    in-out property <bool> update-auto: true;
+    in-out property <string> update-version;
     in-out property <bool> ntp-on;
     in-out property <string> ntp-server: "pool.ntp.org";
     in-out property <int> ntp-hours: 6;
@@ -307,6 +310,8 @@ export component MainWindow inherits Window {
     callback transmit();
     callback edit-activation(int);
     callback refresh-devices();
+    callback check-updates();
+    callback show-update();
     callback open-instant-graphics();
     callback files-ready(string, [string]);
     callback saved-as(string);
@@ -369,6 +374,11 @@ export component MainWindow inherits Window {
             ToolButton { text: @tr("Programs"); flat: true; clicked => { root.open-programs(false); } }
             ToolButton { text: @tr("Modes"); flat: true; clicked => { root.open-modes(); } }
             Rectangle { horizontal-stretch: 1; }
+            if root.update-version != "" : ToolButton {
+                text: @tr("Update");
+                primary: true;
+                clicked => { root.show-update(); }
+            }
             Rectangle { width: 1px; height: 18px; background: Theme.border; }
             ComboBox {
                 width: 150px;
@@ -1352,6 +1362,14 @@ export component MainWindow inherits Window {
                             }
                             Text { text: @tr("The computer clock is not changed. Estivi stores an NTP offset and uses it for the grid."); font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
                             Text { text: @tr("The lists show what this computer reports. Refresh after connecting or removing a device."); font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
+                            Rectangle { height: 1px; background: Theme.border; }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                CheckBox { text: @tr("Check for updates automatically"); checked: root.update-auto; horizontal-stretch: 1; toggled => { root.set-field("update-auto", self.checked ? "1" : "0"); } }
+                                Text { text: @tr("Version") + " " + root.app-version; font-size: 11px; color: Theme.text-faint; vertical-alignment: center; }
+                                ToolButton { text: @tr("Check now"); flat: true; clicked => { root.check-updates(); } }
+                            }
+                            Text { text: @tr("Updates come from the GitHub releases page. Estivi checks at most once a day."); font-size: 11px; color: Theme.text-faint; wrap: word-wrap; }
                             HorizontalLayout {
                                 spacing: 8px;
                                 ToolButton { text: @tr("Refresh devices"); clicked => { root.refresh-devices(); } }

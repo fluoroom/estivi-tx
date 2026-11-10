@@ -229,6 +229,9 @@ msgstr "Programas"
 msgid "Modes"
 msgstr "Modos"
 
+msgid "Update"
+msgstr "Actualizar"
+
 msgid "Live"
 msgstr "En vivo"
 
@@ -594,6 +597,18 @@ msgstr "El reloj de la computadora no se cambia. Estivi guarda un desfase NTP y 
 
 msgid "The lists show what this computer reports. Refresh after connecting or removing a device."
 msgstr "Las listas muestran lo que informa esta computadora. Actualizá después de conectar o quitar un dispositivo."
+
+msgid "Check for updates automatically"
+msgstr "Buscar actualizaciones automáticamente"
+
+msgid "Version"
+msgstr "Versión"
+
+msgid "Check now"
+msgstr "Buscar ahora"
+
+msgid "Updates come from the GitHub releases page. Estivi checks at most once a day."
+msgstr "Las actualizaciones vienen de la página de releases de GitHub. Estivi busca como máximo una vez al día."
 
 msgid "Refresh devices"
 msgstr "Actualizar dispositivos"

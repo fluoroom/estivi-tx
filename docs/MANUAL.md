@@ -9,6 +9,7 @@ The short version is the [README](../README.md).
 - [What a transmission contains](#what-a-transmission-contains)
 - [The window](#the-window)
 - [Two files](#two-files)
+- [Updates](#updates)
 - [Import and export](#import-and-export)
 - [SSTV modes](#sstv-modes)
 - [Build](#build)
@@ -72,7 +73,7 @@ The themes are Dark (the default; a saved Gray theme opens as Dark), Light, Drac
 
 | File | What it stores | Where |
 |---|---|---|
-| `estivi.toml` | This computer: audio, serial port, PTT, CAT, language, theme, and the NTP offset | Next to the executable when that folder is writable, otherwise `~/.config/estivi/` or `%APPDATA%\estivi\` |
+| `estivi.toml` | This computer: audio, serial port, PTT, CAT, language, theme, the update check, and the NTP offset | Next to the executable when that folder is writable, otherwise `~/.config/estivi/` or `%APPDATA%\estivi\` |
 | `*.estivi` | The channel, format 2 | Wherever you save it. Pictures inside the project folder are stored with a relative path |
 | `*-registro.csv` | One line per transmission. The last columns are the block id, the program id, and whether the block end cut the audio (`cortado` is `0` or `1`) | Next to the project |
 
@@ -81,6 +82,14 @@ An old format 1 file is rejected with a clear error and is not rewritten. There 
 The clock of the operating system is not changed. On the first launch Estivi offers to follow `pool.ntp.org` and store the offset (every 6 hours, editable under Equipment). If you refuse, it does not ask again. If the server fails later, the last offset is kept and transmission is not blocked. The grid, the PTT cutoff, “now” for a folder import, and an export range all use the system clock plus that offset. Under Equipment, the audio output, audio input, and serial port are picked from the devices the system reports, not typed; Refresh re-reads the lists. On Linux the audio lists keep the ALSA cards and PipeWire, with one plug PCM per card; PulseAudio and the ALSA plugin PCMs are hidden. A configured device that is no longer connected stays visible and selected, so opening the panel does not silently change the setup.
 
 `.ttf` / `.otf` fonts in a `fuentes/` folder next to the project or the executable show up in the graphics editor, besides the bundled Noto fonts.
+
+## Updates
+
+At most once a day, including at startup, Estivi asks the public GitHub release page for `fluoroom/estivi-tx` whether there is a newer version. Nothing about the station is sent: it is one HTTPS request, and the only trace it leaves is the time of the check in `estivi.toml`. A new version puts an Update button in the top bar and, when nothing is transmitting, opens a notice; Later silences that version until a newer one appears. Check now under Equipment ignores the daily interval.
+
+Downloading installs the archive for this system, not a script: Linux x86_64, Windows x86_64 or i686, or the universal `Estivi.app` on macOS. The archive must match the `SHA256SUMS.txt` attached to the same release; a release without that file is not installed. Linux and Windows replace only the executable, so `ejemplo/`, `fuentes/`, and anything else in the folder stay untouched. macOS replaces the whole signed app bundle.
+
+Estivi never restarts in the middle of a transmission: installing waits until nothing holds the PTT. If the folder that holds the copy is not writable — a package-managed `/usr/bin`, or a macOS app launched from a read-only location — the window offers the release page and does not try to replace anything. Updates are on by default; the automatic check can be turned off under Equipment.
 
 ## Import and export
 
@@ -108,7 +117,7 @@ cargo build --release
 - **macOS**: build on macOS with the Xcode command line tools (`xcode-select --install`). The release archive wraps the universal binary in `Estivi.app`.
 - The UI draws in software (about 50 MB of RAM, no GPU driver). Equipment can switch the renderer only by the setting that was already in the config (`gpu_render`); the default stays the CPU renderer.
 
-Pushing a tag such as `v0.2.2` runs the release workflow. The tag must match the workspace version in `Cargo.toml`; it builds Linux x86_64, Windows x86_64 and i686, and a macOS universal app, then attaches the archives and their checksums to the GitHub release.
+Pushing a tag such as `v0.2.3` runs the release workflow. The tag must match the workspace version in `Cargo.toml`; it builds Linux x86_64, Windows x86_64 and i686, and a macOS universal app, then attaches the archives and their checksums to the GitHub release.
 
 ```sh
 cargo run -p estivi-core --example render -- ejemplo/canal-demo.estivi cuadro.png [audio.wav] [programa] [modo]
@@ -119,7 +128,7 @@ cargo run -p estivi-core --example dispositivos
 
 ## Verification
 
-`cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, the ALSA/PipeWire device filter, bumper linking and `block02` import, export durations for the five shapes, and one short FLAC file.
+`cargo test -p estivi-core --lib`: line timings, VIS, pixel edges, Martin M1 round-trip, CW and DTMF (including a DTMF tone round-trip), the calendar (turns, overlap, days left, the three-year limit, DST), AX.25 frames, the ALSA/PipeWire device filter, bumper linking and `block02` import, export durations for the five shapes, one short FLAC file, and the updater's release/asset selection, checksum parsing, and archive payload extraction.
 
 `cargo test -p estivi`: preview fitting keeps the aspect ratio inside its box, and the Live reveal blacks only the rows that have not been scanned.
 

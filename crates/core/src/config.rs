@@ -13,6 +13,7 @@ pub struct Config {
     pub ptt: PttConfig,
     pub cat: CatConfig,
     pub ui: UiConfig,
+    pub update: UpdateConfig,
     pub time: TimeSync,
 }
 
@@ -41,6 +42,25 @@ impl Default for TimeSync {
             last_sync: String::new(),
             last_error: String::new(),
         }
+    }
+}
+
+/// The automatic updater. The release itself lives on GitHub; this only
+/// remembers when Estivi last looked and which version the user postponed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdateConfig {
+    /// Ask the public release page at most once a day.
+    pub enabled: bool,
+    /// Unix seconds of the last completed check. 0 = never.
+    pub last_check: i64,
+    /// Version the user chose to be reminded about later.
+    pub skipped: String,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        UpdateConfig { enabled: true, last_check: 0, skipped: String::new() }
     }
 }
 
@@ -344,6 +364,21 @@ mod tests {
         let migrated = Config::parse(&format!("[ptt]\n{old}")).unwrap();
         assert_eq!(migrated.ptt.rts, LineLevel::Off);
         assert_eq!(migrated.ptt.dtr, LineLevel::Negative);
+    }
+
+    #[test]
+    fn update_section_is_optional() {
+        let old = "version = 2\n[ui]\nlang = \"en\"\n";
+        let cfg = Config::parse(old).unwrap();
+        assert!(cfg.update.enabled);
+        assert_eq!(cfg.update.last_check, 0);
+        let mut cfg = Config::default();
+        cfg.update.enabled = false;
+        cfg.update.skipped = "9.9.9".into();
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back = Config::parse(&text).unwrap();
+        assert!(!back.update.enabled);
+        assert_eq!(back.update.skipped, "9.9.9");
     }
 
     #[test]

@@ -410,6 +410,11 @@ TR = {
     "Add an action": "Agregar una acción",
     "TEXT": "TEXTO",
     "IMAGE": "IMAGEN",
+    "Update": "Actualizar",
+    "Check for updates automatically": "Buscar actualizaciones automáticamente",
+    "Check now": "Buscar ahora",
+    "Version": "Versión",
+    "Updates come from the GitHub releases page. Estivi checks at most once a day.": "Las actualizaciones vienen de la página de releases de GitHub. Estivi busca como máximo una vez al día.",
 }
 
 PLURALS = {

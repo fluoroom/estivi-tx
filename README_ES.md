@@ -12,7 +12,7 @@ Estivi corre un canal de SSTV como una estación lleva su agenda. Una ventana, s
 
 <p align="center"><em>La grilla, la próxima transmisión y la línea de tiempo del bloque seleccionado.</em></p>
 
-`Versión 0.2.2` · formato de proyecto 2 · Linux, Windows, macOS · Rust + Slint
+`Versión 0.2.3` · formato de proyecto 2 · Linux, Windows, macOS · Rust + Slint
 
 ## Qué hace
 
@@ -49,6 +49,8 @@ Descargá la [última versión](https://github.com/fluoroom/estivi-tx/releases/l
 
 Descomprimilo, ejecutá `estivi` y abrí [`ejemplo/canal-demo.estivi`](ejemplo/canal-demo.estivi) para ver un canal completo: dos programas, bloques guardados, activaciones, un zócalo, un QR y una capa de clima oculta. Todas las imágenes que usa están dentro de `ejemplo/`, así que la muestra corre en cualquier máquina.
 
+Estivi consulta la página de releases de GitHub como máximo una vez al día y puede descargar e instalar la próxima versión desde la misma app. La búsqueda automática está en Equipo; si la copia está en una carpeta de solo lectura, ofrece la página del release.
+
 ## Escuchar
 
 La otra mitad es el receptor: abrí **[estivi-rx.lu1aqy.radio](https://estivi-rx.lu1aqy.radio)**, permití el micrófono y apuntalo al parlante de tu receptor. La decodificación ocurre en la página; el servidor solo sirve archivos estáticos.
@@ -66,7 +68,7 @@ cargo build --release
 - **macOS**: herramientas de línea de comandos de Xcode (`xcode-select --install`).
 - **Windows**: toolchain MSVC. Las compilaciones de release no abren consola.
 
-Al publicar un tag como `v0.2.2` compila en CI para Linux x86_64, Windows x86_64 e i686, y macOS universal; después adjunta los paquetes y sus checksums al release de GitHub. El tag tiene que coincidir con la versión del workspace en `Cargo.toml`.
+Al publicar un tag como `v0.2.3` compila en CI para Linux x86_64, Windows x86_64 e i686, y macOS universal; después adjunta los paquetes y sus checksums al release de GitHub. El tag tiene que coincidir con la versión del workspace en `Cargo.toml`.
 
 ## Bajo el capó
 

@@ -967,6 +967,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpufeatures"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "crc"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,7 +1277,7 @@ checksum = "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7"
 
 [[package]]
 name = "estivi"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1283,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "estivi-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -1292,12 +1301,16 @@ dependencies = [
  "cpal",
  "crossbeam-channel",
  "flacenc",
+ "flate2",
  "image",
  "log",
  "qrcode",
+ "semver",
  "serde",
  "serde_json",
  "serialport",
+ "sha2",
+ "tar",
  "toml 1.1.8+spec-1.1.0",
  "ureq",
 ]
@@ -4480,6 +4493,17 @@ dependencies = [
  "scopeguard",
  "unescaper",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]

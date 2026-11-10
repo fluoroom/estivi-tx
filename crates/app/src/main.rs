@@ -32,6 +32,7 @@ fn select_backend(renderer: &str) -> Result<(), slint::PlatformError> {
 fn main() {
     let config_path = Config::location();
     logger::init(config_path.with_file_name("estivi.log"));
+    estivi_core::update::cleanup_stale();
     let mut config = Config::load(&config_path).unwrap_or_else(|e| {
         log::error!("config: {e:#}; using defaults");
         Config::default()

@@ -7,6 +7,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate, NaiveDateTime, TimeDelta, Utc};
+use crossbeam_channel::{Receiver, Sender};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use estivi_core::air::{self, GraphicsLevel, PieceKind};
@@ -25,6 +26,7 @@ use estivi_core::project::{
 };
 use estivi_core::ptt;
 use estivi_core::schedule::{self, Card, Keep, Occurrence, Zoom, future_limit, grid_date, proposed_window, to_utc};
+use estivi_core::update;
 
 use crate::editor;
 use crate::i18n;
@@ -34,6 +36,7 @@ use crate::{ActionItem, CardItem, Files, MainWindow, ModeCheat, PicItem, Program
 pub type Shared = Rc<RefCell<App>>;
 
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+const UPDATE_PERIOD_S: i64 = 24 * 3600;
 
 // Logical sizes of the fixed image widgets in main.slint. Thumbnails are
 // pre-scaled to these boxes (times the window scale factor) so the UI can
@@ -359,12 +362,39 @@ pub fn with_app(weak: &Weak<RefCell<App>>, f: impl FnOnce(&mut App)) {
     }
 }
 
+/// Open a URL in the browser the desktop is configured to use.
+fn open_url(url: &str) {
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
 #[derive(Clone, Copy)]
 enum After {
     Nothing,
     Quit,
     New,
     Open,
+    Update,
+}
+
+/// Work done by the update thread, handed to the window through a channel so
+/// the `Rc<RefCell<App>>` never leaves the UI thread.
+enum UpdateEvent {
+    Checked { result: Result<Option<update::Release>, String>, manual: bool },
+    Progress(u64, u64),
+    Staged(Result<update::Staged, String>),
+}
+
+#[derive(Default)]
+struct UpdateState {
+    release: Option<update::Release>,
+    staged: Option<update::Staged>,
+    checking: bool,
+    downloading: bool,
 }
 
 enum Pending {
@@ -377,6 +407,8 @@ enum Pending {
     Export,
     Quality { req: ExportRequest, dir: PathBuf },
     Clock,
+    Update { installable: bool },
+    RestartUpdate,
     Leave(After),
 }
 
@@ -466,6 +498,9 @@ pub struct App {
     act_pick: Option<usize>,
     /// Combo callbacks that fire while the UI is being filled are ignored.
     ui_quiet: bool,
+    update: UpdateState,
+    update_tx: Sender<UpdateEvent>,
+    update_rx: Receiver<UpdateEvent>,
 }
 
 impl App {
@@ -605,6 +640,10 @@ impl App {
     fn tick(&mut self) {
         self.status = self.engine.status();
         self.paint_status();
+        self.poll_updates();
+        // Unattended stations can run for weeks, so the daily check is also
+        // repeated from the timer, not only at startup.
+        self.maybe_check_updates();
         if let Some(mut ed) = self.editor.take() {
             ed.tick(self);
             self.editor = Some(ed);
@@ -1463,6 +1502,256 @@ impl App {
         self.push_equipment();
     }
 
+    fn maybe_check_updates(&mut self) {
+        if !self.config.update.enabled {
+            return;
+        }
+        if Utc::now().timestamp().saturating_sub(self.config.update.last_check) < UPDATE_PERIOD_S {
+            return;
+        }
+        self.start_update_check(false);
+    }
+
+    fn start_update_check(&mut self, manual: bool) {
+        if self.update.checking || self.update.downloading {
+            if manual {
+                self.note(i18n::t("An update check is already running.", "Ya hay una búsqueda de actualizaciones en curso."));
+            }
+            return;
+        }
+        self.update.checking = true;
+        if manual {
+            self.note(i18n::t("Checking for updates…", "Buscando actualizaciones…"));
+        }
+        let tx = self.update_tx.clone();
+        std::thread::spawn(move || {
+            let result = update::check().map_err(|e| format!("{e:#}"));
+            let _ = tx.send(UpdateEvent::Checked { result, manual });
+        });
+    }
+
+    fn poll_updates(&mut self) {
+        while let Ok(event) = self.update_rx.try_recv() {
+            match event {
+                UpdateEvent::Progress(done, total) => {
+                    let text = i18n::t("Downloading update…", "Descargando actualización…");
+                    if total == 0 {
+                        self.note(text);
+                    } else {
+                        let pct = done.saturating_mul(100).checked_div(total).unwrap_or(0).min(100);
+                        self.note(format!("{text} {pct}%"));
+                    }
+                }
+                UpdateEvent::Checked { result, manual } => self.update_checked(result, manual),
+                UpdateEvent::Staged(result) => self.update_staged(result),
+            }
+        }
+    }
+
+    fn update_checked(&mut self, result: Result<Option<update::Release>, String>, manual: bool) {
+        self.update.checking = false;
+        self.config.update.last_check = Utc::now().timestamp();
+        if let Err(e) = self.config.save(&self.config_path) {
+            log::warn!("config: {e:#}");
+        }
+        match result {
+            Ok(Some(release)) => {
+                log::info!("update: version {} is available", release.version);
+                self.ui().set_update_version(release.version.as_str().into());
+                // A staged older version must not hide the new one.
+                if self.update.staged.as_ref().is_some_and(|s| s.version != release.version) {
+                    self.discard_staged();
+                }
+                self.update.release = Some(release);
+                if manual || self.should_announce_update() {
+                    self.show_update_dialog();
+                }
+            }
+            Ok(None) => {
+                log::info!("update: this build is current");
+                self.update.release = None;
+                if self.update.staged.is_none() {
+                    self.ui().set_update_version("".into());
+                }
+                if manual {
+                    self.message(format!(
+                        "{} {}.",
+                        i18n::t("Estivi is up to date, version", "Estivi está actualizado, versión"),
+                        update::CURRENT
+                    ));
+                }
+            }
+            Err(e) => {
+                log::warn!("update check: {e}");
+                if manual {
+                    self.message(format!(
+                        "{} {e}",
+                        i18n::t("Could not check for updates:", "No se pudo buscar actualizaciones:")
+                    ));
+                }
+            }
+        }
+    }
+
+    fn should_announce_update(&self) -> bool {
+        let Some(release) = &self.update.release else { return false };
+        self.config.update.enabled
+            && !self.status.busy
+            && matches!(&self.pending, Pending::None)
+            && self.config.update.skipped != release.version
+    }
+
+    fn update_staged(&mut self, result: Result<update::Staged, String>) {
+        self.update.downloading = false;
+        match result {
+            Ok(staged) => {
+                log::info!("update: version {} is downloaded", staged.version);
+                self.update.staged = Some(staged);
+                self.note(i18n::t("Update ready to install.", "Actualización lista para instalar."));
+                if !self.status.busy && matches!(&self.pending, Pending::None) {
+                    self.ask_restart_update();
+                }
+            }
+            Err(e) => {
+                log::warn!("update download: {e}");
+                self.note(i18n::t("The update could not be downloaded.", "No se pudo descargar la actualización."));
+                self.message(format!(
+                    "{} {e}",
+                    i18n::t("Could not download the update:", "No se pudo descargar la actualización:")
+                ));
+            }
+        }
+    }
+
+    fn show_update_dialog(&mut self) {
+        if self.update.staged.is_some() {
+            self.ask_restart_update();
+            return;
+        }
+        let Some(release) = self.update.release.clone() else { return };
+        let can = update::can_install();
+        let mb = release.asset.size as f64 / (1024.0 * 1024.0);
+        let body = if can {
+            i18n::t(
+                &format!(
+                    "Estivi {} is installed. Version {} is available ({mb:.1} MB).\n\nEstivi will download it, replace this copy and restart. Save your work and finish any transmission first.",
+                    update::CURRENT, release.version
+                ),
+                &format!(
+                    "Estivi {} está instalado. La versión {} está disponible ({mb:.1} MB).\n\nEstivi la va a descargar, reemplazar esta copia y reiniciar. Guardá tu trabajo y terminá cualquier transmisión primero.",
+                    update::CURRENT, release.version
+                ),
+            )
+        } else {
+            i18n::t(
+                &format!(
+                    "Estivi {} is installed. Version {} is available.\n\nThis copy is in a folder that cannot be written, so it cannot update itself. Download the new version from the release page.",
+                    update::CURRENT, release.version
+                ),
+                &format!(
+                    "Estivi {} está instalado. La versión {} está disponible.\n\nEsta copia está en una carpeta que no se puede escribir, así que no puede actualizarse sola. Descargá la versión nueva desde la página de la versión.",
+                    update::CURRENT, release.version
+                ),
+            )
+        };
+        let title = i18n::t("Update available", "Actualización disponible");
+        let (ok, alt, extra) = if can {
+            (
+                i18n::t("Download and install", "Descargar e instalar"),
+                i18n::t("Later", "Más tarde"),
+                i18n::t("Release page", "Página de la versión"),
+            )
+        } else {
+            (i18n::t("Release page", "Página de la versión"), i18n::t("Close", "Cerrar"), String::new())
+        };
+        self.ask(7, &title, &body, &ok, &alt, &extra, Pending::Update { installable: can });
+    }
+
+    fn ask_restart_update(&mut self) {
+        let Some(staged) = self.update.staged.as_ref() else { return };
+        let body = i18n::t(
+            &format!("Version {} is downloaded and ready. Restart Estivi to install it.", staged.version),
+            &format!("La versión {} está descargada y lista. Reiniciá Estivi para instalarla.", staged.version),
+        );
+        self.ask(
+            7,
+            &i18n::t("Update ready", "Actualización lista"),
+            &body,
+            &i18n::t("Restart now", "Reiniciar ahora"),
+            &i18n::t("Later", "Más tarde"),
+            &i18n::t("Release page", "Página de la versión"),
+            Pending::RestartUpdate,
+        );
+    }
+
+    fn start_update_download(&mut self) {
+        if self.update.downloading {
+            self.note(i18n::t("The update is already downloading.", "La actualización ya se está descargando."));
+            return;
+        }
+        let Some(release) = self.update.release.clone() else { return };
+        if self.engine.status().busy {
+            self.message(i18n::t(
+                "Estivi is on the air. Try again when the transmission ends.",
+                "Estivi está al aire. Probá de nuevo cuando termine la transmisión.",
+            ));
+            return;
+        }
+        self.update.downloading = true;
+        self.note(i18n::t("Downloading update…", "Descargando actualización…"));
+        let tx = self.update_tx.clone();
+        std::thread::spawn(move || {
+            let result = update::stage(&release, |done, total| {
+                let _ = tx.send(UpdateEvent::Progress(done, total));
+            })
+            .map_err(|e| format!("{e:#}"));
+            let _ = tx.send(UpdateEvent::Staged(result));
+        });
+    }
+
+    fn install_update(&mut self) {
+        if self.dirty {
+            self.guard_dirty(After::Update);
+            return;
+        }
+        if self.engine.status().busy {
+            self.message(i18n::t(
+                "Estivi is on the air. Try again when the transmission ends.",
+                "Estivi está al aire. Probá de nuevo cuando termine la transmisión.",
+            ));
+            return;
+        }
+        let Some(staged) = self.update.staged.as_ref() else {
+            self.show_update_dialog();
+            return;
+        };
+        match update::install(staged) {
+            Ok(()) => {
+                log::info!("update: installing {}", staged.version);
+                self.update.staged = None;
+                let _ = slint::quit_event_loop();
+            }
+            Err(e) => {
+                log::warn!("update install: {e:#}");
+                self.message(format!(
+                    "{} {e:#}",
+                    i18n::t("Estivi could not install the update:", "Estivi no pudo instalar la actualización:")
+                ));
+            }
+        }
+    }
+
+    fn discard_staged(&mut self) {
+        if let Some(staged) = self.update.staged.take() {
+            let _ = std::fs::remove_dir_all(&staged.dir);
+        }
+    }
+
+    fn open_release_page(&self) {
+        let url = self.update.release.as_ref().map(|r| r.page.as_str()).unwrap_or(update::RELEASES_URL);
+        open_url(url);
+    }
+
     fn push_equipment(&mut self) {
         let c = &self.config;
         let (outs, out_index) = audio_choices(&self.audio_outputs, &c.audio.output);
@@ -1494,6 +1783,8 @@ impl App {
         ui.set_ntp_on(c.time.enabled);
         ui.set_ntp_server(c.time.server.as_str().into());
         ui.set_ntp_hours(c.time.period_h as i32);
+        ui.set_app_version(update::CURRENT.into());
+        ui.set_update_auto(c.update.enabled);
         ui.set_ptt_note(i18n::t(
             "Audio, PTT and the clock belong to this computer. The channel lives in the .estivi file.",
             "El audio, el PTT y el reloj son de esta computadora. El canal vive en el archivo .estivi.",
@@ -2279,6 +2570,14 @@ impl App {
             "cat-freq" => { self.config.cat.set_freq = value == "1"; self.save_config(); }
             "ntp" => { self.config.time.enabled = value == "1"; self.config.time.prompted = true; self.save_config(); }
             "ntp-server" => { self.config.time.server = value.to_string(); self.save_config(); }
+            "update-auto" => {
+                self.config.update.enabled = value == "1";
+                self.save_config();
+                self.push_equipment();
+                if self.config.update.enabled {
+                    self.maybe_check_updates();
+                }
+            }
             "instant-clear" => {
                 self.instant = InstantHold::default();
                 let ui = self.ui();
@@ -2487,6 +2786,48 @@ impl App {
                 self.save_config();
                 self.push_equipment();
             }
+            Pending::Update { installable } => {
+                let installable = *installable;
+                match which {
+                    0 if installable => {
+                        self.close_dialog();
+                        self.start_update_download();
+                    }
+                    0 => {
+                        self.close_dialog();
+                        self.open_release_page();
+                    }
+                    1 if installable => {
+                        let version = self.update.release.as_ref().map(|r| r.version.clone()).unwrap_or_default();
+                        self.config.update.skipped = version;
+                        if let Err(e) = self.config.save(&self.config_path) {
+                            log::warn!("config: {e:#}");
+                        }
+                        self.close_dialog();
+                        self.note(i18n::t("The update was postponed.", "La actualización quedó para más tarde."));
+                    }
+                    1 => self.close_dialog(),
+                    2 => {
+                        self.close_dialog();
+                        self.open_release_page();
+                    }
+                    _ => self.close_dialog(),
+                }
+            }
+            Pending::RestartUpdate => {
+                match which {
+                    0 => {
+                        self.close_dialog();
+                        self.install_update();
+                    }
+                    1 => self.close_dialog(),
+                    2 => {
+                        self.close_dialog();
+                        self.open_release_page();
+                    }
+                    _ => self.close_dialog(),
+                }
+            }
             Pending::Leave(after) => {
                 let after = *after;
                 if which == 2 {
@@ -2543,6 +2884,7 @@ impl App {
                 self.loaded();
             }
             After::Open => self.pick_open(),
+            After::Update => self.install_update(),
         }
     }
 
@@ -3128,6 +3470,7 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
     let ui = MainWindow::new()?;
     set_logo(&ui);
     i18n::apply_slint(Lang::resolve(&config.ui.lang));
+    let (update_tx, update_rx) = crossbeam_channel::unbounded();
     let api = ApiCache::default();
     let engine = Engine::start(config.clone(), config_path.clone(), config_path.with_file_name("estivi-registro.csv"), api.clone());
     let last = std::env::args_os().nth(1).map(|a| a.to_string_lossy().into_owned()).unwrap_or_else(|| config.ui.last_project.clone());
@@ -3174,6 +3517,9 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
             gfx_target: GfxTarget::Channel,
             act_pick: None,
             ui_quiet: false,
+            update: UpdateState::default(),
+            update_tx,
+            update_rx,
         })
     });
     if !last.is_empty() {
@@ -3210,6 +3556,7 @@ pub fn run(config: Config, config_path: PathBuf) -> anyhow::Result<()> {
         });
     }
     ui.show()?;
+    app.borrow_mut().maybe_check_updates();
     slint::run_event_loop()?;
     drop(timer);
     drop(app);
@@ -3339,6 +3686,8 @@ fn wire(app: &Shared, ui: &MainWindow) {
     ui.on_transmit({ let w = w.clone(); move || with_app(&w, App::transmit) });
     ui.on_edit_activation({ let w = w.clone(); move |n| with_app(&w, |a| a.open_activation(n < 0)) });
     ui.on_refresh_devices({ let w = w.clone(); move || with_app(&w, App::refresh_devices) });
+    ui.on_check_updates({ let w = w.clone(); move || with_app(&w, |a| a.start_update_check(true)) });
+    ui.on_show_update({ let w = w.clone(); move || with_app(&w, App::show_update_dialog) });
     ui.on_pick({
         let w = w.clone();
         let uiw = ui.as_weak();
